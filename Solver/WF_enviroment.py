@@ -100,7 +100,7 @@ class TurbEnv(EnvBase):
                       ),
                 # we need to add the "params" to the observation specs, as we want
                 # to pass it at each step during a rollout
-                params=make_composite_from_td(td_params["params"]),
+                params=self.make_composite_from_td(td_params["params"]),
                 shape=(),
                 )
         # since the environment is stateless, we expect the previous output as input.
@@ -116,12 +116,12 @@ class TurbEnv(EnvBase):
                 )
         self.reward_spec = UnboundedContinuousTensorSpec(shape=(*td_params.shape, 1))
 
-    def make_composite_from_td(td):
+    def make_composite_from_td(self, td):
         # custom funtion to convert a tensordict in a similar spec structure
         # of unbounded values.
         composite = CompositeSpec(
             {
-                key: make_composite_from_td(tensor)
+                key: self.make_composite_from_td(tensor)
                 if isinstance(tensor, TensorDictBase)
                 else UnboundedContinuousTensorSpec(
                     dtype=tensor.dtype, device=tensor.device, shape=tensor.shape
