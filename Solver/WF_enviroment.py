@@ -8,6 +8,9 @@ from tensordict.nn import TensorDictModule
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torch import nn
 
+from Solver.ADM_runner import ADM
+from Solver.farm import Turbine, Farm
+
 from torchrl.data import BoundedTensorSpec, CompositeSpec, UnboundedContinuousTensorSpec
 from torchrl.envs import (
     CatTensors,
@@ -37,6 +40,17 @@ class TurbEnv(EnvBase):
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
 
+        self.device = device
+
+        # set up a farm environment (probably better to pass this???)
+        self.farm1 = Farm(126 * 14, 126 * 4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2 * 126])
+        self.farm1.grid(staggered=False)
+        self.adm = ADM(self.farm1)
+
+        self.n_obs = 2
+
+
+
     def _step(self, tensordict):
         alpha = tensordict["alpha"]
         u = tensordict["action"].squeeze(-1)
@@ -46,8 +60,8 @@ class TurbEnv(EnvBase):
         new_alpha = alpha + u * dt
         new_alpha = u.clamp(-tensordict["params", "max_angle"], tensordict["params", "max_angle"])
 
-        # Make a dummy update here... this needs to have the code from ADM
-        power = torch.tensor([1.0])
+        # update by running ADM
+        power, observation = self.adm.advance(new_alpha)
 
         reward = power.view(*tensordict.shape, 1)  # normalise?
         done = torch.zeros_like(reward, dtype=torch.bool)
@@ -55,6 +69,7 @@ class TurbEnv(EnvBase):
         out = TensorDict(
             {
                 "alpha": new_alpha,
+                "observation": observation,
                 "params": tensordict["params"],
                 "reward": reward,
                 "done": done,
@@ -81,9 +96,12 @@ class TurbEnv(EnvBase):
             * (high_alpha - low_alpha)
             + low_alpha
         )
+        observation = torch.zeros([tensordict.shape, self.n_obs], device=self.device)  # TODO: check this
+
         out = TensorDict(
             {
                 "alpha": alpha,
+                "observation": observation,
                 "params": tensordict["params"],
             },
             batch_size=tensordict.shape,
@@ -94,11 +112,16 @@ class TurbEnv(EnvBase):
         # Under the hood, this will populate self.output_spec["observation"]
         self.observation_spec = CompositeSpec(
                 alpha=BoundedTensorSpec(
-                      low=-torch.pi,
-                      high=torch.pi,
+                    low=-td_params["params", "max_angle"],
+                    high=td_params["params", "max_angle"],
                       shape=(),
                       dtype=torch.float32,
                       ),
+                observation=UnboundedContinuousTensorSpec(
+                    shape=(*self.batch_size, self.n_obs),
+                    dtype=torch.float32,
+                    device=self.device
+                ),
                 # we need to add the "params" to the observation specs, as we want
                 # to pass it at each step during a rollout
                 params=self.make_composite_from_td(td_params["params"]),
