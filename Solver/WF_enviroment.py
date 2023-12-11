@@ -46,7 +46,8 @@ class TurbEnv(EnvBase):
         new_alpha = alpha + u * dt
         new_alpha = u.clamp(-tensordict["params", "max_angle"], tensordict["params", "max_angle"])
 
-        power = step_solver(new_alpha)  # TODO: implement this
+        # Make a dummy update here... this needs to have the code from ADM
+        power = torch.tensor([1.0])
 
         reward = power.view(*tensordict.shape, 1)  # normalise?
         done = torch.zeros_like(reward, dtype=torch.bool)
@@ -136,30 +137,31 @@ class TurbEnv(EnvBase):
         rng = torch.manual_seed(seed)
         self.rng = rng
 
-
-def gen_params(batch_size=None) -> TensorDictBase:
-    """Returns a tensordict containing the physical parameters such as speed and angle limits."""
-    if batch_size is None:
-        batch_size = []
-    td = TensorDict(
-        {
-            "params": TensorDict(
-                {
-                    "max_speed": 2,
-                    "max_angle": 60,
-                    "dt": 0.05,
-                },
-                [],
-            )
-        },
-        [],
-    )
-    if batch_size:
-        td = td.expand(batch_size).contiguous()
-    return td
+    @staticmethod
+    def gen_params(batch_size=None) -> TensorDictBase:
+        """Returns a tensordict containing the physical parameters such as speed and angle limits."""
+        if batch_size is None:
+            batch_size = []
+        td = TensorDict(
+            {
+                "params": TensorDict(
+                    {
+                        "max_speed": 2,
+                        "max_angle": 60,
+                        "dt": 0.05,
+                    },
+                    [],
+                )
+            },
+            [],
+        )
+        if batch_size:
+            td = td.expand(batch_size).contiguous()
+        return td
 
 
 if __name__ == '__main__':
+    print('Hello!')
 
-# TODO: add checks
+    test_env = TurbEnv()
     
