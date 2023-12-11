@@ -1,0 +1,11 @@
+*.adm
+fort.42
+log.x3d
+restart.info
+statistics
+turb-data
+data
+out
+checkpoint
+*TEST*
+running
