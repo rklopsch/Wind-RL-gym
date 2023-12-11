@@ -37,7 +37,7 @@ class TurbEnv(EnvBase):
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
 
-    def _step(self, tensorDict):
+    def _step(self, tensordict):
         alpha = tensordict["alpha"]
         u = tensordict["action"].squeeze(-1)
         u = u.clamp(-tensordict["params", "max_speed"], tensordict["params", "max_speed"])
@@ -70,12 +70,12 @@ class TurbEnv(EnvBase):
             tensordict = self.gen_params(batch_size=self.batch_size)
 
         high_alpha = torch.tensor(np.pi, device=self.device)
-        low_alpha = -high_th
+        low_alpha = -high_alpha
 
         # for non batch-locked envs, the input tensordict shape dictates the number
         # of simulators run simultaneously. In other contexts, the initial
         # random state's shape will depend upon the environment batch-size instead.
-        th = (
+        alpha = (
             torch.rand(tensordict.shape, generator=self.rng, device=self.device)
             * (high_alpha - low_alpha)
             + low_alpha
@@ -161,9 +161,5 @@ def gen_params(batch_size=None) -> TensorDictBase:
 
 if __name__ == '__main__':
 
-
+# TODO: add checks
     
-
-
-
-
