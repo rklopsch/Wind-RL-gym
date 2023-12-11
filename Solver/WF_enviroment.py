@@ -161,7 +161,9 @@ class TurbEnv(EnvBase):
 
 
 if __name__ == '__main__':
-    print('Hello!')
 
     test_env = TurbEnv()
-    
+    rollout = test_env.rollout(max_steps=10)
+    print("Testing environment rollout...")
+    print(rollout)
+
