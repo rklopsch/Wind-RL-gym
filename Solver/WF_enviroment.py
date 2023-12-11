@@ -46,7 +46,8 @@ class TurbEnv(EnvBase):
         new_alpha = alpha + u * dt
         new_alpha = u.clamp(-tensordict["params", "max_angle"], tensordict["params", "max_angle"])
 
-        power = step_solver(new_alpha)  # TODO: implement this
+        # Make a dummy update here... this needs to have the code from ADM
+        power = torch.tensor([1.0])
 
         reward = power.view(*tensordict.shape, 1)  # normalise?
         done = torch.zeros_like(reward, dtype=torch.bool)
@@ -100,7 +101,7 @@ class TurbEnv(EnvBase):
                       ),
                 # we need to add the "params" to the observation specs, as we want
                 # to pass it at each step during a rollout
-                params=make_composite_from_td(td_params["params"]),
+                params=self.make_composite_from_td(td_params["params"]),
                 shape=(),
                 )
         # since the environment is stateless, we expect the previous output as input.
@@ -116,12 +117,12 @@ class TurbEnv(EnvBase):
                 )
         self.reward_spec = UnboundedContinuousTensorSpec(shape=(*td_params.shape, 1))
 
-    def make_composite_from_td(td):
+    def make_composite_from_td(self, td):
         # custom funtion to convert a tensordict in a similar spec structure
         # of unbounded values.
         composite = CompositeSpec(
             {
-                key: make_composite_from_td(tensor)
+                key: self.make_composite_from_td(tensor)
                 if isinstance(tensor, TensorDictBase)
                 else UnboundedContinuousTensorSpec(
                     dtype=tensor.dtype, device=tensor.device, shape=tensor.shape
@@ -136,30 +137,33 @@ class TurbEnv(EnvBase):
         rng = torch.manual_seed(seed)
         self.rng = rng
 
-
-def gen_params(batch_size=None) -> TensorDictBase:
-    """Returns a tensordict containing the physical parameters such as speed and angle limits."""
-    if batch_size is None:
-        batch_size = []
-    td = TensorDict(
-        {
-            "params": TensorDict(
-                {
-                    "max_speed": 2,
-                    "max_angle": 60,
-                    "dt": 0.05,
-                },
-                [],
-            )
-        },
-        [],
-    )
-    if batch_size:
-        td = td.expand(batch_size).contiguous()
-    return td
+    @staticmethod
+    def gen_params(batch_size=None) -> TensorDictBase:
+        """Returns a tensordict containing the physical parameters such as speed and angle limits."""
+        if batch_size is None:
+            batch_size = []
+        td = TensorDict(
+            {
+                "params": TensorDict(
+                    {
+                        "max_speed": 2,
+                        "max_angle": 60,
+                        "dt": 0.05,
+                    },
+                    [],
+                )
+            },
+            [],
+        )
+        if batch_size:
+            td = td.expand(batch_size).contiguous()
+        return td
 
 
 if __name__ == '__main__':
 
-# TODO: add checks
-    
+    test_env = TurbEnv()
+    rollout = test_env.rollout(max_steps=10)
+    print("Testing environment rollout...")
+    print(rollout)
+
