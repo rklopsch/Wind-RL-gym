@@ -50,6 +50,8 @@ class TurbEnv(EnvBase):
         self.farm1.grid(staggered=False)
         self.adm = ADM(self.farm1)
 
+        self.dummy_update = True  # If True, perform a dummy update for testing
+
     def _step(self, tensordict):
         alpha = tensordict["alpha"]
         u = tensordict["action"].squeeze(-1)
@@ -61,7 +63,11 @@ class TurbEnv(EnvBase):
         print(new_alpha)
 
         # update by running ADM
-        power, observation = self.adm.advance(new_alpha)
+        if self.dummy_update:
+            power = torch.ones((*tensordict.shape, 1), device=self.device)
+            observation = torch.zeros((*tensordict.shape, self.total_obs), device=self.device)
+        else:
+            power, observation = self.adm.advance(new_alpha)
 
         reward = power.view(*tensordict.shape, 1)  # normalise?
         done = torch.zeros_like(reward, dtype=torch.bool)
