@@ -60,7 +60,6 @@ class TurbEnv(EnvBase):
         
         new_alpha = alpha + u * dt
         new_alpha = u.clamp(-tensordict["params", "max_angle"], tensordict["params", "max_angle"])
-        print(new_alpha)
 
         # update by running ADM
         if self.dummy_update:

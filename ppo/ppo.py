@@ -46,13 +46,13 @@ def main(cfg: "DictConfig"):
 
     # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_env(cfg.env.env_name, device),
+        create_env_fn=make_env(device),
         policy=actor,
         frames_per_batch=cfg.collector.frames_per_batch,
-        total_frames=cfg.collector.total_frames,
+        total_frames=cfg.collector.total_frames // cfg.collector.frame_skip,
         device=device,
         storing_device=device,
-        max_frames_per_traj=-1,
+        max_frames_per_traj=cfg.collector.max_episode_length // cfg.collector.frame_skip,
     )
 
     # Create data buffer
@@ -86,22 +86,24 @@ def main(cfg: "DictConfig"):
     critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr, eps=1e-5)
 
     # Create logger
-    logger = None
-    if cfg.logger.backend:
-        exp_name = generate_exp_name("PPO", f"{cfg.logger.exp_name}_{cfg.env.env_name}")
-        logger = get_logger(
-            cfg.logger.backend, logger_name="ppo", experiment_name=exp_name
-        )
+    exp_name = generate_exp_name("PPO_", cfg.env.env_name)
+    if cfg.logger.project_name is None:
+        raise ValueError("WandB project name must be specified in config.")
+    wandb.init(
+        mode=str(cfg.logger.mode),
+        project=str(cfg.logger.project_name),
+        name=exp_name,
+    )
 
     # Create test environment
-    test_env = make_env(cfg.env.env_name, device)
+    test_env = make_env(device)
     test_env.eval()
 
     # Main loop
     collected_frames = 0
     num_network_updates = 0
     start_time = time.time()
-    pbar = tqdm.tqdm(total=cfg.collector.total_frames)
+    pbar = tqdm.tqdm(total=cfg.collector.total_frames // cfg.collector.frame_skip)
 
     sampling_start = time.time()
 
