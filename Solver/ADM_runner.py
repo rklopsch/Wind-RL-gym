@@ -28,8 +28,7 @@ class ADM:
         # Run xCompact3d for initialisation
         print('\nINITIALISING XCOMPACT3D CASE')
         # currently don't need to run as copying pre run case
-        subprocess.run(os.path.join(self.run_dir, 'run.sh'))
-
+        # subprocess.run(os.path.join(self.run_dir, 'run.sh'))
 
     def advance(self, yaws, iterations=50):
 
@@ -67,15 +66,19 @@ class ADM:
         subprocess.run(os.path.join(path, 'run.sh'))
 
         # Retrieve Power
+        turbine_obs = np.empty((nturbs, 2))
         farm_power = 0
-        for i in range(3):
+
+        for i in range(nturbs):
             fname = os.path.join(path, f'disc{i + 1}.adm')
-            turbine_data = np.loadtxt(fname, usecols=(3, 6), skiprows=1)  # , unpack=True)
+            turbine_data = np.loadtxt(fname, usecols=(2, 3), skiprows=1)  # , unpack=True)
+            turbine_obs[i] = turbine_data[-1]
             farm_power += turbine_data[-1][0] / 1e06
-            # turbine_data[:][0] is instantaneous power
-            # turbine_data[:][1] is averaged power
+            # turbine_data[:][0] is instantaneous wind speed
+            # turbine_data[:][1] is instantaneous power
         print(f'Farm Power = {farm_power}')
-        return torch.tensor(farm_power)
+        print(f'Farm Observations = {turbine_obs}')
+        return torch.tensor(farm_power), torch.tensor(turbine_obs).flatten()
 
 
 if __name__ == '__main__':
@@ -84,6 +87,6 @@ if __name__ == '__main__':
     farm1.grid(staggered=False)
     case = ADM(farm1)
 
-    for i in range(80):
+    for i in range(20):
         print(f'iteration {i}')
-        case.advance(torch.ones(farm1.n_turbines-1) * i - 40)
+        case.advance(torch.ones(farm1.n_turbines-1) * 2*i)
