@@ -7,10 +7,12 @@
 This script reproduces the Proximal Policy Optimization (PPO) Algorithm
 results from Schulman et al. 2017 for the on MuJoCo Environments.
 """
+import os
+
 import hydra
 
 
-@hydra.main(config_path="./", config_name="config_ppo", version_base="1.1")
+@hydra.main(config_path="./", config_name="config_ppo", version_base="1.2")
 def main(cfg: "DictConfig"):
 
     import time

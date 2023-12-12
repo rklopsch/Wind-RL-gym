@@ -5,7 +5,7 @@ import subprocess
 import shutil
 import numpy as np
 import f90nml
-from farm import Turbine, Farm
+from Solver.farm import Turbine, Farm
 
 
 class ADM:
@@ -22,8 +22,8 @@ class ADM:
         # TODO: setup and run initialisation case (currently just copying this)
 
         # setup running directory
-        base_dir = './ADM/initialise'
-        self.run_dir = './ADM/running'
+        base_dir = './Solver/ADM/initialise'
+        self.run_dir = './Solver/ADM/running'
         shutil.copytree(base_dir, self.run_dir, dirs_exist_ok=True)
         # Run xCompact3d for initialisation
         print('\nINITIALISING XCOMPACT3D CASE')
@@ -39,7 +39,7 @@ class ADM:
         print(yaw)
         # set up case for ADM
         self.farm.set_yaw(yaw)
-        path = f'./ADM/running/'
+        path = f'./Solver/ADM/running/'
 
         # Update *.ad file
         self.farm.write_adm(os.path.join(path, 'adm'))
