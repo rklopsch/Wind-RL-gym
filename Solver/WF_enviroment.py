@@ -35,21 +35,20 @@ class TurbEnv(EnvBase):
             params = self.gen_params()
 
         super().__init__(device=device, batch_size=[])
+        self.n_obs = 2
+        self.n_turbs = 2
+        self.total_obs = 6
         self._make_spec(params)
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
 
-        self.device = device
+        # self.device = device
 
         # set up a farm environment (probably better to pass this???)
         self.farm1 = Farm(126 * 14, 126 * 4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2 * 126])
         self.farm1.grid(staggered=False)
         self.adm = ADM(self.farm1)
-
-        self.n_obs = 2
-
-
 
     def _step(self, tensordict):
         alpha = tensordict["alpha"]
@@ -59,6 +58,7 @@ class TurbEnv(EnvBase):
         
         new_alpha = alpha + u * dt
         new_alpha = u.clamp(-tensordict["params", "max_angle"], tensordict["params", "max_angle"])
+        print(new_alpha)
 
         # update by running ADM
         power, observation = self.adm.advance(new_alpha)
@@ -92,11 +92,11 @@ class TurbEnv(EnvBase):
         # of simulators run simultaneously. In other contexts, the initial
         # random state's shape will depend upon the environment batch-size instead.
         alpha = (
-            torch.rand(tensordict.shape, generator=self.rng, device=self.device)
+            torch.rand((*tensordict.shape, self.n_turbs), generator=self.rng, device=self.device)
             * (high_alpha - low_alpha)
             + low_alpha
         )
-        observation = torch.zeros([tensordict.shape, self.n_obs], device=self.device)  # TODO: check this
+        observation = torch.zeros((*tensordict.shape, self.total_obs), device=self.device)
 
         out = TensorDict(
             {
@@ -114,11 +114,11 @@ class TurbEnv(EnvBase):
                 alpha=BoundedTensorSpec(
                     low=-td_params["params", "max_angle"],
                     high=td_params["params", "max_angle"],
-                      shape=(),
-                      dtype=torch.float32,
+                    shape=(*self.batch_size, self.n_turbs),
+                    dtype=torch.float32,
                       ),
                 observation=UnboundedContinuousTensorSpec(
-                    shape=(*self.batch_size, self.n_obs),
+                    shape=(*self.batch_size, self.total_obs),
                     dtype=torch.float32,
                     device=self.device
                 ),
@@ -135,8 +135,8 @@ class TurbEnv(EnvBase):
         self.action_spec = BoundedTensorSpec(
                 low=-td_params["params", "max_speed"],
                 high=td_params["params", "max_speed"],
-                shape=(1,),
-                dtype=torch.float32,
+            shape=(*self.batch_size, self.n_turbs),
+            dtype=torch.float32,
                 )
         self.reward_spec = UnboundedContinuousTensorSpec(shape=(*td_params.shape, 1))
 
@@ -186,7 +186,7 @@ class TurbEnv(EnvBase):
 if __name__ == '__main__':
 
     test_env = TurbEnv()
-    rollout = test_env.rollout(max_steps=10)
+    rollout = test_env.rollout(max_steps=3)
     print("Testing environment rollout...")
     print(rollout)
 

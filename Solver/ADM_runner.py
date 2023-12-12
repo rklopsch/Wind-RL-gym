@@ -28,7 +28,7 @@ class ADM:
         # Run xCompact3d for initialisation
         print('\nINITIALISING XCOMPACT3D CASE')
         # currently don't need to run as copying pre run case
-        subprocess.run(os.path.join(self.run_dir, 'run.sh'))
+        # subprocess.run(os.path.join(self.run_dir, 'run.sh'))
 
     def advance(self, yaws, iterations=50):
 
@@ -78,7 +78,7 @@ class ADM:
             # turbine_data[:][1] is instantaneous power
         print(f'Farm Power = {farm_power}')
         print(f'Farm Observations = {turbine_obs}')
-        return torch.tensor(farm_power), torch.tensor(turbine_obs)
+        return torch.tensor(farm_power), torch.tensor(turbine_obs).flatten()
 
 
 if __name__ == '__main__':
