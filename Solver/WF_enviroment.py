@@ -32,7 +32,7 @@ class TurbEnv(EnvBase):
                  seed=None,
                  device="cpu"):
         if params is None:
-            params = self.gen_params()
+            params = self.gen_params().to(device)
 
         super().__init__(device=device, batch_size=[])
         self.n_obs = 2
@@ -59,7 +59,7 @@ class TurbEnv(EnvBase):
         dt = tensordict["params", "dt"]
         
         new_alpha = alpha + u * dt
-        new_alpha = u.clamp(-tensordict["params", "max_angle"], tensordict["params", "max_angle"])
+        new_alpha = new_alpha.clamp(-tensordict["params", "max_angle"], tensordict["params", "max_angle"])
 
         # update by running ADM
         if self.dummy_update:
@@ -88,7 +88,7 @@ class TurbEnv(EnvBase):
             # if no tensordict is passed, we generate a single set of hyperparameters
             # Otherwise, we assume that the input tensordict contains all the relevant
             # parameters to get started.
-            tensordict = self.gen_params(batch_size=self.batch_size)
+            tensordict = self.gen_params(batch_size=self.batch_size).to(self.device)
 
         high_alpha = torch.tensor(np.pi, device=self.device)
         low_alpha = -high_alpha
@@ -121,7 +121,8 @@ class TurbEnv(EnvBase):
                     high=td_params["params", "max_angle"],
                     shape=(*self.batch_size, self.n_turbs),
                     dtype=torch.float32,
-                      ),
+                    device=self.device
+                ),
                 observation=UnboundedContinuousTensorSpec(
                     shape=(*self.batch_size, self.total_obs),
                     dtype=torch.float32,
@@ -131,6 +132,7 @@ class TurbEnv(EnvBase):
                 # to pass it at each step during a rollout
                 params=self.make_composite_from_td(td_params["params"]),
                 shape=(),
+                device=self.device
                 )
         # since the environment is stateless, we expect the previous output as input.
         # For this, EnvBase expects some state_spec to be available
@@ -142,8 +144,15 @@ class TurbEnv(EnvBase):
                 high=td_params["params", "max_speed"],
             shape=(*self.batch_size, self.n_turbs),
             dtype=torch.float32,
-                )
-        self.reward_spec = UnboundedContinuousTensorSpec(shape=(*td_params.shape, 1))
+            device=self.device
+        )
+        self.reward_spec = UnboundedContinuousTensorSpec(
+            shape=(*td_params.shape, 1),
+            dtype=torch.float32,
+            device=self.device
+        )
+        print('\n\nself.observation_spec.device')
+        print(self.observation_spec.device)
 
     def make_composite_from_td(self, td):
         # custom funtion to convert a tensordict in a similar spec structure
@@ -153,16 +162,18 @@ class TurbEnv(EnvBase):
                 key: self.make_composite_from_td(tensor)
                 if isinstance(tensor, TensorDictBase)
                 else UnboundedContinuousTensorSpec(
-                    dtype=tensor.dtype, device=tensor.device, shape=tensor.shape
+                    dtype=tensor.dtype, device=self.device, shape=tensor.shape
                 )
                 for key, tensor in td.items()
             },
             shape=td.shape,
+            device=self.device
         )
         return composite
 
     def _set_seed(self, seed: Optional[int]):
-        rng = torch.manual_seed(seed)
+        rng = torch.Generator(device=self.device)
+        rng.manual_seed(seed)
         self.rng = rng
 
     @staticmethod
