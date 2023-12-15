@@ -40,6 +40,7 @@ def main(cfg: "DictConfig"):
     frame_skip = cfg.collector.frame_skip
     total_frames = cfg.collector.total_frames // frame_skip
     frames_per_batch = cfg.collector.frames_per_batch // frame_skip
+    max_episode_length = cfg.collector.max_episode_length // frame_skip
     mini_batch_size = cfg.loss.mini_batch_size // frame_skip
     test_interval = cfg.logger.test_interval // frame_skip
 
@@ -55,7 +56,7 @@ def main(cfg: "DictConfig"):
         total_frames=total_frames,
         device=device,
         storing_device=device,
-        max_frames_per_traj=-1
+        max_frames_per_traj=max_episode_length
     )
 
     # Create data buffer
@@ -123,6 +124,7 @@ def main(cfg: "DictConfig"):
     cfg_loss_anneal_clip_eps = cfg.loss.anneal_clip_epsilon
     cfg_loss_clip_epsilon = cfg.loss.clip_epsilon
     cfg_logger_num_test_episodes = cfg.logger.num_test_episodes
+    cfg_logger_test_episode_length = cfg.logger.test_episode_length
     losses = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
 
     for i, data in enumerate(collector):
