@@ -226,13 +226,11 @@ def main(cfg: "DictConfig"):
                 )
                 actor.train()
 
-        if logger:
-            for key, value in log_info.items():
-                logger.log_scalar(key, value, collected_frames)
-
+        wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()
         sampling_start = time.time()
 
+    wandb.finish()
     end_time = time.time()
     execution_time = end_time - start_time
     print(f"Training took {execution_time:.2f} seconds to finish")
