@@ -4,18 +4,18 @@ env:
 
 # collector
 collector:
-  frame_skip: 50  # Env takes 50 time steps per update
-  frames_per_batch: 2_000  # this is the actual number of frames we see in a batch
-  max_episode_length: 10_000  # Timesteps (disregarding frame skip)
-  total_frames: 1_000_000  # Timesteps (disregarding frame skip)
+  frame_skip: 1  # Env takes 50 time steps per update
+  frames_per_batch: 128 # this is the actual number of frames we see in a batch
+  # max_episode_length: 10_000  # Timesteps (disregarding frame skip)
+  total_frames: 1_000  # Timesteps (disregarding frame skip)
 
 # logger
 logger:
   backend: wandb
   mode: offline
-  test_interval: 1_000_000
+  test_interval: 1_000
   num_test_episodes: 5
-  project_name: insert_WandB_project_name_here
+  project_name: Wind-PPO
 
 # Optim
 optim:

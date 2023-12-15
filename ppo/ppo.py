@@ -33,14 +33,17 @@ def main(cfg: "DictConfig"):
     from utils import eval_model, make_env, make_ppo_models
 
     device = "cpu" if not torch.cuda.device_count() else "cuda"
-    num_mini_batches = cfg.collector.frames_per_batch // cfg.loss.mini_batch_size
-    total_network_updates = (
-        (cfg.collector.total_frames // cfg.collector.frames_per_batch)
-        * cfg.loss.ppo_epochs
-        * num_mini_batches
-    )
+    print(f'Running on {device}')
+    print(f'cuda version:{torch.version.cuda}')
 
-    # Create models (check utils_mujoco.py)
+    # Correct for frame_skip
+    frame_skip = cfg.collector.frame_skip
+    total_frames = cfg.collector.total_frames // frame_skip
+    frames_per_batch = cfg.collector.frames_per_batch // frame_skip
+    mini_batch_size = cfg.loss.mini_batch_size // frame_skip
+    test_interval = cfg.logger.test_interval // frame_skip
+
+    # Create models (check utils.py)
     actor, critic = make_ppo_models(cfg.env.env_name)
     actor, critic = actor.to(device), critic.to(device)
 
@@ -48,19 +51,19 @@ def main(cfg: "DictConfig"):
     collector = SyncDataCollector(
         create_env_fn=make_env(device),
         policy=actor,
-        frames_per_batch=cfg.collector.frames_per_batch,
-        total_frames=cfg.collector.total_frames // cfg.collector.frame_skip,
+        frames_per_batch=frames_per_batch,
+        total_frames=total_frames,
         device=device,
         storing_device=device,
-        max_frames_per_traj=cfg.collector.max_episode_length // cfg.collector.frame_skip,
+        max_frames_per_traj=-1
     )
 
     # Create data buffer
     sampler = SamplerWithoutReplacement()
     data_buffer = TensorDictReplayBuffer(
-        storage=LazyMemmapStorage(cfg.collector.frames_per_batch),
+        storage=LazyMemmapStorage(frames_per_batch),
         sampler=sampler,
-        batch_size=cfg.loss.mini_batch_size,
+        batch_size=mini_batch_size,
     )
 
     # Create loss and adv modules
@@ -103,7 +106,13 @@ def main(cfg: "DictConfig"):
     collected_frames = 0
     num_network_updates = 0
     start_time = time.time()
-    pbar = tqdm.tqdm(total=cfg.collector.total_frames // cfg.collector.frame_skip)
+    pbar = tqdm.tqdm(total=total_frames)
+    num_mini_batches = frames_per_batch // mini_batch_size
+    total_network_updates = (
+        (total_frames // frames_per_batch)
+        * cfg.loss.ppo_epochs
+        * num_mini_batches
+        )
 
     sampling_start = time.time()
 
@@ -113,7 +122,6 @@ def main(cfg: "DictConfig"):
     cfg_optim_lr = cfg.optim.lr
     cfg_loss_anneal_clip_eps = cfg.loss.anneal_clip_epsilon
     cfg_loss_clip_epsilon = cfg.loss.clip_epsilon
-    cfg_logger_test_interval = cfg.logger.test_interval
     cfg_logger_num_test_episodes = cfg.logger.num_test_episodes
     losses = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
 
@@ -122,7 +130,7 @@ def main(cfg: "DictConfig"):
         log_info = {}
         sampling_time = time.time() - sampling_start
         frames_in_batch = data.numel()
-        collected_frames += frames_in_batch
+        collected_frames += frames_in_batch * frame_skip
         pbar.update(data.numel())
 
         # Get training rewards and episode lengths
@@ -201,9 +209,9 @@ def main(cfg: "DictConfig"):
 
         # Get test rewards
         with torch.no_grad(), set_exploration_type(ExplorationType.MODE):
-            if ((i - 1) * frames_in_batch) // cfg_logger_test_interval < (
-                i * frames_in_batch
-            ) // cfg_logger_test_interval:
+            if ((i - 1) * frames_in_batch * frame_skip) // test_interval < (
+                i * frames_in_batch * frame_skip
+            ) // test_interval:
                 actor.eval()
                 eval_start = time.time()
                 test_rewards = eval_model(
