@@ -43,14 +43,12 @@ class TurbEnv(EnvBase):
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
 
-        # self.device = device
-
         # set up a farm environment (probably better to pass this???)
         self.farm1 = Farm(126 * 14, 126 * 4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2 * 126])
         self.farm1.grid(staggered=False)
         self.adm = ADM(self.farm1)
 
-        self.dummy_update = True  # If True, perform a dummy update for testing
+        self.dummy_update = False  # If True, perform a dummy update for testing
 
     def _step(self, tensordict):
         alpha = tensordict["alpha"]
@@ -66,7 +64,9 @@ class TurbEnv(EnvBase):
             power = torch.ones((*tensordict.shape, 1), device=self.device)
             observation = torch.zeros((*tensordict.shape, self.total_obs), device=self.device)
         else:
-            power, observation = self.adm.advance(new_alpha)
+            power, observation = (self.adm.advance(new_alpha.cpu()))
+            power = power.to(self.device)
+            observation = observation.to(self.device)
 
         reward = power.view(*tensordict.shape, 1)  # normalise?
         done = torch.zeros_like(reward, dtype=torch.bool)
@@ -84,6 +84,7 @@ class TurbEnv(EnvBase):
         return out
 
     def _reset(self, tensordict):
+        print('\n\nRESETTING ENVIROMENT\n')
         if tensordict is None or tensordict.is_empty():
             # if no tensordict is passed, we generate a single set of hyperparameters
             # Otherwise, we assume that the input tensordict contains all the relevant
@@ -185,9 +186,9 @@ class TurbEnv(EnvBase):
             {
                 "params": TensorDict(
                     {
-                        "max_speed": 2,
+                        "max_speed": 0.5,
                         "max_angle": 60,
-                        "dt": 0.05,
+                        "dt": 10,
                     },
                     [],
                 )

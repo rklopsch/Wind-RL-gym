@@ -36,7 +36,7 @@ class ADM:
         yaw = np.zeros(nturbs)
         yaw[:nturbs-1] = yaws.numpy()
         yaw[-1] = 0
-        print(yaw)
+        print(f'Turbine yaw angles = {yaw}')
         # set up case for ADM
         self.farm.set_yaw(yaw)
         path = f'./Solver/ADM/running/'
@@ -78,7 +78,7 @@ class ADM:
             # turbine_data[:][1] is instantaneous power
         print(f'Farm Power = {farm_power}')
         print(f'Farm Observations = {turbine_obs}')
-        return torch.tensor(farm_power), torch.tensor(turbine_obs).flatten()
+        return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32).flatten()
 
 
 if __name__ == '__main__':
