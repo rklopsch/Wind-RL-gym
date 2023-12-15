@@ -5,7 +5,7 @@ import subprocess
 import shutil
 import numpy as np
 import f90nml
-from farm import Turbine, Farm
+from Solver.farm import Turbine, Farm
 
 
 class ADM:
@@ -22,8 +22,8 @@ class ADM:
         # TODO: setup and run initialisation case (currently just copying this)
 
         # setup running directory
-        base_dir = './ADM/initialise'
-        self.run_dir = './ADM/running'
+        base_dir = './Solver/ADM/initialise'
+        self.run_dir = './Solver/ADM/running'
         shutil.copytree(base_dir, self.run_dir, dirs_exist_ok=True)
         # Run xCompact3d for initialisation
         print('\nINITIALISING XCOMPACT3D CASE')
@@ -36,10 +36,10 @@ class ADM:
         yaw = np.zeros(nturbs)
         yaw[:nturbs-1] = yaws.numpy()
         yaw[-1] = 0
-        print(yaw)
+        print(f'Turbine yaw angles = {yaw}')
         # set up case for ADM
         self.farm.set_yaw(yaw)
-        path = f'./ADM/running/'
+        path = f'./Solver/ADM/running/'
 
         # Update *.ad file
         self.farm.write_adm(os.path.join(path, 'adm'))
@@ -78,7 +78,7 @@ class ADM:
             # turbine_data[:][1] is instantaneous power
         print(f'Farm Power = {farm_power}')
         print(f'Farm Observations = {turbine_obs}')
-        return torch.tensor(farm_power), torch.tensor(turbine_obs).flatten()
+        return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32).flatten()
 
 
 if __name__ == '__main__':
