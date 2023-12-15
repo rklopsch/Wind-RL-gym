@@ -123,14 +123,15 @@ def make_ppo_models(env_name):
 
 
 def eval_model(actor, test_env, num_episodes=3):
+    print('\n\nMODEL EVALUATION\n')
     test_rewards = []
     for _ in range(num_episodes):
         td_test = test_env.rollout(
             policy=actor,
             auto_reset=True,
             auto_cast_to_device=True,
-            break_when_any_done=True,
-            max_steps=10_000_000,
+            break_when_any_done=False,
+            max_steps=200,
         )
         reward = td_test["next", "episode_reward"][td_test["next", "done"]]
         test_rewards.append(reward.cpu())
