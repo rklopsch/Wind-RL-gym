@@ -122,18 +122,36 @@ def make_ppo_models(env_name):
 # --------------------------------------------------------------------
 
 
-def eval_model(actor, test_env, num_episodes=3):
+def eval_model(actor, test_env, num_episodes=3, episode_length=1000):
     print('\n\nMODEL EVALUATION\n')
     test_rewards = []
+    test_alpha_1_mean = []
+    test_alpha_2_mean = []
+    test_alpha_1_stdv = []
+    test_alpha_2_stdv = []
     for _ in range(num_episodes):
         td_test = test_env.rollout(
             policy=actor,
             auto_reset=True,
             auto_cast_to_device=True,
             break_when_any_done=False,
-            max_steps=200,
+            max_steps=episode_length,
         )
         reward = td_test["next", "episode_reward"][td_test["next", "done"]]
+        alpha_1_mean = td_test['alpha'][:, 0].mean()
+        alpha_2_mean = td_test['alpha'][:, 1].mean()
+        alpha_1_stdv = td_test['alpha'][:, 0].std()
+        alpha_2_stdv = td_test['alpha'][:, 1].std()
+
         test_rewards.append(reward.cpu())
+        test_alpha_1_mean.append(alpha_1_mean.cpu())
+        test_alpha_2_mean.append(alpha_2_mean.cpu())
+        test_alpha_1_stdv.append(alpha_1_stdv.cpu())
+        test_alpha_2_stdv.append(alpha_2_stdv.cpu())
+
     del td_test
-    return torch.cat(test_rewards, 0).mean()
+    return (torch.cat(test_rewards, 0).mean(),
+            torch.cat(test_alpha_1_mean, 0).mean(),
+            torch.cat(test_alpha_2_mean, 0).mean(),
+            torch.cat(test_alpha_1_stdv, 0).mean(),
+            torch.cat(test_alpha_2_stdv, 0).mean())

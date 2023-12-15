@@ -208,19 +208,29 @@ def main(cfg: "DictConfig"):
         )
 
         # Get test rewards
-        with torch.no_grad(), set_exploration_type(ExplorationType.MODE):
+        with ((torch.no_grad(), set_exploration_type(ExplorationType.MODE))):
             if ((i - 1) * frames_in_batch * frame_skip) // test_interval < (
                 i * frames_in_batch * frame_skip
             ) // test_interval:
                 actor.eval()
                 eval_start = time.time()
-                test_rewards = eval_model(
-                    actor, test_env, num_episodes=cfg_logger_num_test_episodes
+                (test_rewards,
+                 test_alpha_1_mean,
+                 test_alpha_2_mean,
+                 test_alpha_1_stdv,
+                 test_alpha_2_stdv) = eval_model(
+                    actor, test_env,
+                    num_episodes=cfg_logger_num_test_episodes,
+                    episode_length=cfg_logger_test_episode_length
                 )
                 eval_time = time.time() - eval_start
                 log_info.update(
                     {
                         "eval/reward": test_rewards.mean(),
+                        "eval/alpha_1_mean": test_alpha_1_mean.mean(),
+                        "eval/alpha_2_mean": test_alpha_2_mean.mean(),
+                        "eval/alpha_1_stdv": test_alpha_1_stdv.mean(),
+                        "eval/alpha_2_stdv": test_alpha_2_stdv.mean(),
                         "eval/time": eval_time,
                     }
                 )
