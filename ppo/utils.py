@@ -138,13 +138,17 @@ def eval_model(actor, test_env, num_episodes=3, episode_length=1000):
             max_steps=episode_length,
         )
         reward = td_test["next", "episode_reward"][td_test["next", "done"]]
-        alpha_1_mean = td_test['alpha'][:, 0].mean()
-        alpha_2_mean = td_test['alpha'][:, 1].mean()
-        alpha_1_stdv = td_test['alpha'][:, 0].std()
-        alpha_2_stdv = td_test['alpha'][:, 1].std()
+        print(f"Reward = {reward}")
+        alpha_1_mean = td_test['alpha'][:, 0].mean().reshape(1)
+        print(f"alpha = {alpha_1_mean}")
+        alpha_2_mean = td_test['alpha'][:, 1].mean().reshape(1)
+        alpha_1_stdv = td_test['alpha'][:, 0].std().reshape(1)
+        alpha_2_stdv = td_test['alpha'][:, 1].std().reshape(1)
 
         test_rewards.append(reward.cpu())
+        print(f"Rewards = {test_rewards}")
         test_alpha_1_mean.append(alpha_1_mean.cpu())
+        print(f"alphas = {test_alpha_1_mean}")
         test_alpha_2_mean.append(alpha_2_mean.cpu())
         test_alpha_1_stdv.append(alpha_1_stdv.cpu())
         test_alpha_2_stdv.append(alpha_2_stdv.cpu())
@@ -155,3 +159,4 @@ def eval_model(actor, test_env, num_episodes=3, episode_length=1000):
             torch.cat(test_alpha_2_mean, 0).mean(),
             torch.cat(test_alpha_1_stdv, 0).mean(),
             torch.cat(test_alpha_2_stdv, 0).mean())
+
