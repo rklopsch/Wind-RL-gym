@@ -217,7 +217,8 @@ def main(cfg: "DictConfig"):
             ) // test_interval:
                 actor.eval()
                 eval_start = time.time()
-                (test_rewards,
+                (test_rewards_mean,
+                 test_rewards_stdv,
                  test_alpha_1_mean,
                  test_alpha_2_mean,
                  test_alpha_1_stdv,
@@ -229,7 +230,8 @@ def main(cfg: "DictConfig"):
                 eval_time = time.time() - eval_start
                 log_info.update(
                     {
-                        "eval/reward": test_rewards.mean(),
+                        "eval/reward_mean": test_rewards_mean.mean(),
+                        "eval/reward_stdv": test_rewards_stdv.mean(),
                         "eval/alpha_1_mean": test_alpha_1_mean.mean(),
                         "eval/alpha_2_mean": test_alpha_2_mean.mean(),
                         "eval/alpha_1_stdv": test_alpha_1_stdv.mean(),
