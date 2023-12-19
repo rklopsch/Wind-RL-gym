@@ -16,6 +16,7 @@ logger:
   test_interval: 1_000
   num_test_episodes: 5
   project_name: Wind-PPO
+  team_name: windrl
 
 # Optim
 optim:

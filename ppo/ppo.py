@@ -96,6 +96,7 @@ def main(cfg: "DictConfig"):
     wandb.init(
         mode=str(cfg.logger.mode),
         project=str(cfg.logger.project_name),
+        entity=str(cfg.logger.team_name),
         name=exp_name,
     )
 
