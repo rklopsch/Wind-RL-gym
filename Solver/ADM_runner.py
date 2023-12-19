@@ -73,7 +73,7 @@ class ADM:
             fname = os.path.join(path, f'disc{i + 1}.adm')
             turbine_data = np.loadtxt(fname, usecols=(2, 3), skiprows=1)  # , unpack=True)
             turbine_obs[i] = turbine_data[-1]
-            farm_power += turbine_data[-1][0] / 1e06
+            farm_power += turbine_data[-1][1] / 1e06
             # turbine_data[:][0] is instantaneous wind speed
             # turbine_data[:][1] is instantaneous power
         print(f'Farm Power = {farm_power}')
