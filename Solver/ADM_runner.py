@@ -85,7 +85,7 @@ class ADM:
         print(f'Initialisation Xcompact3D case from {1} to {iterations}')
         subprocess.run(os.path.join(self.run_dir, 'run.sh'))
 
-    def advance(self, yaws, iterations=50):
+    def advance(self, yaws, iterations=50, save=False):
         nturbs = np.shape(yaws.numpy())[0]+1
         yaw = np.zeros(nturbs)
         yaw[:nturbs-1] = yaws.numpy()
@@ -97,7 +97,8 @@ class ADM:
         # Update *.ad file
         self.farm.write_adm(os.path.join(self.run_dir, 'adm'))
 
-        # Update start and end time
+        # Update case parameters input.i3d file
+        ioutput = iterations if save else iterations*1000
         shutil.move(os.path.join(self.run_dir, 'input.i3d'), os.path.join(self.run_dir, 'old_input.i3d'))
         old_input = f90nml.read(os.path.join(self.run_dir, 'old_input.i3d'))
         old_ilast = old_input['BasicParam']['ilast']
@@ -108,7 +109,7 @@ class ADM:
                      'InOutParam': {
                         'irestart': 1,
                         'icheckpoint': iterations,
-                        'ioutput': iterations,
+                        'ioutput': ioutput,
                         'ilist': iterations
                         }
                      }
