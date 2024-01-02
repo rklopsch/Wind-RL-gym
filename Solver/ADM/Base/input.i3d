@@ -151,7 +151,7 @@ T_top=310.814        ! Temperature at domain top
 
 Ndiscs=3
 ADMcoords='adm.ad'
-iturboutput=10
+iturboutput=1
 rho_air=1.2
 T_relax = 1.1291
 
