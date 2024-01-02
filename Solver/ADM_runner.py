@@ -22,7 +22,7 @@ class ADM:
         # TODO: setup and run initialisation case (currently just copying this)
 
         # setup running directory
-        base_dir = './Solver/ADM/Base'  # TODO: change to basedir
+        base_dir = './Solver/ADM/Base'
         self.run_dir = './Solver/ADM/TESTING'
         self.precursor_dir = './Solver/ADM/TESTINGprecursor'
         shutil.copytree(base_dir, self.run_dir, dirs_exist_ok=True)
@@ -43,21 +43,22 @@ class ADM:
                         'ilast': self.total_timesteps
                         },
                      'InOutParam': {
-                        'ntimesteps': self.total_timesteps//10
+                        'ntimesteps': self.total_timesteps//10,
+                        'ioutput': self.total_timesteps//10
                         }
-                    }
+                     }
         f90nml.patch(os.path.join(self.precursor_dir, 'old_input.i3d'),
                      patch_nml, os.path.join(self.precursor_dir, 'input.i3d'))
 
         # Run for iterations
-        print(f'Running XCompact3D precursor simulation for ABL')
+        print(f'Running XCompact3D precursor simulation for ABL from 0 to {self.total_timesteps}')
         subprocess.run(os.path.join(self.precursor_dir, 'run.sh'))
 
     def initialise_flow(self, iterations=100):
         # set up case for ADM with
         yaw = np.zeros(self.farm.n_turbines)
         self.farm.set_yaw(yaw)
-        relative_precursor = os.path.join('../', os.path.basename(self.precursor_dir), 'out')
+        relative_precursor = os.path.join('../', os.path.basename(self.precursor_dir), 'out/')
         # Update *.ad file
         self.farm.write_adm(os.path.join(self.run_dir, 'adm'))
 
@@ -73,7 +74,7 @@ class ADM:
                         'irestart': 0,
                         'icheckpoint': iterations,
                         'ioutput': iterations,
-                        'ilist': iterations,
+                        'ilist': iterations//10,
                         'inflowpath': relative_precursor,
                         'ntimesteps': self.total_timesteps//10
                         }
