@@ -18,18 +18,10 @@ class ADM:
         self.dx = farm.turbines[0].diam/10.
         # ect...
         # TODO: setup case parameters (from farm)
-        # TODO: setup and run precursor simulation
-        # TODO: setup and run initialisation case (currently just copying this)
 
-        # setup running directory
-        base_dir = './Solver/ADM/Base'
         self.run_dir = './Solver/ADM/TESTING'
         self.precursor_dir = './Solver/ADM/TESTINGprecursor'
-        shutil.copytree(base_dir, self.run_dir, dirs_exist_ok=True)
-        # Run xCompact3d for initialisation
-        # print('\nINITIALISING XCOMPACT3D CASE')
-        # currently don't need to run as copying pre run case
-        # self.initialise_flow(5000)
+        self.initialise_dir = './Solver/ADM/TESTINGinitialisation'
 
     def run_precursor(self):
         base_dir = './Solver/ADM/precursor_Base'
@@ -55,16 +47,18 @@ class ADM:
         subprocess.run(os.path.join(self.precursor_dir, 'run.sh'))
 
     def initialise_flow(self, iterations=100):
+        base_dir = './Solver/ADM/Base'
+        shutil.copytree(base_dir, self.initialise_dir, dirs_exist_ok=True)
         # set up case for ADM with
         yaw = np.zeros(self.farm.n_turbines)
         self.farm.set_yaw(yaw)
         relative_precursor = os.path.join('../', os.path.basename(self.precursor_dir), 'out/')
         # Update *.ad file
-        self.farm.write_adm(os.path.join(self.run_dir, 'adm'))
+        self.farm.write_adm(os.path.join(self.initialise_dir, 'adm'))
 
         # Update start and end time
-        shutil.move(os.path.join(self.run_dir, 'input.i3d'),
-                    os.path.join(self.run_dir, 'old_input.i3d'))
+        shutil.move(os.path.join(self.initialise_dir, 'input.i3d'),
+                    os.path.join(self.initialise_dir, 'old_input.i3d'))
 
         patch_nml = {'BasicParam': {
                         'ifirst': 1,
@@ -79,12 +73,12 @@ class ADM:
                         'ntimesteps': self.total_timesteps//10
                         }
                      }
-        f90nml.patch(os.path.join(self.run_dir, 'old_input.i3d'),
-                     patch_nml, os.path.join(self.run_dir, 'input.i3d'))
+        f90nml.patch(os.path.join(self.initialise_dir, 'old_input.i3d'),
+                     patch_nml, os.path.join(self.initialise_dir, 'input.i3d'))
 
         # Run for iterations
         print(f'Initialisation Xcompact3D case from {1} to {iterations}')
-        subprocess.run(os.path.join(self.run_dir, 'run.sh'))
+        subprocess.run(os.path.join(self.initialise_dir, 'run.sh'))
 
     def advance(self, yaws, iterations=50, save=False):
         nturbs = np.shape(yaws.numpy())[0]+1
@@ -136,15 +130,22 @@ class ADM:
         print(f'Farm Observations = {turbine_obs}')
         return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32).flatten()
 
+    def restart(self, case_name=None):
+        if case_name==None:
+            case_name = self.run_dir
+        shutil.copytree(self.initialise_dir, case_name, dirs_exist_ok=True)
+
 
 if __name__ == '__main__':
 
     farm1 = Farm(126*14, 126*4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2*126])
     farm1.grid()
     case = ADM(farm1)
+    case.total_timesteps = 3000
     case.run_precursor()
-    case.initialise_flow(1000)
+    case.initialise_flow(2000)
+    case.restart()
 
     for i in range(20):
         print(f'iteration {i}')
-        case.advance(torch.ones(farm1.n_turbines-1) * 2*i)
+        case.advance(torch.ones(farm1.n_turbines-1) * 2*i, save=True)
