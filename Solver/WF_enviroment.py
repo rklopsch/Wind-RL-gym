@@ -47,6 +47,10 @@ class TurbEnv(EnvBase):
         self.farm1 = Farm(126 * 14, 126 * 4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2 * 126])
         self.farm1.grid(staggered=False)
         self.adm = ADM(self.farm1)
+        self.adm.total_timesteps = 100000
+        self.adm.run_precursor()
+        self.adm.initialise_flow(5000)
+        self.adm.restart()
 
         self.dummy_update = False  # If True, perform a dummy update for testing
 
@@ -85,6 +89,9 @@ class TurbEnv(EnvBase):
 
     def _reset(self, tensordict):
         print('\n\nRESETTING ENVIROMENT\n')
+
+        self.adm.restart()
+
         if tensordict is None or tensordict.is_empty():
             # if no tensordict is passed, we generate a single set of hyperparameters
             # Otherwise, we assume that the input tensordict contains all the relevant
@@ -187,7 +194,7 @@ class TurbEnv(EnvBase):
                 "params": TensorDict(
                     {
                         "max_speed": 0.5,
-                        "max_angle": 60,
+                        "max_angle": 40,
                         "dt": 10,
                     },
                     [],
@@ -204,6 +211,9 @@ if __name__ == '__main__':
 
     test_env = TurbEnv()
     rollout = test_env.rollout(max_steps=3)
-    print("Testing environment rollout...")
+    print(f"alpha = {rollout['alpha'][:, 1].mean()}")
+    # print(f"Reward = {rollout['next', 'episode_reward'][rollout['next', 'done']][:, 1].mean()}")
+    
+    print("\nTesting environment rollout...")
     print(rollout)
 
