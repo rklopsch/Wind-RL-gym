@@ -62,11 +62,11 @@ class TurbEnv(EnvBase):
         
         new_alpha = alpha + u * dt
         new_alpha = new_alpha.clamp(-tensordict["params", "max_angle"], tensordict["params", "max_angle"])
-
-        if new_alpha == tensordict["params", "max_angle"]:
-            u = u.clamp(-tensordict["params", "max_speed"], 0)
-        elif new_alpha == -tensordict["params", "max_angle"]:
-            u = u.clamp(0, tensordict["params", "max_speed"])
+        for i in range(len(new_alpha)):
+            if new_alpha[i] == tensordict["params", "max_angle"]:
+                u[i] = u[i].clamp(-tensordict["params", "max_speed"], 0)
+            elif new_alpha[i] == -tensordict["params", "max_angle"]:
+                u[i] = u[i].clamp(0, tensordict["params", "max_speed"])
 
         # update by running ADM
         if self.dummy_update:
