@@ -115,7 +115,7 @@ class ADM:
         subprocess.run(os.path.join(self.run_dir, 'run.sh'))
 
         # Retrieve Power
-        turbine_obs = np.empty((nturbs, 2))
+        turbine_obs = np.empty((nturbs, 4))
         farm_power = 0
 
         for i in range(nturbs):
@@ -124,8 +124,14 @@ class ADM:
             turbine_power /= 1e06
             turbine_power = turbine_power[-iterations:-1].mean()
             turbine_velocity = turbine_velocity[-iterations:-1].mean()
-            turbine_obs[i] = [turbine_velocity, turbine_power]
             farm_power += turbine_power
+            # Read probes
+            fname = os.path.join(self.run_dir, f'probes/probe000{i+1}')
+            probe_u, probe_w = np.loadtxt(fname, usecols=(1, 3), unpack=True)
+            probe_u = probe_u[-iterations:-1].mean()
+            probe_w = probe_w[-iterations:-1].mean()
+            turbine_obs[i] = [turbine_velocity, turbine_power, probe_u, probe_w]
+
         print(f'Farm Power = {farm_power}')
         print(f'Farm Observations = {turbine_obs}')
         return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32).flatten()

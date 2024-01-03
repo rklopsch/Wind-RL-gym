@@ -35,9 +35,9 @@ class TurbEnv(EnvBase):
             params = self.gen_params().to(device)
 
         super().__init__(device=device, batch_size=[])
-        self.n_obs = 2
+        self.n_obs = 4
         self.n_turbs = 2
-        self.total_obs = 6
+        self.total_obs = 12
         self._make_spec(params)
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
