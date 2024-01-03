@@ -24,61 +24,67 @@ class ADM:
         self.initialise_dir = './Solver/ADM/TESTINGinitialisation'
 
     def run_precursor(self):
-        base_dir = './Solver/ADM/precursor_Base'
-        shutil.copytree(base_dir, self.precursor_dir, dirs_exist_ok=True)
+        if os.path.isdir(self.precursor_dir):
+            print(f'Using precursor simulation that already exists in {self.precursor_dir}')
+        else:
+            base_dir = './Solver/ADM/precursor_Base'
+            shutil.copytree(base_dir, self.precursor_dir, dirs_exist_ok=True)
 
-        # Update start and end time
-        shutil.move(os.path.join(self.precursor_dir, 'input.i3d'),
-                    os.path.join(self.precursor_dir, 'old_input.i3d'))
-        patch_nml = {'BasicParam': {
-                        'ifirst': 1,
-                        'ilast': self.total_timesteps
-                        },
-                     'InOutParam': {
-                        'ntimesteps': self.total_timesteps//10,
-                        'ioutput': self.total_timesteps//10
-                        }
-                     }
-        f90nml.patch(os.path.join(self.precursor_dir, 'old_input.i3d'),
-                     patch_nml, os.path.join(self.precursor_dir, 'input.i3d'))
+            # Update start and end time
+            shutil.move(os.path.join(self.precursor_dir, 'input.i3d'),
+                        os.path.join(self.precursor_dir, 'old_input.i3d'))
+            patch_nml = {'BasicParam': {
+                            'ifirst': 1,
+                            'ilast': self.total_timesteps
+                            },
+                         'InOutParam': {
+                            'ntimesteps': self.total_timesteps//10,
+                            'ioutput': self.total_timesteps//10
+                            }
+                         }
+            f90nml.patch(os.path.join(self.precursor_dir, 'old_input.i3d'),
+                         patch_nml, os.path.join(self.precursor_dir, 'input.i3d'))
 
-        # Run for iterations
-        print(f'Running XCompact3D precursor simulation for ABL from 0 to {self.total_timesteps}')
-        subprocess.run(os.path.join(self.precursor_dir, 'run.sh'))
+            # Run for iterations
+            print(f'Running XCompact3D precursor simulation for ABL from 0 to {self.total_timesteps}')
+            subprocess.run(os.path.join(self.precursor_dir, 'run.sh'))
 
     def initialise_flow(self, iterations=100):
-        base_dir = './Solver/ADM/Base'
-        shutil.copytree(base_dir, self.initialise_dir, dirs_exist_ok=True)
-        # set up case for ADM with
-        yaw = np.zeros(self.farm.n_turbines)
-        self.farm.set_yaw(yaw)
-        relative_precursor = os.path.join('../', os.path.basename(self.precursor_dir), 'out/')
-        # Update *.ad file
-        self.farm.write_adm(os.path.join(self.initialise_dir, 'adm'))
+        if os.path.isdir(self.initialise_dir):
+            print(f'Using initialisation simulation that already exists in {self.initialise_dir}')
+        else:
+            base_dir = './Solver/ADM/Base'
+            shutil.copytree(base_dir, self.initialise_dir, dirs_exist_ok=True)
+            # set up case for ADM with
+            yaw = np.zeros(self.farm.n_turbines)
+            self.farm.set_yaw(yaw)
+            relative_precursor = os.path.join('../', os.path.basename(self.precursor_dir), 'out/')
+            # Update *.ad file
+            self.farm.write_adm(os.path.join(self.initialise_dir, 'adm'))
 
-        # Update start and end time
-        shutil.move(os.path.join(self.initialise_dir, 'input.i3d'),
-                    os.path.join(self.initialise_dir, 'old_input.i3d'))
+            # Update start and end time
+            shutil.move(os.path.join(self.initialise_dir, 'input.i3d'),
+                        os.path.join(self.initialise_dir, 'old_input.i3d'))
 
-        patch_nml = {'BasicParam': {
-                        'ifirst': 1,
-                        'ilast': iterations
-                        },
-                     'InOutParam': {
-                        'irestart': 0,
-                        'icheckpoint': iterations,
-                        'ioutput': iterations,
-                        'ilist': iterations//10,
-                        'inflowpath': relative_precursor,
-                        'ntimesteps': self.total_timesteps//10
-                        }
-                     }
-        f90nml.patch(os.path.join(self.initialise_dir, 'old_input.i3d'),
-                     patch_nml, os.path.join(self.initialise_dir, 'input.i3d'))
+            patch_nml = {'BasicParam': {
+                            'ifirst': 1,
+                            'ilast': iterations
+                            },
+                         'InOutParam': {
+                            'irestart': 0,
+                            'icheckpoint': iterations,
+                            'ioutput': iterations,
+                            'ilist': iterations//10,
+                            'inflowpath': relative_precursor,
+                            'ntimesteps': self.total_timesteps//10
+                            }
+                         }
+            f90nml.patch(os.path.join(self.initialise_dir, 'old_input.i3d'),
+                         patch_nml, os.path.join(self.initialise_dir, 'input.i3d'))
 
-        # Run for iterations
-        print(f'Initialisation Xcompact3D case from {1} to {iterations}')
-        subprocess.run(os.path.join(self.initialise_dir, 'run.sh'))
+            # Run for iterations
+            print(f'Initialisation Xcompact3D case from {1} to {iterations}')
+            subprocess.run(os.path.join(self.initialise_dir, 'run.sh'))
 
     def advance(self, yaws, iterations=50, save=False):
         nturbs = np.shape(yaws.numpy())[0]+1
