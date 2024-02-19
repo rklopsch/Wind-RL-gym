@@ -61,9 +61,9 @@ class Farm:
             # Writing data to a file
             file.write("!CoR(x) CoR(y) CoR(z) YawAng[deg] TiltAng[deg] RotorDiam C_T[-] alpha[-] \n")
             for turbine in self.turbines:
-                file.write(f"{turbine.location[0]} "
+                file.write(f"{turbine.location[0]+self.offset[0]} "
                            f"{turbine.hub_height} "
-                           f"{turbine.location[1]} "
+                           f"{turbine.location[1]+self.offset[1]} "
                            f"{turbine.yaw} "
                            f"{turbine.tilt} "
                            f"{turbine.diam} "
