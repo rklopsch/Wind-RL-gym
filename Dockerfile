@@ -1,5 +1,6 @@
 # Use the official NVIDIA PyTorch image as the base image
-FROM nvcr.io/nvidia/pytorch:24.01-py3
+# FROM nvcr.io/nvidia/pytorch:24.01-py3
+FROM nvcr.io/nvidia/pytorch:23.10-py3
 # FROM pytorch/pytorch:latest
 
 # Install basic dependencies
