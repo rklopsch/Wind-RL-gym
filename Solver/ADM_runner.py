@@ -1,5 +1,6 @@
 import torch
 import os
+from datetime import datetime
 import sys
 import subprocess
 import shutil
@@ -8,16 +9,42 @@ import f90nml
 from Solver.farm import Turbine, Farm
 
 
+def make_even(i):
+    i += i % 2
+    return int(i)
+
+
+def make_odd(i):
+    i -= i % 2 - 1
+    return int(i)
+
+
 class ADM:
 
-    def __init__(self, farm, dt=0.2, device='cpu'):
+    def __init__(self, farm, windspeed=10, run_dir=None, device='cpu'):
         self.device = torch.device(device)
         self.farm = farm
-        self.dt = dt
-        self.total_timesteps = 2000
-        self.dx = farm.turbines[0].diam/10.
-        # ect...
-        # TODO: setup case parameters (from farm)
+        self.windspeed = windspeed
+        self.diameter = farm.turbines[0].diam
+        self.gridsize = self.diameter/10.
+        self.lx = farm.lx + farm.offset[0] + 7*self.diameter
+        self.ly = 500
+        self.lz = farm.lz + farm.offset[1] + farm.offset[1]
+        self.nx = make_odd(self.lx // self.gridsize)
+        self.ny = make_odd(self.ly // self.gridsize)
+        self.nz = make_even(self.lz // self.gridsize)
+        self.dt = 0.2 * self.gridsize / self.windspeed
+        total_flowthroughs = 6
+        stat_flowthroughs = 1
+        init_flowthroughs = 4
+        self.total_timesteps = int(self.lx / self.windspeed / self.dt * total_flowthroughs)
+        self.init_timesteps = int(self.lx / self.windspeed / self.dt * init_flowthroughs)
+        self.stat_timesteps = int(self.lx / self.windspeed / self.dt * (total_flowthroughs - stat_flowthroughs))
+
+        if run_dir is None:
+            self.dir = os.path.join('./LES_RUNS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+        else:
+            self.dir = run_dir
 
         self.run_dir = './Solver/ADM/TESTING'
         self.precursor_dir = './Solver/ADM/TESTINGprecursor'
@@ -35,8 +62,14 @@ class ADM:
                         os.path.join(self.precursor_dir, 'old_input.i3d'))
             patch_nml = {'BasicParam': {
                             'ifirst': 1,
-                            'ilast': self.total_timesteps
-                            },
+                            'ilast': self.total_timesteps,
+                            'xlx': self.ly*2,
+                            'yly': self.ly,
+                            'zlz': self.lz,
+                            'nx': self.ny*2,
+                            'ny': self.ny,
+                            'nz': self.nz,
+                        },
                          'InOutParam': {
                             'ntimesteps': self.total_timesteps//10,
                             'ioutput': self.total_timesteps//10
@@ -68,7 +101,16 @@ class ADM:
 
             patch_nml = {'BasicParam': {
                             'ifirst': 1,
-                            'ilast': iterations
+                            'ilast': iterations,
+                            'xlx': self.lx,
+                            'yly': self.ly,
+                            'zlz': self.lz,
+                            'nx': self.nx,
+                            'ny': self.ny,
+                            'nz': self.nz,
+                            },
+                         'Statistics': {
+                            'initstat': self.stat_timesteps,
                             },
                          'InOutParam': {
                             'irestart': 0,
@@ -77,6 +119,9 @@ class ADM:
                             'ilist': iterations//10,
                             'inflowpath': relative_precursor,
                             'ntimesteps': self.total_timesteps//10
+                            },
+                         'ADMParam': {
+                            'Ndiscs': self.farm.n_turbines
                             }
                          }
             f90nml.patch(os.path.join(self.initialise_dir, 'old_input.i3d'),
@@ -143,9 +188,10 @@ class ADM:
         return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32).flatten()
 
     def restart(self, case_name=None):
-        if case_name==None:
-            case_name = self.run_dir
-        shutil.copytree(self.initialise_dir, case_name, dirs_exist_ok=True)
+        if case_name is not None:
+            self.run_dir = os.path.join(self.dir, case_name)
+        print(f'copying {self.initialise_dir} to {self.run_dir}')
+        shutil.copytree(self.initialise_dir, self.run_dir, dirs_exist_ok=True)
 
 
 if __name__ == '__main__':
@@ -153,9 +199,9 @@ if __name__ == '__main__':
     farm1 = Farm(126*14, 126*4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2*126])
     farm1.grid()
     case = ADM(farm1)
-    case.total_timesteps = 3000
+    # case.total_timesteps = 3000
     case.run_precursor()
-    case.initialise_flow(2000)
+    case.initialise_flow(case.init_timesteps)
     case.restart()
 
     for i in range(20):
