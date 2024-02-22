@@ -109,18 +109,8 @@ initstat =  1000    ! Time steps after which statistics are collected
 &ProbesParam
 !=================
 
-flag_all_digits = T     ! By default, only 6 digits, 16 when True
-flag_extra_probes = T   ! By default, gradients are not monitored
-xyzprobes(1,1) = 126    ! X position of probe 1
-xyzprobes(2,1) = 90    ! Y position of probe 1
-xyzprobes(3,1) = 252    ! Z position of probe 1
-xyzprobes(1,2) = 874    ! X position of probe 2
-xyzprobes(2,2) = 90    ! Y position of probe 2
-xyzprobes(3,2) = 252    ! Z position of probe 2
-xyzprobes(1,3) = 1890    ! X position of probe 3
-xyzprobes(2,3) = 90    ! Y position of probe 3
-xyzprobes(3,3) = 252    ! Z position of probe 3
-
+flag_all_digits = F     ! By default, only 6 digits, 16 when True
+flag_extra_probes = F   ! By default, gradients are not monitored
 /End
 
 !########################

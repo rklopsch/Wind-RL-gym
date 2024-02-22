@@ -40,6 +40,7 @@ class ADM:
         self.total_timesteps = int(self.lx / self.windspeed / self.dt * total_flowthroughs)
         self.init_timesteps = int(self.lx / self.windspeed / self.dt * init_flowthroughs)
         self.stat_timesteps = int(self.lx / self.windspeed / self.dt * (total_flowthroughs - stat_flowthroughs))
+        self.probes_per_turbine = 25
 
         if run_dir is None:
             self.dir = os.path.join('./LES_RUNS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
@@ -88,6 +89,7 @@ class ADM:
         else:
             base_dir = './Solver/ADM/Base'
             shutil.copytree(base_dir, self.initialise_dir, dirs_exist_ok=True)
+            self.add_probes(self.initialise_dir)
             # set up case for ADM with
             yaw = np.zeros(self.farm.n_turbines)
             self.farm.set_yaw(yaw)
@@ -118,7 +120,8 @@ class ADM:
                             'ioutput': iterations,
                             'ilist': iterations//10,
                             'inflowpath': relative_precursor,
-                            'ntimesteps': self.total_timesteps//10
+                            'ntimesteps': self.total_timesteps//10,
+                            'nprobes': self.probes_per_turbine*self.farm.n_turbines
                             },
                          'ADMParam': {
                             'Ndiscs': self.farm.n_turbines
@@ -166,25 +169,26 @@ class ADM:
         subprocess.run(os.path.join(self.run_dir, 'run.sh'))
 
         # Retrieve Power
-        turbine_obs = np.empty((nturbs, 4))
+        turbine_obs = np.zeros((nturbs, 2+2*self.probes_per_turbine))
         farm_power = 0
 
-        for i in range(nturbs):
-            fname = os.path.join(self.run_dir, f'disc{i + 1}.adm')
+        for iturb in range(nturbs):
+            fname = os.path.join(self.run_dir, f'disc{iturb + 1}.adm')
             turbine_velocity, turbine_power = np.loadtxt(fname, usecols=(2, 3), skiprows=1, unpack=True)
             turbine_power /= 1e06
             turbine_power = turbine_power[-iterations:-1].mean()
             turbine_velocity = turbine_velocity[-iterations:-1].mean()
             farm_power += turbine_power
+            turbine_obs[iturb][:2] = [turbine_velocity, turbine_power]
             # Read probes
-            fname = os.path.join(self.run_dir, f'probes/probe000{i+1}')
-            probe_u, probe_w = np.loadtxt(fname, usecols=(1, 3), unpack=True)
-            probe_u = probe_u[-iterations:-1].mean()
-            probe_w = probe_w[-iterations:-1].mean()
-            turbine_obs[i] = [turbine_velocity, turbine_power, probe_u, probe_w]
+            for iobs in range(self.probes_per_turbine):
+                fname = os.path.join(self.run_dir, f'probes/probe{iobs*(iturb+1)+1:04}')
+                probe_u, probe_w = np.loadtxt(fname, usecols=(1, 3), unpack=True)
+                probe_u = probe_u[-iterations:-1].mean()
+                probe_w = probe_w[-iterations:-1].mean()
+                turbine_obs[iturb][(iobs+1)*2:(iobs+2)*2] = [probe_u, probe_w]
 
         print(f'Farm Power = {farm_power}')
-        print(f'Farm Observations = {turbine_obs}')
         return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32).flatten()
 
     def restart(self, case_name=None):
@@ -192,6 +196,31 @@ class ADM:
             self.run_dir = os.path.join(self.dir, case_name)
         print(f'copying {self.initialise_dir} to {self.run_dir}')
         shutil.copytree(self.initialise_dir, self.run_dir, dirs_exist_ok=True)
+
+    def add_probes(self, directory):
+        probes_per_turbine = self.probes_per_turbine
+        probe_spacing = self.farm.turbines[0].diam/2
+        x, z = np.meshgrid(np.arange(probe_spacing, 6*probe_spacing, probe_spacing),
+                           np.arange(-2*probe_spacing, 2*probe_spacing+1, probe_spacing))
+        y = np.ones(probes_per_turbine) * self.farm.turbines[0].hub_height
+
+        probe_locations = np.zeros((3, self.farm.n_turbines*probes_per_turbine))
+        for i, turb in enumerate(self.farm.turbines):
+            probe_locations[0, i*probes_per_turbine:(i+1)*probes_per_turbine] = x.flatten() + turb.location[0]
+            probe_locations[1, i*probes_per_turbine:(i+1)*probes_per_turbine] = y.flatten()
+            probe_locations[2, i*probes_per_turbine:(i+1)*probes_per_turbine] = z.flatten() + turb.location[1]
+
+        probe_dictionary = {}
+        for i, loc in enumerate(probe_locations.T):
+            for dim in range(3):
+                probe_dictionary[f'xyzprobes({dim + 1},{i + 1})'] = loc[dim]
+
+        # Update i3d file
+        shutil.move(os.path.join(directory, 'input.i3d'),
+                    os.path.join(directory, 'old_input.i3d'))
+        patch_nml = {'ProbesParam': probe_dictionary}
+        f90nml.patch(os.path.join(directory, 'old_input.i3d'),
+                     patch_nml, os.path.join(directory, 'input.i3d'))
 
 
 if __name__ == '__main__':
