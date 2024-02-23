@@ -135,10 +135,7 @@ class ADM:
             subprocess.run(os.path.join(self.initialise_dir, 'run.sh'))
 
     def advance(self, yaws, iterations=50, save=False):
-        nturbs = np.shape(yaws.numpy())[0]+1
-        yaw = np.zeros(nturbs)
-        yaw[:nturbs-1] = yaws.numpy()
-        yaw[-1] = 0
+        yaw = yaws.numpy()
         print(f'Turbine yaw angles = {yaw}')
         # set up case for ADM
         self.farm.set_yaw(yaw)
@@ -169,10 +166,10 @@ class ADM:
         subprocess.run(os.path.join(self.run_dir, 'run.sh'))
 
         # Retrieve Power
-        turbine_obs = np.zeros((nturbs, 2+2*self.probes_per_turbine))
+        turbine_obs = np.zeros((self.farm.n_turbines, 2+2*self.probes_per_turbine))
         farm_power = 0
 
-        for iturb in range(nturbs):
+        for iturb in range(self.farm.n_turbines):
             fname = os.path.join(self.run_dir, f'disc{iturb + 1}.adm')
             turbine_velocity, turbine_power = np.loadtxt(fname, usecols=(2, 3), skiprows=1, unpack=True)
             turbine_power /= 1e06
@@ -235,4 +232,4 @@ if __name__ == '__main__':
 
     for i in range(20):
         print(f'iteration {i}')
-        case.advance(torch.ones(farm1.n_turbines-1) * 2*i, save=True)
+        case.advance(torch.ones(farm1.n_turbines) * 2*i, save=True)

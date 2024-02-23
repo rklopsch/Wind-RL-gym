@@ -39,8 +39,8 @@ class TurbEnv(EnvBase):
         super().__init__(device=device, batch_size=[])
         self.cfg = cfg
         self.obs_per_turbine = cfg.env.probes_per_turbine * 2 + 2
-        self.n_turbs = cfg.env.turbines - 1
-        self.total_obs = self.obs_per_turbine * (self.n_turbs+1)
+        self.n_turbs = cfg.env.turbines
+        self.total_obs = self.obs_per_turbine * (self.n_turbs)
         self._make_spec(params)
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
@@ -50,7 +50,7 @@ class TurbEnv(EnvBase):
         diameter = cfg.env.turbine_diameter
         spacing = cfg.env.turbine_spacing
         self.farm1 = Farm(diameter * spacing * self.n_turbs, diameter * 4,
-                          3, Turbine(diameter, 90, yaw=0),
+                          self.n_turbs, Turbine(diameter, 90, yaw=0),
                           offset=[2 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
         self.adm = ADM(self.farm1)
