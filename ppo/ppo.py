@@ -45,12 +45,12 @@ def main(cfg: "DictConfig"):
     test_interval = cfg.logger.test_interval // frame_skip
 
     # Create models (check utils.py)
-    actor, critic = make_ppo_models(cfg.env.env_name)
+    actor, critic = make_ppo_models(cfg)
     actor, critic = actor.to(device), critic.to(device)
 
     # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_env(device),
+        create_env_fn=make_env(cfg, device),
         policy=actor,
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
@@ -101,7 +101,7 @@ def main(cfg: "DictConfig"):
     )
 
     # Create test environment
-    test_env = make_env(device)
+    test_env = make_env(cfg, device)
     test_env.eval()
 
     # Main loop

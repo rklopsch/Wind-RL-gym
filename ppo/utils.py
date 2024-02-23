@@ -25,8 +25,8 @@ from Solver.WF_enviroment import TurbEnv
 # --------------------------------------------------------------------
 
 
-def make_env(device="cpu"):
-    base_env = TurbEnv(device=device)
+def make_env(cfg, device="cpu"):
+    base_env = TurbEnv(cfg, device=device)
     env = TransformedEnv(base_env)
     env.append_transform(RewardSum())
     return env
@@ -111,8 +111,8 @@ def make_ppo_models_state(proof_environment):
     return policy_module, value_module
 
 
-def make_ppo_models(env_name):
-    proof_environment = make_env(device="cpu")
+def make_ppo_models(cfg):
+    proof_environment = make_env(cfg, device="cpu")
     actor, critic = make_ppo_models_state(proof_environment)
     return actor, critic
 

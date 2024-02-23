@@ -1,5 +1,6 @@
 from collections import defaultdict
 from typing import Optional
+import hydra
 
 import numpy as np
 import torch
@@ -28,6 +29,7 @@ class TurbEnv(EnvBase):
     batch_locked = False
 
     def __init__(self,
+                 cfg,
                  params=None,
                  seed=None,
                  device="cpu"):
@@ -35,21 +37,26 @@ class TurbEnv(EnvBase):
             params = self.gen_params().to(device)
 
         super().__init__(device=device, batch_size=[])
-        self.n_obs = 52
-        self.n_turbs = 2
-        self.total_obs = self.n_obs * (self.n_turbs+1)
+        self.cfg = cfg
+        self.obs_per_turbine = cfg.env.probes_per_turbine * 2 + 2
+        self.n_turbs = cfg.env.turbines - 1
+        self.total_obs = self.obs_per_turbine * (self.n_turbs+1)
         self._make_spec(params)
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
 
         # set up a farm environment (probably better to pass this???)
-        self.farm1 = Farm(126 * 14, 126 * 4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2 * 126])
+        diameter = cfg.env.turbine_diameter
+        spacing = cfg.env.turbine_spacing
+        self.farm1 = Farm(diameter * spacing * self.n_turbs, diameter * 4,
+                          3, Turbine(diameter, 90, yaw=0),
+                          offset=[2 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
         self.adm = ADM(self.farm1)
-        self.adm.total_timesteps = 100000
+        self.adm.total_timesteps = self.adm.init_timesteps + cfg.collector.max_episode_length * cfg.env.steps_per_frame
         self.adm.run_precursor()
-        self.adm.initialise_flow(5000)
+        self.adm.initialise_flow(self.adm.init_timesteps)
         self.adm.restart()
 
         self.dummy_update = False  # If True, perform a dummy update for testing
@@ -59,7 +66,7 @@ class TurbEnv(EnvBase):
         u = tensordict["action"].squeeze(-1)
         u = u.clamp(-tensordict["params", "max_speed"], tensordict["params", "max_speed"])
         dt = tensordict["params", "dt"]
-        
+
         new_alpha = alpha + u * dt
         new_alpha = new_alpha.clamp(-tensordict["params", "max_angle"], tensordict["params", "max_angle"])
         for i in range(len(new_alpha)):
@@ -73,13 +80,13 @@ class TurbEnv(EnvBase):
             power = torch.ones((*tensordict.shape, 1), device=self.device)
             observation = torch.zeros((*tensordict.shape, self.total_obs), device=self.device)
         else:
-            power, observation = (self.adm.advance(new_alpha.cpu()))
+            power, observation = (self.adm.advance(new_alpha.cpu(), self.cfg.env.steps_per_frame))
             power = power.to(self.device)
             observation = observation.to(self.device)
 
         reward = power.view(*tensordict.shape, 1)  # normalise?
         done = torch.zeros_like(reward, dtype=torch.bool)
-        
+
         out = TensorDict(
             {
                 "alpha": new_alpha,
@@ -89,7 +96,7 @@ class TurbEnv(EnvBase):
                 "done": done,
             },
             tensordict.shape,
-        )        
+        )
         return out
 
     def _reset(self, tensordict):
@@ -212,13 +219,16 @@ class TurbEnv(EnvBase):
         return td
 
 
-if __name__ == '__main__':
-
-    test_env = TurbEnv()
+@hydra.main(config_path="../ppo", config_name="config_ppo", version_base="1.2")
+def main(cfg: "DictConfig"):
+    test_env = TurbEnv(cfg)
     rollout = test_env.rollout(max_steps=3)
     print(f"alpha = {rollout['alpha'][:, 1].mean()}")
     # print(f"Reward = {rollout['next', 'episode_reward'][rollout['next', 'done']][:, 1].mean()}")
-    
+
     print("\nTesting environment rollout...")
     print(rollout)
 
+
+if __name__ == '__main__':
+    main()
