@@ -1,0 +1,8 @@
+__pycache__
+.idea
+outputs
+wandb
+.venv
+.git
+Solver/ADM/TEST*
+Solver/.ADM*
