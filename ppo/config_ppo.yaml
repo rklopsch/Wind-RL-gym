@@ -10,9 +10,9 @@ env:
 # collector
 collector:
   frame_skip: 1  # Env takes 50 time steps per update
-  frames_per_batch: 100 # this is the actual number of frames we see in a batch
+  frames_per_batch: 200 # this is the actual number of frames we see in a batch
   max_episode_length: 1_000  # Timesteps (disregarding frame skip)
-  total_frames: 30_000  # Timesteps (disregarding frame skip)
+  total_frames: 50_000  # Timesteps (disregarding frame skip)
 
 # logger
 logger:
@@ -26,7 +26,7 @@ logger:
 
 # Optim
 optim:
-  lr: 3e-4
+  lr: 1e-4
   weight_decay: 0.0
   anneal_lr: True
 
