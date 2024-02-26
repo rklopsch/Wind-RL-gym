@@ -35,8 +35,8 @@ class TurbEnv(EnvBase):
             params = self.gen_params().to(device)
 
         super().__init__(device=device, batch_size=[])
-        self.obs_per_turbine = params["params"]["probes_per_turbine"] * 2 + 2
-        self.n_turbs = params["params"]["n_turbines"]
+        self.obs_per_turbine = params["params"]["probes_per_turbine"].item() * 2 + 2
+        self.n_turbs = params["params"]["n_turbines"].item()
         self.total_obs = self.obs_per_turbine * self.n_turbs
 
         self._make_spec(params)
@@ -45,13 +45,13 @@ class TurbEnv(EnvBase):
         self.set_seed(seed)
 
         # set up a farm environment (probably better to pass this???)
-        diameter = params["params"]["turbine_diameter"]
-        spacing = params["params"]["turbine_spacing"]
+        diameter = params["params"]["turbine_diameter"].item()
+        spacing = params["params"]["turbine_spacing"].item()
         self.farm1 = Farm(diameter * spacing * self.n_turbs, diameter * 4,
                           self.n_turbs, Turbine(diameter, 90, yaw=0),
                           offset=[2 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
-        self.adm = ADM(self.farm1, self.obs_per_turbine-2)
+        self.adm = ADM(self.farm1, (self.obs_per_turbine-2)//2)
         self.adm.total_timesteps = params["params"]["run_steps"] + self.adm.init_timesteps
 
         self.adm.run_precursor()
@@ -211,7 +211,7 @@ class TurbEnv(EnvBase):
                         "max_yaw_speed": 0.25,
                         "max_yaw_angle": 40,
                         "dt": 10,
-                        "run_steps":50_000,
+                        "run_steps":10,
                     },
                     [],
                 )
