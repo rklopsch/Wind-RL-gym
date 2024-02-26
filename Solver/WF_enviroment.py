@@ -30,11 +30,15 @@ class TurbEnv(EnvBase):
     def __init__(self,
                  params=None,
                  seed=None,
+                 save=False,
                  device="cpu"):
+
         if params is None:
             params = self.gen_params().to(device)
 
         super().__init__(device=device, batch_size=[])
+
+        self.save = save
         self.obs_per_turbine = params["params"]["probes_per_turbine"].item() * 2 + 2
         self.n_turbs = params["params"]["n_turbines"].item()
         self.total_obs = self.obs_per_turbine * self.n_turbs
@@ -79,7 +83,7 @@ class TurbEnv(EnvBase):
             power = torch.ones((*tensordict.shape, 1), device=self.device)
             observation = torch.zeros((*tensordict.shape, self.total_obs), device=self.device)
         else:
-            power, observation = (self.adm.advance(new_alpha.cpu()))
+            power, observation = (self.adm.advance(new_alpha.cpu(), save=self.save))
             power = power.to(self.device)
             observation = observation.to(self.device)
 
@@ -225,7 +229,7 @@ class TurbEnv(EnvBase):
 
 if __name__ == '__main__':
 
-    test_env = TurbEnv()
+    test_env = TurbEnv(save=True)
     rollout = test_env.rollout(max_steps=3)
     print(f"alpha = {rollout['alpha'][:, 1].mean()}")
     # print(f"Reward = {rollout['next', 'episode_reward'][rollout['next', 'done']][:, 1].mean()}")

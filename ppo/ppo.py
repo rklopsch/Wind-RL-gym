@@ -120,7 +120,7 @@ def main(cfg: "DictConfig"):
     )
 
     # Create test environment
-    test_env = make_env(params, device)
+    test_env = make_env(params, save=True, device=device)
     test_env.eval()
 
     # Main loop
