@@ -44,13 +44,32 @@ def main(cfg: "DictConfig"):
     mini_batch_size = cfg.loss.mini_batch_size // frame_skip
     test_interval = cfg.logger.test_interval // frame_skip
 
+    params = TensorDict(
+        {
+            "params": TensorDict(
+                {
+                    "n_turbines": cfg.env.turbines,
+                    "probes_per_turbine": cfg.env.probes_per_turbine,
+                    "turbine_diameter": cfg.env.turbine_diameter,
+                    "turbine_spacing": cfg.env.turbine_spacing,
+                    "max_yaw_speed": cfg.env.max_yaw_speed,
+                    "max_yaw_angle": cfg.env.max_yaw_angle,
+                    "dt": cfg.env.steps_per_frame*0.2,
+                    "run_steps": cfg.collector.total_frames,
+                },
+                [],
+            )
+        },
+        [],
+    )
+
     # Create models (check utils.py)
-    actor, critic = make_ppo_models(cfg)
+    actor, critic = make_ppo_models(params)
     actor, critic = actor.to(device), critic.to(device)
 
     # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_env(cfg, device),
+        create_env_fn=make_env(params, device),
         policy=actor,
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
@@ -101,7 +120,7 @@ def main(cfg: "DictConfig"):
     )
 
     # Create test environment
-    test_env = make_env(cfg, device)
+    test_env = make_env(params, device)
     test_env.eval()
 
     # Main loop

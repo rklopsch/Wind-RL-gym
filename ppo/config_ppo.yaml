@@ -5,6 +5,8 @@ env:
   probes_per_turbine: 25
   turbine_diameter: 126
   turbine_spacing: 7
+  max_yaw_speed: 0.25
+  max_yaw_angle: 40
   steps_per_frame: 50
 
 # collector

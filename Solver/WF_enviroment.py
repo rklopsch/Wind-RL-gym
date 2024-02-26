@@ -1,6 +1,5 @@
 from collections import defaultdict
 from typing import Optional
-import hydra
 
 import numpy as np
 import torch
@@ -29,7 +28,6 @@ class TurbEnv(EnvBase):
     batch_locked = False
 
     def __init__(self,
-                 cfg,
                  params=None,
                  seed=None,
                  device="cpu"):
@@ -37,24 +35,25 @@ class TurbEnv(EnvBase):
             params = self.gen_params().to(device)
 
         super().__init__(device=device, batch_size=[])
-        self.cfg = cfg
-        self.obs_per_turbine = cfg.env.probes_per_turbine * 2 + 2
-        self.n_turbs = cfg.env.turbines
-        self.total_obs = self.obs_per_turbine * (self.n_turbs)
+        self.obs_per_turbine = params["params"]["probes_per_turbine"] * 2 + 2
+        self.n_turbs = params["params"]["n_turbines"]
+        self.total_obs = self.obs_per_turbine * self.n_turbs
+
         self._make_spec(params)
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
 
         # set up a farm environment (probably better to pass this???)
-        diameter = cfg.env.turbine_diameter
-        spacing = cfg.env.turbine_spacing
+        diameter = params["params"]["turbine_diameter"]
+        spacing = params["params"]["turbine_spacing"]
         self.farm1 = Farm(diameter * spacing * self.n_turbs, diameter * 4,
                           self.n_turbs, Turbine(diameter, 90, yaw=0),
                           offset=[2 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
         self.adm = ADM(self.farm1, self.obs_per_turbine-2)
-        self.adm.total_timesteps = self.adm.init_timesteps + cfg.collector.max_episode_length * cfg.env.steps_per_frame
+        self.adm.total_timesteps = params["params"]["run_steps"] + self.adm.init_timesteps
+
         self.adm.run_precursor()
         self.adm.initialise_flow(self.adm.init_timesteps)
         self.adm.restart()
@@ -64,29 +63,29 @@ class TurbEnv(EnvBase):
     def _step(self, tensordict):
         alpha = tensordict["alpha"]
         u = tensordict["action"].squeeze(-1)
-        u = u.clamp(-tensordict["params", "max_speed"], tensordict["params", "max_speed"])
+        u = u.clamp(-tensordict["params", "max_yaw_speed"], tensordict["params", "max_yaw_speed"])
         dt = tensordict["params", "dt"]
-
+        
         new_alpha = alpha + u * dt
-        new_alpha = new_alpha.clamp(-tensordict["params", "max_angle"], tensordict["params", "max_angle"])
+        new_alpha = new_alpha.clamp(-tensordict["params", "max_yaw_angle"], tensordict["params", "max_yaw_angle"])
         for i in range(len(new_alpha)):
-            if new_alpha[i] == tensordict["params", "max_angle"]:
-                u[i] = u[i].clamp(-tensordict["params", "max_speed"], 0)
-            elif new_alpha[i] == -tensordict["params", "max_angle"]:
-                u[i] = u[i].clamp(0, tensordict["params", "max_speed"])
+            if new_alpha[i] == tensordict["params", "max_yaw_angle"]:
+                u[i] = u[i].clamp(-tensordict["params", "max_yaw_speed"], 0)
+            elif new_alpha[i] == -tensordict["params", "max_yaw_angle"]:
+                u[i] = u[i].clamp(0, tensordict["params", "max_yaw_speed"])
 
         # update by running ADM
         if self.dummy_update:
             power = torch.ones((*tensordict.shape, 1), device=self.device)
             observation = torch.zeros((*tensordict.shape, self.total_obs), device=self.device)
         else:
-            power, observation = (self.adm.advance(new_alpha.cpu(), self.cfg.env.steps_per_frame))
+            power, observation = (self.adm.advance(new_alpha.cpu()))
             power = power.to(self.device)
             observation = observation.to(self.device)
 
         reward = power.view(*tensordict.shape, 1)  # normalise?
         done = torch.zeros_like(reward, dtype=torch.bool)
-
+        
         out = TensorDict(
             {
                 "alpha": new_alpha,
@@ -96,7 +95,7 @@ class TurbEnv(EnvBase):
                 "done": done,
             },
             tensordict.shape,
-        )
+        )        
         return out
 
     def _reset(self, tensordict):
@@ -137,8 +136,8 @@ class TurbEnv(EnvBase):
         # Under the hood, this will populate self.output_spec["observation"]
         self.observation_spec = CompositeSpec(
                 alpha=BoundedTensorSpec(
-                    low=-td_params["params", "max_angle"],
-                    high=td_params["params", "max_angle"],
+                    low=-td_params["params", "max_yaw_angle"],
+                    high=td_params["params", "max_yaw_angle"],
                     shape=(*self.batch_size, self.n_turbs),
                     dtype=torch.float32,
                     device=self.device
@@ -160,8 +159,8 @@ class TurbEnv(EnvBase):
         # action-spec will be automatically wrapped in input_spec when
         # `self.action_spec = spec` will be called supported
         self.action_spec = BoundedTensorSpec(
-                low=-td_params["params", "max_speed"],
-                high=td_params["params", "max_speed"],
+                low=-td_params["params", "max_yaw_speed"],
+                high=td_params["params", "max_yaw_speed"],
             shape=(*self.batch_size, self.n_turbs),
             dtype=torch.float32,
             device=self.device
@@ -205,9 +204,14 @@ class TurbEnv(EnvBase):
             {
                 "params": TensorDict(
                     {
-                        "max_speed": 0.25,
-                        "max_angle": 40,
+                        "n_turbines": 3,
+                        "probes_per_turbine": 25,
+                        "turbine_diameter": 126,
+                        "turbine_spacing": 7,
+                        "max_yaw_speed": 0.25,
+                        "max_yaw_angle": 40,
                         "dt": 10,
+                        "run_steps":50_000,
                     },
                     [],
                 )
@@ -219,16 +223,13 @@ class TurbEnv(EnvBase):
         return td
 
 
-@hydra.main(config_path="../ppo", config_name="config_ppo", version_base="1.2")
-def main(cfg: "DictConfig"):
-    test_env = TurbEnv(cfg)
+if __name__ == '__main__':
+
+    test_env = TurbEnv()
     rollout = test_env.rollout(max_steps=3)
     print(f"alpha = {rollout['alpha'][:, 1].mean()}")
     # print(f"Reward = {rollout['next', 'episode_reward'][rollout['next', 'done']][:, 1].mean()}")
-
+    
     print("\nTesting environment rollout...")
     print(rollout)
 
-
-if __name__ == '__main__':
-    main()
