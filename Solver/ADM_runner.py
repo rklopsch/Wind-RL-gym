@@ -21,10 +21,11 @@ def make_odd(i):
 
 class ADM:
 
-    def __init__(self, farm, windspeed=10, run_dir=None, device='cpu'):
+    def __init__(self, farm, probes_per_turbine, windspeed=10, run_dir=None, device='cpu'):
         self.device = torch.device(device)
         self.farm = farm
         self.windspeed = windspeed
+        self.probes_per_turbine = probes_per_turbine
         self.diameter = farm.turbines[0].diam
         self.gridsize = self.diameter/10.
         self.lx = farm.lx + farm.offset[0] + 7*self.diameter
@@ -40,7 +41,6 @@ class ADM:
         self.total_timesteps = int(self.lx / self.windspeed / self.dt * total_flowthroughs)
         self.init_timesteps = int(self.lx / self.windspeed / self.dt * init_flowthroughs)
         self.stat_timesteps = int(self.lx / self.windspeed / self.dt * (total_flowthroughs - stat_flowthroughs))
-        self.probes_per_turbine = 25
 
         if run_dir is None:
             self.dir = os.path.join('./LES_RUNS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
@@ -197,7 +197,8 @@ class ADM:
     def add_probes(self, directory):
         probes_per_turbine = self.probes_per_turbine
         probe_spacing = self.farm.turbines[0].diam/2
-        x, z = np.meshgrid(np.arange(probe_spacing, 6*probe_spacing, probe_spacing),
+        nrows = probes_per_turbine // 5
+        x, z = np.meshgrid(np.arange(probe_spacing, (nrows+1)*probe_spacing, probe_spacing),
                            np.arange(-2*probe_spacing, 2*probe_spacing+1, probe_spacing))
         y = np.ones(probes_per_turbine) * self.farm.turbines[0].hub_height
 
@@ -224,7 +225,7 @@ if __name__ == '__main__':
 
     farm1 = Farm(126*14, 126*4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2*126])
     farm1.grid()
-    case = ADM(farm1)
+    case = ADM(farm1, 25)
     # case.total_timesteps = 3000
     case.run_precursor()
     case.initialise_flow(case.init_timesteps)

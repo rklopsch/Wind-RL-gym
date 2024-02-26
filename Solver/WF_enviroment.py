@@ -53,7 +53,7 @@ class TurbEnv(EnvBase):
                           self.n_turbs, Turbine(diameter, 90, yaw=0),
                           offset=[2 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
-        self.adm = ADM(self.farm1)
+        self.adm = ADM(self.farm1, self.obs_per_turbine-2)
         self.adm.total_timesteps = self.adm.init_timesteps + cfg.collector.max_episode_length * cfg.env.steps_per_frame
         self.adm.run_precursor()
         self.adm.initialise_flow(self.adm.init_timesteps)
@@ -205,7 +205,7 @@ class TurbEnv(EnvBase):
             {
                 "params": TensorDict(
                     {
-                        "max_speed": 0.5,
+                        "max_speed": 0.25,
                         "max_angle": 40,
                         "dt": 10,
                     },
