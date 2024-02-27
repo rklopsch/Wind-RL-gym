@@ -56,7 +56,7 @@ class TurbEnv(EnvBase):
                           offset=[2 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
         self.adm = ADM(self.farm1, (self.obs_per_turbine-2)//2)
-        self.adm.total_timesteps = params["params"]["run_steps"]*self.adm.dt + self.adm.init_timesteps
+        self.adm.total_timesteps = params["params"]["run_steps"] + self.adm.init_timesteps
 
         self.adm.run_precursor()
         self.adm.initialise_flow(self.adm.init_timesteps)
