@@ -69,7 +69,7 @@ def main(cfg: "DictConfig"):
 
     # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_env(params, device),
+        create_env_fn=make_env(params, device=device),
         policy=actor,
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
