@@ -39,7 +39,7 @@ class TurbEnv(EnvBase):
         super().__init__(device=device, batch_size=[])
 
         self.save = save
-        self.obs_per_turbine = params["params"]["probes_per_turbine"].item() * 2 + 2
+        self.obs_per_turbine = params["params"]["probes_per_turbine"].item() * 2 + 3
         self.n_turbs = params["params"]["n_turbines"].item()
         self.total_obs = self.obs_per_turbine * self.n_turbs
 
@@ -55,7 +55,7 @@ class TurbEnv(EnvBase):
                           self.n_turbs, Turbine(diameter, 90, yaw=0),
                           offset=[2 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
-        self.adm = ADM(self.farm1, (self.obs_per_turbine-2)//2)
+        self.adm = ADM(self.farm1, (self.obs_per_turbine-3)//2)
         self.adm.total_timesteps = params["params"]["run_steps"] + self.adm.init_timesteps
 
         self.adm.run_precursor()
