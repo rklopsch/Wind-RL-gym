@@ -10,6 +10,8 @@ results from Schulman et al. 2017 for the on MuJoCo Environments.
 import os
 import sys
 import wandb
+from datetime import datetime
+import shutil
 import hydra
 
 
@@ -36,6 +38,9 @@ def main(cfg: "DictConfig"):
     print(f'Running on {device}')
     print(f'cuda version:{torch.version.cuda}')
 
+    results_dir = os.path.join('./RESULTS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    os.makedirs(results_dir, exist_ok=True)
+
     # Correct for frame_skip
     frame_skip = cfg.collector.frame_skip
     total_frames = cfg.collector.total_frames // frame_skip
@@ -54,7 +59,7 @@ def main(cfg: "DictConfig"):
                     "turbine_spacing": cfg.env.turbine_spacing,
                     "max_yaw_speed": cfg.env.max_yaw_speed,
                     "max_yaw_angle": cfg.env.max_yaw_angle,
-                    "dt": cfg.env.steps_per_frame*0.2,
+                    "dt": cfg.env.steps_per_frame * 0.2,
                     "run_steps": cfg.collector.total_frames,
                 },
                 [],
@@ -126,6 +131,7 @@ def main(cfg: "DictConfig"):
     # Main loop
     collected_frames = 0
     num_network_updates = 0
+    test_number = 0
     start_time = time.time()
     pbar = tqdm.tqdm(total=total_frames)
     num_mini_batches = frames_per_batch // mini_batch_size
@@ -234,6 +240,7 @@ def main(cfg: "DictConfig"):
             if ((i - 1) * frames_in_batch * frame_skip) // test_interval < (
                 i * frames_in_batch * frame_skip
             ) // test_interval:
+                test_number += 1
                 actor.eval()
                 eval_start = time.time()
                 (test_rewards_mean,
@@ -259,6 +266,7 @@ def main(cfg: "DictConfig"):
                     }
                 )
                 actor.train()
+                shutil.move('./Solver/ADM/TESTING/data', os.path.join(results_dir, f'TEST_{test_number}'))
 
         wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()
