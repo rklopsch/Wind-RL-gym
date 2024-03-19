@@ -103,7 +103,6 @@ class TurbEnv(EnvBase):
         return out
 
     def _reset(self, tensordict):
-        print('\n\nRESETTING ENVIROMENT\n')
 
         self.adm.restart()
 
@@ -174,8 +173,6 @@ class TurbEnv(EnvBase):
             dtype=torch.float32,
             device=self.device
         )
-        print('\n\nself.observation_spec.device')
-        print(self.observation_spec.device)
 
     def make_composite_from_td(self, td):
         # custom funtion to convert a tensordict in a similar spec structure

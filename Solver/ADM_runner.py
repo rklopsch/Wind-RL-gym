@@ -7,6 +7,7 @@ import shutil
 import numpy as np
 import f90nml
 from Solver.farm import Turbine, Farm
+from utils import is_verbose
 
 
 def make_even(i):
@@ -53,7 +54,8 @@ class ADM:
 
     def run_precursor(self):
         if os.path.isdir(self.precursor_dir):
-            print(f'Using precursor simulation that already exists in {self.precursor_dir}')
+            if is_verbose():
+                print(f'Using precursor simulation that already exists in {self.precursor_dir}')
         else:
             base_dir = './Solver/ADM/precursor_Base'
             shutil.copytree(base_dir, self.precursor_dir, dirs_exist_ok=True)
@@ -80,12 +82,14 @@ class ADM:
                          patch_nml, os.path.join(self.precursor_dir, 'input.i3d'))
 
             # Run for iterations
-            print(f'Running XCompact3D precursor simulation for ABL from 0 to {self.total_timesteps}')
+            if is_verbose():
+                print(f'Running XCompact3D precursor simulation for ABL from 0 to {self.total_timesteps}')
             subprocess.run(os.path.join(self.precursor_dir, 'run.sh'))
 
     def initialise_flow(self, iterations=100):
         if os.path.isdir(self.initialise_dir):
-            print(f'Using initialisation simulation that already exists in {self.initialise_dir}')
+            if is_verbose():
+                print(f'Using initialisation simulation that already exists in {self.initialise_dir}')
         else:
             base_dir = './Solver/ADM/Base'
             shutil.copytree(base_dir, self.initialise_dir, dirs_exist_ok=True)
@@ -131,12 +135,14 @@ class ADM:
                          patch_nml, os.path.join(self.initialise_dir, 'input.i3d'))
 
             # Run for iterations
-            print(f'Initialisation Xcompact3D case from {1} to {iterations}')
+            if is_verbose():
+                print(f'Initialisation Xcompact3D case from {1} to {iterations}')
             subprocess.run(os.path.join(self.initialise_dir, 'run.sh'))
 
     def advance(self, yaws, iterations=50, save=False):
         yaw = yaws.numpy()
-        print(f'Turbine yaw angles = {yaw}')
+        if is_verbose():
+            print(f'Turbine yaw angles = {yaw}')
         # set up case for ADM
         self.farm.set_yaw(yaw)
 
@@ -162,7 +168,8 @@ class ADM:
         f90nml.patch(os.path.join(self.run_dir, 'old_input.i3d'), patch_nml, os.path.join(self.run_dir, 'input.i3d'))
 
         # Run for iterations
-        print(f'Running xcompact from {old_ilast+1} to {old_ilast+iterations}')
+        if is_verbose():
+            print(f'Running xcompact from {old_ilast+1} to {old_ilast+iterations}')
         subprocess.run(os.path.join(self.run_dir, 'run.sh'))
 
         # Retrieve Power
@@ -185,13 +192,15 @@ class ADM:
                 probe_w = probe_w[-iterations:-1].mean()
                 turbine_obs[iturb][iobs*2+3:(iobs+1)*2+3] = [probe_u, probe_w]
 
-        print(f'Farm Power = {farm_power}')
+        if is_verbose():
+            print(f'Farm Power = {farm_power}')
         return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32).flatten()
 
     def restart(self, case_name=None):
         if case_name is not None:
             self.run_dir = os.path.join(self.dir, case_name)
-        print(f'copying {self.initialise_dir} to {self.run_dir}')
+        if is_verbose():
+            print(f'copying {self.initialise_dir} to {self.run_dir}')
         shutil.copytree(self.initialise_dir, self.run_dir, dirs_exist_ok=True)
 
     def add_probes(self, directory):
