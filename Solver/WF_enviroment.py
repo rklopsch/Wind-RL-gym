@@ -41,6 +41,7 @@ class TurbEnv(EnvBase):
         self.save = save
         self.obs_per_turbine = params["params"]["probes_per_turbine"].item() * 2 + 3
         self.n_turbs = params["params"]["n_turbines"].item()
+        self.n_agents = params["params"]["n_turbines"].item()
         self.total_obs = self.obs_per_turbine * self.n_turbs
 
         self._make_spec(params)
@@ -65,8 +66,13 @@ class TurbEnv(EnvBase):
         self.dummy_update = False  # If True, perform a dummy update for testing
 
     def _step(self, tensordict):
+
+        action = tensordict.get(("agents", "action"))
+        print(action)
+        # action = action.unbind(dim=1)
         alpha = tensordict["alpha"]
-        u = tensordict["action"].squeeze(-1)
+        # u = tensordict["action"].squeeze(-1)
+        u = action
         u = u.clamp(-tensordict["params", "max_yaw_speed"], tensordict["params", "max_yaw_speed"])
         dt = tensordict["params", "dt"]
         
@@ -89,17 +95,37 @@ class TurbEnv(EnvBase):
 
         reward = power.view(*tensordict.shape, 1)  # normalise?
         done = torch.zeros_like(reward, dtype=torch.bool)
-        
+
+        source = {"done": done}
+        agent_tds = []
+        for i in range(self.n_agents):
+            agent_out = TensorDict(
+                {
+                    "alpha": new_alpha[i],
+                    "observation": observation[i],
+                    "params": tensordict["params"],
+                    "reward": reward,
+                    # "done": done,
+                },
+                tensordict.shape,
+                )
+            agent_tds.append(agent_out)
+
+        # agent_tds = torch.stack(agent_tds, dim=1)
+        agent_tds = torch.stack(agent_tds)
+        agent_tds = agent_tds.to_tensordict()
+        source.update({"agents": agent_tds})
+
+        # print(f'\n\n SOURCE \n\n {source}')
+        f = open("./source.txt", "w")
+        f.write(f'{source}')
+        f.close()
         out = TensorDict(
-            {
-                "alpha": new_alpha,
-                "observation": observation,
-                "params": tensordict["params"],
-                "reward": reward,
-                "done": done,
-            },
-            tensordict.shape,
-        )        
+            source=source,
+            batch_size=self.batch_size,
+            # device=self.device,
+        )
+
         return out
 
     def _reset(self, tensordict):
@@ -136,18 +162,18 @@ class TurbEnv(EnvBase):
         )
         return out
 
-    def _make_spec(self, td_params):
+    def _make_agent_spec(self, td_params):
         # Under the hood, this will populate self.output_spec["observation"]
-        self.observation_spec = CompositeSpec(
+        observation_spec = CompositeSpec(
                 alpha=BoundedTensorSpec(
                     low=-td_params["params", "max_yaw_angle"],
                     high=td_params["params", "max_yaw_angle"],
-                    shape=(*self.batch_size, self.n_turbs),
+                    shape=(*self.batch_size,),
                     dtype=torch.float32,
                     device=self.device
                 ),
                 observation=UnboundedContinuousTensorSpec(
-                    shape=(*self.batch_size, self.total_obs),
+                    shape=(*self.batch_size, self.obs_per_turbine),
                     dtype=torch.float32,
                     device=self.device
                 ),
@@ -159,23 +185,62 @@ class TurbEnv(EnvBase):
                 )
         # since the environment is stateless, we expect the previous output as input.
         # For this, EnvBase expects some state_spec to be available
-        self.state_spec = self.observation_spec.clone()
+        state_spec = observation_spec.clone()
         # action-spec will be automatically wrapped in input_spec when
         # `self.action_spec = spec` will be called supported
-        self.action_spec = BoundedTensorSpec(
+        action_spec = BoundedTensorSpec(
                 low=-td_params["params", "max_yaw_speed"],
                 high=td_params["params", "max_yaw_speed"],
-            shape=(*self.batch_size, self.n_turbs),
+            shape=(*self.batch_size,),
             dtype=torch.float32,
             device=self.device
         )
-        self.reward_spec = UnboundedContinuousTensorSpec(
+        reward_spec = UnboundedContinuousTensorSpec(
             shape=(*td_params.shape, 1),
             dtype=torch.float32,
             device=self.device
         )
-        print('\n\nself.observation_spec.device')
-        print(self.observation_spec.device)
+        return action_spec, reward_spec, observation_spec, state_spec
+
+    def _make_spec(self, td_params):
+        action_specs = []
+        observation_specs = []
+        reward_specs = []
+        state_specs = []
+        for i in range(self.n_agents):
+            agent_i_action_spec, agent_i_reward_spec, agent_i_observation_spec, agent_i_state_spec = self._make_agent_spec(td_params)
+            action_specs.append(agent_i_action_spec)
+            reward_specs.append(agent_i_reward_spec)
+            observation_specs.append(agent_i_observation_spec)
+            state_specs.append(agent_i_state_spec)
+        self.action_spec = CompositeSpec(
+            {
+                "agents": CompositeSpec(
+                    {"action": torch.stack(action_specs, dim=0)}, shape=(self.n_agents,)
+                )
+            }
+        )
+        self.reward_spec = CompositeSpec(
+            {
+                "agents": CompositeSpec(
+                    {"reward": torch.stack(reward_specs, dim=0)}, shape=(self.n_agents,)
+                )
+            }
+        )
+        self.observation_spec = CompositeSpec(
+            {
+                "agents": CompositeSpec(
+                    {"observation": torch.stack(observation_specs, dim=0)}, shape=(self.n_agents,)
+                )
+            }
+        )
+        self.state_spec = CompositeSpec(
+            {
+                "agents": CompositeSpec(
+                    {"state": torch.stack(state_specs, dim=0)}, shape=(self.n_agents,)
+                )
+            }
+        )
 
     def make_composite_from_td(self, td):
         # custom funtion to convert a tensordict in a similar spec structure
@@ -230,10 +295,14 @@ class TurbEnv(EnvBase):
 if __name__ == '__main__':
 
     test_env = TurbEnv(save=True)
+    print("action_keys:", test_env.action_keys)
+    print("reward_keys:", test_env.reward_keys)
+    print("observation_keys:", test_env.observation_spec)
+    print("done_keys:", test_env.done_keys)
     rollout = test_env.rollout(max_steps=3)
     print(f"alpha = {rollout['alpha'][:, 1].mean()}")
     # print(f"Reward = {rollout['next', 'episode_reward'][rollout['next', 'done']][:, 1].mean()}")
-    
+
     print("\nTesting environment rollout...")
     print(rollout)
 
