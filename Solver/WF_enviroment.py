@@ -97,16 +97,16 @@ class TurbEnv(EnvBase):
         reward = power.view(*tensordict.shape, 1)  # normalise?
         done = torch.zeros_like(reward, dtype=torch.bool)
 
-        source = {"done": done}
+        source = {"done": done,
+                  "params": tensordict["params"]
+                  }
         agent_tds = []
         for i in range(self.n_agents):
             agent_out = TensorDict(
                 {
                     "alpha": new_alpha[i],
                     "observation": observation[i],
-                    "params": tensordict["params"],
                     "reward": reward,
-                    # "done": done,
                 },
                 tensordict.shape,
                 )
@@ -185,9 +185,6 @@ class TurbEnv(EnvBase):
                 shape=(),
                 device=self.device
                 )
-        # since the environment is stateless, we expect the previous output as input.
-        # For this, EnvBase expects some state_spec to be available
-        state_spec = observation_spec.clone()
         # action-spec will be automatically wrapped in input_spec when
         # `self.action_spec = spec` will be called supported
         action_spec = BoundedTensorSpec(
@@ -202,19 +199,17 @@ class TurbEnv(EnvBase):
             dtype=torch.float32,
             device=self.device
         )
-        return action_spec, reward_spec, observation_spec, state_spec
+        return action_spec, reward_spec, observation_spec
 
     def _make_spec(self, td_params):
         action_specs = []
         observation_specs = []
         reward_specs = []
-        state_specs = []
         for i in range(self.n_agents):
-            agent_i_action_spec, agent_i_reward_spec, agent_i_observation_spec, agent_i_state_spec = self._make_agent_spec(td_params)
+            agent_i_action_spec, agent_i_reward_spec, agent_i_observation_spec = self._make_agent_spec(td_params)
             action_specs.append(agent_i_action_spec)
             reward_specs.append(agent_i_reward_spec)
             observation_specs.append(agent_i_observation_spec)
-            state_specs.append(agent_i_state_spec)
         self.action_spec = CompositeSpec(
             {
                 "agents": CompositeSpec(
@@ -236,13 +231,9 @@ class TurbEnv(EnvBase):
                 )
             }
         )
-        self.state_spec = CompositeSpec(
-            {
-                "agents": CompositeSpec(
-                    {"state": torch.stack(state_specs, dim=0)}, shape=(self.n_agents,)
-                )
-            }
-        )
+        # since the environment is stateless, we expect the previous output as input.
+        # For this, EnvBase expects some state_spec to be available
+        self.state_spec = self.observation_spec.clone()
 
     def make_composite_from_td(self, td):
         # custom funtion to convert a tensordict in a similar spec structure
