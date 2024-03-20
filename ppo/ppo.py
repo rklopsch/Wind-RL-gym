@@ -49,6 +49,8 @@ def main(cfg: "DictConfig"):
     mini_batch_size = cfg.loss.mini_batch_size // frame_skip
     test_interval = cfg.logger.test_interval // frame_skip
 
+    dummy_update = True
+
     params = TensorDict(
         {
             "params": TensorDict(
@@ -69,12 +71,12 @@ def main(cfg: "DictConfig"):
     )
 
     # Create models (check utils.py)
-    actor, critic = make_ma_ppo_models(params)
+    actor, critic = make_ma_ppo_models(params, dummy_update=dummy_update)
     actor, critic = actor.to(device), critic.to(device)
 
     # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_env(params, device=device),
+        create_env_fn=make_env(params, device=device, dummy_update=dummy_update),
         policy=actor,
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
@@ -125,7 +127,7 @@ def main(cfg: "DictConfig"):
     )
 
     # Create test environment
-    test_env = make_env(params, save=True, device=device)
+    test_env = make_env(params, save=True, device=device, dummy_update=dummy_update)
     test_env.eval()
 
     # Main loop
