@@ -36,28 +36,43 @@ class TurbEnv(EnvBase):
 
         if params is None:
             params = self.gen_params().to(device)
+            params = params["agents"]
+
+        params = {
+            "n_turbines": 3,
+            "probes_per_turbine": 25,
+            "turbine_diameter": 126,
+            "turbine_spacing": 7,
+            "max_yaw_speed": 0.25,
+            "max_yaw_angle": 40,
+            "dt": 10,
+            "run_steps": 10,
+        }
 
         super().__init__(device=device, batch_size=[])
 
         self.save = save
-        self.obs_per_turbine = params["params"]["probes_per_turbine"].item() * 2 + 3
-        self.n_turbs = params["params"]["n_turbines"].item()
+        self.obs_per_turbine = params["probes_per_turbine"] * 2 + 3
+        self.n_turbs = params["n_turbines"]
         self.total_obs = self.obs_per_turbine * self.n_turbs
+        self.max_speed = params["max_yaw_speed"]
+        self.max_angle = params["max_yaw_angle"]
+        self.dt = params["dt"]  # maximum angular velocity of wind turbine
 
-        self._make_spec(params)
+        self._make_spec()
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
 
         # set up a farm environment (probably better to pass this???)
-        diameter = params["params"]["turbine_diameter"].item()
-        spacing = params["params"]["turbine_spacing"].item()
+        diameter = params["turbine_diameter"]
+        spacing = params["turbine_spacing"]
         self.farm1 = Farm(diameter * spacing * self.n_turbs, diameter * 4,
                           self.n_turbs, Turbine(diameter, 90, yaw=0),
                           offset=[2 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
         self.adm = ADM(self.farm1, (self.obs_per_turbine-3)//2)
-        self.adm.total_timesteps = params["params"]["run_steps"] + self.adm.init_timesteps
+        self.adm.total_timesteps = params["run_steps"] + self.adm.init_timesteps
 
         self.dummy_update = dummy_update  # If True, perform a dummy update for testing
         if not self.dummy_update:
@@ -77,18 +92,10 @@ class TurbEnv(EnvBase):
         alpha = tensordict.get(("agents", "alpha"))
         # u = tensordict["action"].squeeze(-1)
         u = action
-        u = u.clamp(-tensordict["params", "max_yaw_speed"], tensordict["params", "max_yaw_speed"])
-        dt = tensordict["params", "dt"]
+        u = u.clamp(-self.max_speed, self.max_speed)
         
-        new_alpha = alpha + u * dt
-        new_alpha = new_alpha.clamp(-tensordict["params", "max_yaw_angle"], tensordict["params", "max_yaw_angle"])
-
-        # What is this code for? u is used before this
-        for i in range(len(new_alpha)):
-            if new_alpha[i] == tensordict["params", "max_yaw_angle"]:
-                u[i] = u[i].clamp(-tensordict["params", "max_yaw_speed"], 0)
-            elif new_alpha[i] == -tensordict["params", "max_yaw_angle"]:
-                u[i] = u[i].clamp(0, tensordict["params", "max_yaw_speed"])
+        new_alpha = alpha + u * self.dt
+        new_alpha = new_alpha.clamp(-self.max_angle, self.max_angle)
 
         # update by running ADM
         if self.dummy_update:
@@ -104,7 +111,6 @@ class TurbEnv(EnvBase):
 
         source = {
             "done": done,
-            "params": tensordict["params"]
         }
         agent_tds = []
         for i in range(self.n_turbs):
@@ -114,7 +120,7 @@ class TurbEnv(EnvBase):
                     "observation": observation[..., i, :],
                     "reward": reward[..., i, :],
                 },
-                tensordict.shape,
+                ()  # tensordict.shape,
                 )
             agent_tds.append(agent_out)
 
@@ -158,7 +164,6 @@ class TurbEnv(EnvBase):
             * (high_alpha - low_alpha)
             + low_alpha
         )
-        # alpha = alpha.unsqueeze(-1)
         observation = torch.zeros((*tensordict.shape, self.n_turbs, self.obs_per_turbine), device=self.device)
 
         agent_tds = []
@@ -168,7 +173,7 @@ class TurbEnv(EnvBase):
                     "alpha": alpha[..., i, :],
                     "observation": observation[..., i, :],
                 },
-                tensordict.shape,
+                ()  #tensordict.shape,
             )
             agent_tds.append(agent_out)
 
@@ -179,20 +184,19 @@ class TurbEnv(EnvBase):
         out = TensorDict(
             {
                 "agents": agent_tds,
-                "params": tensordict["params"],
             },
             batch_size=tensordict.shape,
         )
 
         return out
 
-    def _make_agent_spec(self, td_params):
+    def _make_agent_spec(self):
         # Under the hood, this will populate self.output_spec["observation"]
         observation_spec = CompositeSpec(
                 alpha=BoundedTensorSpec(
-                    low=-td_params["params", "max_yaw_angle"],
-                    high=td_params["params", "max_yaw_angle"],
-                    shape=(*self.batch_size,),
+                    low=-self.max_angle,
+                    high=self.max_angle,
+                    shape=(*self.batch_size, 1),
                     dtype=torch.float32,
                     device=self.device
                 ),
@@ -203,32 +207,32 @@ class TurbEnv(EnvBase):
                 ),
                 # we need to add the "params" to the observation specs, as we want
                 # to pass it at each step during a rollout
-                params=self.make_composite_from_td(td_params["params"]),
+                # params=self.make_composite_from_td(td_params["params"]),
                 shape=(),
                 device=self.device
                 )
         # action-spec will be automatically wrapped in input_spec when
         # `self.action_spec = spec` will be called supported
         action_spec = BoundedTensorSpec(
-                low=-td_params["params", "max_yaw_speed"],
-                high=td_params["params", "max_yaw_speed"],
+            low=-self.max_speed,
+            high=self.max_speed,
             shape=(*self.batch_size, 1),
             dtype=torch.float32,
             device=self.device
         )
         reward_spec = UnboundedContinuousTensorSpec(
-            shape=(*td_params.shape, 1),
+            shape=(*self.batch_size, 1),
             dtype=torch.float32,
             device=self.device
         )
         return action_spec, reward_spec, observation_spec
 
-    def _make_spec(self, td_params):
+    def _make_spec(self):
         action_specs = []
         observation_specs = []
         reward_specs = []
         for i in range(self.n_turbs):
-            agent_i_action_spec, agent_i_reward_spec, agent_i_observation_spec = self._make_agent_spec(td_params)
+            agent_i_action_spec, agent_i_reward_spec, agent_i_observation_spec = self._make_agent_spec()
             action_specs.append(agent_i_action_spec)
             reward_specs.append(agent_i_reward_spec)
             observation_specs.append(agent_i_observation_spec)
@@ -248,10 +252,9 @@ class TurbEnv(EnvBase):
         )
         self.observation_spec = CompositeSpec(
             {
-                "agents": CompositeSpec(
-                    {"observation": torch.stack(observation_specs, dim=0)}, shape=(self.n_turbs,)
-                )
-            }
+                "agents": torch.stack(observation_specs, dim=0),
+            },
+            #shape=(self.n_turbs,)
         )
         # since the environment is stateless, we expect the previous output as input.
         # For this, EnvBase expects some state_spec to be available
@@ -286,7 +289,7 @@ class TurbEnv(EnvBase):
             batch_size = []
         td = TensorDict(
             {
-                "params": TensorDict(
+                ("agents", "params"): TensorDict(
                     {
                         "n_turbines": 3,
                         "probes_per_turbine": 25,
@@ -311,7 +314,7 @@ if __name__ == '__main__':
 
     test_env = TurbEnv(save=True, dummy_update=True)
 
-    #check_env_specs(test_env)
+    # check_env_specs(test_env)
 
     print("action_keys:", test_env.action_keys)
     print("reward_keys:", test_env.reward_keys)
