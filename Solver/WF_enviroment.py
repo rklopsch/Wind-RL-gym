@@ -42,7 +42,6 @@ class TurbEnv(EnvBase):
         self.save = save
         self.obs_per_turbine = params["params"]["probes_per_turbine"].item() * 2 + 3
         self.n_turbs = params["params"]["n_turbines"].item()
-        self.n_agents = params["params"]["n_turbines"].item()
         self.total_obs = self.obs_per_turbine * self.n_turbs
 
         self._make_spec(params)
@@ -67,6 +66,10 @@ class TurbEnv(EnvBase):
             self.adm.restart()
 
     def _step(self, tensordict):
+        # All tensors are expected to be of shape [*batch_size, num_turbs, X]
+        # where X = num_obs_per_turbine for observation
+        #       X = num_actions_per_turbine for action
+        #       X = 1 for reward
 
         action = tensordict.get(("agents", "action"))
         print(action)
@@ -89,27 +92,27 @@ class TurbEnv(EnvBase):
 
         # update by running ADM
         if self.dummy_update:
-            power = torch.ones((*tensordict.shape, 1), device=self.device)
-            observation = torch.zeros((*tensordict.shape, self.total_obs), device=self.device)
+            power = torch.ones((*tensordict.shape, self.n_turbs, 1), device=self.device)
+            observation = torch.zeros((*tensordict.shape, self.n_turbs, self.obs_per_turbine), device=self.device)
         else:
             power, observation = (self.adm.advance(new_alpha.cpu(), save=self.save))
             power = power.to(self.device)
             observation = observation.to(self.device)
 
-        reward = power.view(*tensordict.shape, 1)  # normalise?
-        done = torch.zeros_like(reward, dtype=torch.bool)
+        reward = power.view(*tensordict.shape, self.n_turbs, 1)
+        done = torch.zeros((*tensordict.shape, 1), dtype=torch.bool)
 
         source = {
             "done": done,
             "params": tensordict["params"]
         }
         agent_tds = []
-        for i in range(self.n_agents):
+        for i in range(self.n_turbs):
             agent_out = TensorDict(
                 {
                     "alpha": new_alpha[i],
-                    "observation": observation[i],
-                    "reward": reward,
+                    "observation": observation[..., i, :],
+                    "reward": reward[..., i, :],
                 },
                 tensordict.shape,
                 )
@@ -151,19 +154,19 @@ class TurbEnv(EnvBase):
         # of simulators run simultaneously. In other contexts, the initial
         # random state's shape will depend upon the environment batch-size instead.
         alpha = (
-            torch.rand((*tensordict.shape, self.n_turbs), generator=self.rng, device=self.device)
+            torch.rand((*tensordict.shape, self.n_turbs, 1), generator=self.rng, device=self.device)
             * (high_alpha - low_alpha)
             + low_alpha
         )
-        observation = torch.zeros((*tensordict.shape, self.total_obs), device=self.device)
+        # alpha = alpha.unsqueeze(-1)
+        observation = torch.zeros((*tensordict.shape, self.n_turbs, self.obs_per_turbine), device=self.device)
 
-        td_out = {"params": tensordict["params"]}
         agent_tds = []
-        for i in range(self.n_agents):
+        for i in range(self.n_turbs):
             agent_out = TensorDict(
                 {
-                    "alpha": alpha[i],
-                    "observation": observation[i],
+                    "alpha": alpha[..., i, :],
+                    "observation": observation[..., i, :],
                 },
                 tensordict.shape,
             )
@@ -209,7 +212,7 @@ class TurbEnv(EnvBase):
         action_spec = BoundedTensorSpec(
                 low=-td_params["params", "max_yaw_speed"],
                 high=td_params["params", "max_yaw_speed"],
-            shape=(*self.batch_size,),
+            shape=(*self.batch_size, 1),
             dtype=torch.float32,
             device=self.device
         )
@@ -224,7 +227,7 @@ class TurbEnv(EnvBase):
         action_specs = []
         observation_specs = []
         reward_specs = []
-        for i in range(self.n_agents):
+        for i in range(self.n_turbs):
             agent_i_action_spec, agent_i_reward_spec, agent_i_observation_spec = self._make_agent_spec(td_params)
             action_specs.append(agent_i_action_spec)
             reward_specs.append(agent_i_reward_spec)
@@ -232,21 +235,21 @@ class TurbEnv(EnvBase):
         self.action_spec = CompositeSpec(
             {
                 "agents": CompositeSpec(
-                    {"action": torch.stack(action_specs, dim=0)}, shape=(self.n_agents,)
+                    {"action": torch.stack(action_specs, dim=0)}, shape=(self.n_turbs,)
                 )
             }
         )
         self.reward_spec = CompositeSpec(
             {
                 "agents": CompositeSpec(
-                    {"reward": torch.stack(reward_specs, dim=0)}, shape=(self.n_agents,)
+                    {"reward": torch.stack(reward_specs, dim=0)}, shape=(self.n_turbs,)
                 )
             }
         )
         self.observation_spec = CompositeSpec(
             {
                 "agents": CompositeSpec(
-                    {"observation": torch.stack(observation_specs, dim=0)}, shape=(self.n_agents,)
+                    {"observation": torch.stack(observation_specs, dim=0)}, shape=(self.n_turbs,)
                 )
             }
         )
@@ -307,6 +310,9 @@ class TurbEnv(EnvBase):
 if __name__ == '__main__':
 
     test_env = TurbEnv(save=True, dummy_update=True)
+
+    #check_env_specs(test_env)
+
     print("action_keys:", test_env.action_keys)
     print("reward_keys:", test_env.reward_keys)
     print("observation_keys:", test_env.observation_spec)
