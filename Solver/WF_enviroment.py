@@ -31,7 +31,8 @@ class TurbEnv(EnvBase):
                  params=None,
                  seed=None,
                  save=False,
-                 device="cpu"):
+                 device="cpu",
+                 dummy_update=False):
 
         if params is None:
             params = self.gen_params().to(device)
@@ -59,11 +60,11 @@ class TurbEnv(EnvBase):
         self.adm = ADM(self.farm1, (self.obs_per_turbine-3)//2)
         self.adm.total_timesteps = params["params"]["run_steps"] + self.adm.init_timesteps
 
-        self.adm.run_precursor()
-        self.adm.initialise_flow(self.adm.init_timesteps)
-        self.adm.restart()
-
-        self.dummy_update = False  # If True, perform a dummy update for testing
+        self.dummy_update = dummy_update  # If True, perform a dummy update for testing
+        if not self.dummy_update:
+            self.adm.run_precursor()
+            self.adm.initialise_flow(self.adm.init_timesteps)
+            self.adm.restart()
 
     def _step(self, tensordict):
 
@@ -131,7 +132,8 @@ class TurbEnv(EnvBase):
     def _reset(self, tensordict):
         print('\n\nRESETTING ENVIROMENT\n')
 
-        self.adm.restart()
+        if not self.dummy_update:
+            self.adm.restart()
 
         if tensordict is None or tensordict.is_empty():
             # if no tensordict is passed, we generate a single set of hyperparameters
@@ -294,7 +296,7 @@ class TurbEnv(EnvBase):
 
 if __name__ == '__main__':
 
-    test_env = TurbEnv(save=True)
+    test_env = TurbEnv(save=True, dummy_update=True)
     print("action_keys:", test_env.action_keys)
     print("reward_keys:", test_env.reward_keys)
     print("observation_keys:", test_env.observation_spec)
