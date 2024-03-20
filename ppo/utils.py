@@ -120,7 +120,7 @@ def make_ppo_models(params):
 
 
 def make_ma_ppo_models_state(proof_environment):
-   # Policy
+    # Policy
     actor_net = torch.nn.Sequential(
         MultiAgentMLP(
             n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1],

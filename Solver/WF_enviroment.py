@@ -34,10 +34,6 @@ class TurbEnv(EnvBase):
                  device="cpu",
                  dummy_update=False):
 
-        if params is None:
-            params = self.gen_params().to(device)
-            params = params["agents"]
-
         params = {
             "n_turbines": 3,
             "probes_per_turbine": 25,
@@ -116,7 +112,7 @@ class TurbEnv(EnvBase):
         for i in range(self.n_turbs):
             agent_out = TensorDict(
                 {
-                    "alpha": new_alpha[i],
+                    "alpha": new_alpha[..., i, :],
                     "observation": observation[..., i, :],
                     "reward": reward[..., i, :],
                 },
@@ -314,7 +310,7 @@ if __name__ == '__main__':
 
     test_env = TurbEnv(save=True, dummy_update=True)
 
-    # check_env_specs(test_env)
+    check_env_specs(test_env)
 
     print("action_keys:", test_env.action_keys)
     print("reward_keys:", test_env.reward_keys)
