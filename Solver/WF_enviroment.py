@@ -154,14 +154,31 @@ class TurbEnv(EnvBase):
         )
         observation = torch.zeros((*tensordict.shape, self.total_obs), device=self.device)
 
+        td_out = {"params": tensordict["params"]}
+        agent_tds = []
+        for i in range(self.n_agents):
+            agent_out = TensorDict(
+                {
+                    "alpha": alpha[i],
+                    "observation": observation[i],
+                },
+                tensordict.shape,
+            )
+            agent_tds.append(agent_out)
+
+        # agent_tds = torch.stack(agent_tds, dim=1)
+        agent_tds = torch.stack(agent_tds)
+        agent_tds = agent_tds.to_tensordict()
+
         out = TensorDict(
             {
-                "alpha": alpha,
-                "observation": observation,
+                "agents": agent_tds,
                 "params": tensordict["params"],
             },
             batch_size=tensordict.shape,
         )
+
+
         return out
 
     def _make_agent_spec(self, td_params):
