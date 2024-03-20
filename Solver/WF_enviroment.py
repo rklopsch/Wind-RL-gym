@@ -71,7 +71,7 @@ class TurbEnv(EnvBase):
         action = tensordict.get(("agents", "action"))
         print(action)
         # action = action.unbind(dim=1)
-        alpha = tensordict["alpha"]
+        alpha = tensordict.get(("agents", "alpha"))
         # u = tensordict["action"].squeeze(-1)
         u = action
         u = u.clamp(-tensordict["params", "max_yaw_speed"], tensordict["params", "max_yaw_speed"])
@@ -79,6 +79,8 @@ class TurbEnv(EnvBase):
         
         new_alpha = alpha + u * dt
         new_alpha = new_alpha.clamp(-tensordict["params", "max_yaw_angle"], tensordict["params", "max_yaw_angle"])
+
+        # What is this code for? u is used before this
         for i in range(len(new_alpha)):
             if new_alpha[i] == tensordict["params", "max_yaw_angle"]:
                 u[i] = u[i].clamp(-tensordict["params", "max_yaw_speed"], 0)
@@ -97,9 +99,10 @@ class TurbEnv(EnvBase):
         reward = power.view(*tensordict.shape, 1)  # normalise?
         done = torch.zeros_like(reward, dtype=torch.bool)
 
-        source = {"done": done,
-                  "params": tensordict["params"]
-                  }
+        source = {
+            "done": done,
+            "params": tensordict["params"]
+        }
         agent_tds = []
         for i in range(self.n_agents):
             agent_out = TensorDict(
@@ -177,7 +180,6 @@ class TurbEnv(EnvBase):
             },
             batch_size=tensordict.shape,
         )
-
 
         return out
 
@@ -310,7 +312,7 @@ if __name__ == '__main__':
     print("observation_keys:", test_env.observation_spec)
     print("done_keys:", test_env.done_keys)
     rollout = test_env.rollout(max_steps=3)
-    print(f"alpha = {rollout['alpha'][:, 1].mean()}")
+    print(f"alpha = {rollout[('agents', 'alpha')][:, 1].mean()}")
     # print(f"Reward = {rollout['next', 'episode_reward'][rollout['next', 'done']][:, 1].mean()}")
 
     print("\nTesting environment rollout...")
