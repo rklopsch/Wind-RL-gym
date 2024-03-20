@@ -125,7 +125,7 @@ def make_ma_ppo_models_state(proof_environment):
         MultiAgentMLP(
             n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1],
             n_agent_outputs=2 * proof_environment.action_spec.shape[-1],
-            n_agents=proof_environment.n_agents,
+            n_agents=proof_environment.n_turbs,
             centralised=False,
             share_params=True,
             # device=cfg.train.device,
@@ -160,7 +160,7 @@ def make_ma_ppo_models_state(proof_environment):
     module = MultiAgentMLP(
         n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1],
         n_agent_outputs=1,
-        n_agents=proof_environment.n_agents,
+        n_agents=proof_environment.n_turbs,
         centralised=True,
         share_params=True,
         # device=cfg.train.device,
