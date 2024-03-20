@@ -7,6 +7,7 @@ import torch.nn
 import torch.optim
 
 from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule
+from tensordict.nn.distributions import NormalParamExtractor
 from torchrl.data import CompositeSpec
 from torchrl.envs import (
     ClipTransform,
@@ -18,6 +19,7 @@ from torchrl.envs import (
     VecNorm,
 )
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
+from torchrl.modules.models.multiagent import MultiAgentMLP
 from Solver.WF_enviroment import TurbEnv
 
 # ====================================================================
@@ -114,6 +116,69 @@ def make_ppo_models_state(proof_environment):
 def make_ppo_models(params):
     proof_environment = make_env(params, device="cpu")
     actor, critic = make_ppo_models_state(proof_environment)
+    return actor, critic
+
+
+def make_ma_ppo_models_state(proof_environment):
+   # Policy
+    actor_net = torch.nn.Sequential(
+        MultiAgentMLP(
+            n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1],
+            n_agent_outputs=2 * proof_environment.action_spec.shape[-1],
+            n_agents=proof_environment.n_agents,
+            centralised=False,
+            share_params=True,
+            # device=cfg.train.device,
+            depth=2,
+            num_cells=256,
+            activation_class=torch.nn.Tanh,
+        ),
+        NormalParamExtractor(),
+    )
+    policy_module = TensorDictModule(
+        actor_net,
+        in_keys=[("agents", "observation")],
+        out_keys=[("agents", "loc"), ("agents", "scale")],
+    )
+    policy = ProbabilisticActor(
+        module=policy_module,
+        # spec=proof_environment.unbatched_action_spec,
+        spec=proof_environment.action_spec,
+        in_keys=[("agents", "loc"), ("agents", "scale")],
+        out_keys=[proof_environment.action_key],
+        distribution_class=TanhNormal,
+        distribution_kwargs={
+            # "min": proof_environment.unbatched_action_spec[("agents", "action")].space.low,
+            "min": proof_environment.action_spec.space.low,
+            # "max": proof_environment.unbatched_action_spec[("agents", "action")].space.high,
+            "max": proof_environment.action_spec.space.high,
+        },
+        return_log_prob=True,
+    )
+
+    # Critic
+    module = MultiAgentMLP(
+        n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1],
+        n_agent_outputs=1,
+        n_agents=proof_environment.n_agents,
+        centralised=True,
+        share_params=True,
+        # device=cfg.train.device,
+        depth=2,
+        num_cells=256,
+        activation_class=torch.nn.Tanh,
+    )
+    value_module = ValueOperator(
+        module=module,
+        in_keys=[("agents", "observation")],
+    )
+
+    return policy_module, value_module
+
+
+def make_ma_ppo_models(params):
+    proof_environment = make_env(params, device="cpu")
+    actor, critic = make_ma_ppo_models_state(proof_environment)
     return actor, critic
 
 

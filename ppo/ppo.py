@@ -32,7 +32,7 @@ def main(cfg: "DictConfig"):
     from torchrl.objectives import ClipPPOLoss
     from torchrl.objectives.value.advantages import GAE
     from torchrl.record.loggers import generate_exp_name, get_logger
-    from utils import eval_model, make_env, make_ppo_models
+    from utils import eval_model, make_env, make_ppo_models, make_ma_ppo_models
 
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     print(f'Running on {device}')
@@ -69,7 +69,7 @@ def main(cfg: "DictConfig"):
     )
 
     # Create models (check utils.py)
-    actor, critic = make_ppo_models(params)
+    actor, critic = make_ma_ppo_models(params)
     actor, critic = actor.to(device), critic.to(device)
 
     # Create collector
