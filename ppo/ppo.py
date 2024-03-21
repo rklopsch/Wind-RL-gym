@@ -49,7 +49,7 @@ def main(cfg: "DictConfig"):
     mini_batch_size = cfg.loss.mini_batch_size // frame_skip
     test_interval = cfg.logger.test_interval // frame_skip
 
-    dummy_update = True
+    dummy_update = cfg.env.dummy_update
 
     params = TensorDict(
         {
