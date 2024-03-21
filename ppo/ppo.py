@@ -51,24 +51,16 @@ def main(cfg: "DictConfig"):
 
     dummy_update = cfg.env.dummy_update
 
-    params = TensorDict(
-        {
-            "params": TensorDict(
-                {
-                    "n_turbines": cfg.env.turbines,
-                    "probes_per_turbine": cfg.env.probes_per_turbine,
-                    "turbine_diameter": cfg.env.turbine_diameter,
-                    "turbine_spacing": cfg.env.turbine_spacing,
-                    "max_yaw_speed": cfg.env.max_yaw_speed,
-                    "max_yaw_angle": cfg.env.max_yaw_angle,
-                    "dt": cfg.env.steps_per_frame * 0.2,
-                    "run_steps": cfg.collector.total_frames,
-                },
-                [],
-            )
-        },
-        [],
-    )
+    params = {
+        "n_turbines": cfg.env.turbines,
+        "probes_per_turbine": cfg.env.probes_per_turbine,
+        "turbine_diameter": cfg.env.turbine_diameter,
+        "turbine_spacing": cfg.env.turbine_spacing,
+        "max_yaw_speed": cfg.env.max_yaw_speed,
+        "max_yaw_angle": cfg.env.max_yaw_angle,
+        "dt": cfg.env.steps_per_frame * 0.2,
+        "run_steps": cfg.collector.total_frames,
+    }
 
     # Create models (check utils.py)
     actor, critic = make_ma_ppo_models(params, dummy_update=dummy_update)
