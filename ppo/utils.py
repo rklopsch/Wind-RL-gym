@@ -173,7 +173,7 @@ def make_ma_ppo_models_state(proof_environment):
         in_keys=[("agents", "observation")],
     )
 
-    return policy_module, value_module
+    return policy, value_module
 
 
 def make_ma_ppo_models(params, dummy_update):
