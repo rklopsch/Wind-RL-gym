@@ -185,6 +185,33 @@ def main(cfg: "DictConfig"):
         collected_frames += frames_in_batch * frame_skip
         pbar.update(data.numel())
 
+        data.set(
+            ("next", "agents", "done"),
+            data.get(("next", "done"))
+            .unsqueeze(-1)
+            .expand(data.get_item_shape(("next", test_env.reward_key))),
+        )
+        data.set(
+            ("next", "agents", "terminated"),
+            data.get(("next", "terminated"))
+            .unsqueeze(-1)
+            .expand(data.get_item_shape(("next", test_env.reward_key))),
+        )
+        data.set(
+            ("next", "done"),
+            data.get(("next", "done"))
+            .unsqueeze(-1)
+            .expand(data.get_item_shape(("next", test_env.reward_key))),
+        )
+        data.set(
+            ("next", "terminated"),
+            data.get(("next", "terminated"))
+            .unsqueeze(-1)
+            .expand(data.get_item_shape(("next", test_env.reward_key))),
+        )
+        # We need to expand the done and terminated to match the reward shape (this is expected by the value estimator)
+
+        """
         # Get training rewards and episode lengths
         episode_rewards = data["next", "agents", "episode_reward"].sum(-2)
         episode_rewards = episode_rewards[data["next", "done"]]
@@ -197,6 +224,7 @@ def main(cfg: "DictConfig"):
                     / len(episode_length),
                 }
             )
+        """
 
         training_start = time.time()
         for j in range(cfg_loss_ppo_epochs):

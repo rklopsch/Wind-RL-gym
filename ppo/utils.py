@@ -154,6 +154,7 @@ def make_ma_ppo_models_state(proof_environment):
             "max": proof_environment.action_spec.space.high,
         },
         return_log_prob=True,
+        log_prob_key=("agents", "sample_log_prob"),
     )
 
     # Critic
