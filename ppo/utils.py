@@ -205,12 +205,12 @@ def eval_model(actor, test_env, num_episodes=3, episode_length=1000):
             break_when_any_done=False,
             max_steps=episode_length,
         )
-        reward_mean = td_test["next", "reward"].mean().reshape(1)
-        reward_stdv = td_test["next", "reward"].std().reshape(1)
-        alpha_1_mean = td_test['alpha'][:, 0].mean().reshape(1)
-        alpha_2_mean = td_test['alpha'][:, 1].mean().reshape(1)
-        alpha_1_stdv = td_test['alpha'][:, 0].std().reshape(1)
-        alpha_2_stdv = td_test['alpha'][:, 1].std().reshape(1)
+        reward_mean = td_test["next", "agents", "reward"].mean().reshape(1)
+        reward_stdv = td_test["next", "agents", "reward"].std().reshape(1)
+        alpha_1_mean = td_test["agents", 'alpha'][:, 0].mean().reshape(1)
+        alpha_2_mean = td_test["agents", 'alpha'][:, 1].mean().reshape(1)
+        alpha_1_stdv = td_test["agents", 'alpha'][:, 0].std().reshape(1)
+        alpha_2_stdv = td_test["agents", 'alpha'][:, 1].std().reshape(1)
 
         test_rewards_mean.append(reward_mean.cpu())
         test_rewards_stdv.append(reward_stdv.cpu())
