@@ -38,8 +38,6 @@ def main(cfg: "DictConfig"):
     print(f'Running on {device}')
     print(f'cuda version:{torch.version.cuda}')
 
-    results_dir = os.path.join('./RESULTS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    os.makedirs(results_dir, exist_ok=True)
 
     # Correct for frame_skip
     frame_skip = cfg.collector.frame_skip
@@ -50,6 +48,10 @@ def main(cfg: "DictConfig"):
     test_interval = cfg.logger.test_interval // frame_skip
 
     dummy_update = cfg.env.dummy_update
+
+    if not dummy_update:
+        results_dir = os.path.join('./RESULTS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+        os.makedirs(results_dir, exist_ok=True)
 
     params = {
         "n_turbines": cfg.env.turbines,
@@ -311,7 +313,8 @@ def main(cfg: "DictConfig"):
                     }
                 )
                 actor.train()
-                shutil.move('./Solver/ADM/TESTING/data', os.path.join(results_dir, f'TEST_{test_number}'))
+                if not dummy_update:
+                    shutil.move('./Solver/ADM/TESTING/data', os.path.join(results_dir, f'TEST_{test_number}'))
 
         wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()
