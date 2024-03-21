@@ -171,6 +171,7 @@ def make_ma_ppo_models_state(proof_environment):
     value_module = ValueOperator(
         module=module,
         in_keys=[("agents", "observation")],
+        out_keys=[("agents", "state_value")]
     )
 
     return policy, value_module

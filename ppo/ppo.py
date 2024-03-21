@@ -29,7 +29,7 @@ def main(cfg: "DictConfig"):
     from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
     from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
     from torchrl.envs import ExplorationType, set_exploration_type
-    from torchrl.objectives import ClipPPOLoss
+    from torchrl.objectives import ClipPPOLoss, ValueEstimators
     from torchrl.objectives.value.advantages import GAE
     from torchrl.record.loggers import generate_exp_name, get_logger
     from utils import eval_model, make_env, make_ppo_models, make_ma_ppo_models
@@ -93,14 +93,11 @@ def main(cfg: "DictConfig"):
         batch_size=mini_batch_size,
     )
 
-    # Create loss and adv modules
-    adv_module = GAE(
-        gamma=cfg.loss.gamma,
-        lmbda=cfg.loss.gae_lambda,
-        value_network=critic,
-        average_gae=False,
-    )
+    # Create test environment
+    test_env = make_env(params, save=True, device=device, dummy_update=dummy_update)
+    test_env.eval()
 
+    # Create loss and adv modules
     loss_module = ClipPPOLoss(
         actor=actor,
         critic=critic,
@@ -108,7 +105,36 @@ def main(cfg: "DictConfig"):
         loss_critic_type=cfg.loss.loss_critic_type,
         entropy_coef=cfg.loss.entropy_coef,
         critic_coef=cfg.loss.critic_coef,
-        normalize_advantage=True,
+        normalize_advantage=False,
+    )
+    loss_module.set_keys(  # We have to tell the loss where to find the keys
+        reward=test_env.reward_key,
+        action=test_env.action_key,
+        sample_log_prob=("agents", "sample_log_prob"),
+        value=("agents", "state_value"),
+        # These last 2 keys will be expanded to match the reward shape
+        done=("agents", "done"),
+        terminated=("agents", "terminated"),
+    )
+
+    """
+    loss_module.make_value_estimator(
+        ValueEstimators.GAE,
+        gamma=cfg.loss.gamma,
+        lmbda=cfg.loss.gae_lambda
+    )  # We build GAE
+    adv_module = loss_module.value_estimator
+    """
+
+    adv_module = GAE(
+        gamma=cfg.loss.gamma,
+        lmbda=cfg.loss.gae_lambda,
+        value_network=critic,
+        average_gae=False,
+    )
+    adv_module.set_keys(
+        value=("agents", "state_value"),
+        reward=test_env.reward_key,
     )
 
     # Create optimizers
@@ -125,10 +151,6 @@ def main(cfg: "DictConfig"):
         entity=str(cfg.logger.team_name),
         name=exp_name,
     )
-
-    # Create test environment
-    test_env = make_env(params, save=True, device=device, dummy_update=dummy_update)
-    test_env.eval()
 
     # Main loop
     collected_frames = 0
