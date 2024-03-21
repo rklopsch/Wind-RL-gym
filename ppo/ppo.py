@@ -164,7 +164,8 @@ def main(cfg: "DictConfig"):
         pbar.update(data.numel())
 
         # Get training rewards and episode lengths
-        episode_rewards = data["next", "episode_reward"][data["next", "done"]]
+        episode_rewards = data["next", "agents", "episode_reward"].sum(-2)
+        episode_rewards = episode_rewards[data["next", "done"]]
         if len(episode_rewards) > 0:
             episode_length = data["next", "step_count"][data["next", "done"]]
             log_info.update(
