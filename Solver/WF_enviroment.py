@@ -34,16 +34,8 @@ class TurbEnv(EnvBase):
                  device="cpu",
                  dummy_update=False):
 
-        params = {
-            "n_turbines": 3,
-            "probes_per_turbine": 25,
-            "turbine_diameter": 126,
-            "turbine_spacing": 7,
-            "max_yaw_speed": 0.25,
-            "max_yaw_angle": 40,
-            "dt": 10,
-            "run_steps": 10,
-        }
+        if not params:
+            params = self.gen_params()
 
         super().__init__(device=device, batch_size=[])
 
@@ -143,12 +135,6 @@ class TurbEnv(EnvBase):
         if not self.dummy_update:
             self.adm.restart()
 
-        if tensordict is None or tensordict.is_empty():
-            # if no tensordict is passed, we generate a single set of hyperparameters
-            # Otherwise, we assume that the input tensordict contains all the relevant
-            # parameters to get started.
-            tensordict = self.gen_params(batch_size=self.batch_size).to(self.device)
-
         high_alpha = torch.tensor(np.pi, device=self.device)
         low_alpha = -high_alpha
 
@@ -156,11 +142,11 @@ class TurbEnv(EnvBase):
         # of simulators run simultaneously. In other contexts, the initial
         # random state's shape will depend upon the environment batch-size instead.
         alpha = (
-            torch.rand((*tensordict.shape, self.n_turbs, 1), generator=self.rng, device=self.device)
+            torch.rand((*self.batch_size, self.n_turbs, 1), generator=self.rng, device=self.device)
             * (high_alpha - low_alpha)
             + low_alpha
         )
-        observation = torch.zeros((*tensordict.shape, self.n_turbs, self.obs_per_turbine), device=self.device)
+        observation = torch.zeros((*self.batch_size, self.n_turbs, self.obs_per_turbine), device=self.device)
 
         agent_tds = []
         for i in range(self.n_turbs):
@@ -169,7 +155,7 @@ class TurbEnv(EnvBase):
                     "alpha": alpha[..., i, :],
                     "observation": observation[..., i, :],
                 },
-                ()  #tensordict.shape,
+                ()  #self.batch_size,
             )
             agent_tds.append(agent_out)
 
@@ -181,7 +167,7 @@ class TurbEnv(EnvBase):
             {
                 "agents": agent_tds,
             },
-            batch_size=tensordict.shape,
+            batch_size=self.batch_size,
         )
 
         return out
@@ -279,31 +265,19 @@ class TurbEnv(EnvBase):
         self.rng = rng
 
     @staticmethod
-    def gen_params(batch_size=None) -> TensorDictBase:
-        """Returns a tensordict containing the physical parameters such as speed and angle limits."""
-        if batch_size is None:
-            batch_size = []
-        td = TensorDict(
-            {
-                ("agents", "params"): TensorDict(
-                    {
-                        "n_turbines": 3,
-                        "probes_per_turbine": 25,
-                        "turbine_diameter": 126,
-                        "turbine_spacing": 7,
-                        "max_yaw_speed": 0.25,
-                        "max_yaw_angle": 40,
-                        "dt": 10,
-                        "run_steps":10,
-                    },
-                    [],
-                )
-            },
-            [],
-        )
-        if batch_size:
-            td = td.expand(batch_size).contiguous()
-        return td
+    def gen_params() -> TensorDictBase:
+        """Returns a dict containing the physical parameters such as speed and angle limits."""
+        params = {
+            "n_turbines": 3,
+            "probes_per_turbine": 25,
+            "turbine_diameter": 126,
+            "turbine_spacing": 7,
+            "max_yaw_speed": 0.25,
+            "max_yaw_angle": 40,
+            "dt": 10,
+            "run_steps": 10,
+        }
+        return params
 
 
 if __name__ == '__main__':
