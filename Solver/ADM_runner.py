@@ -176,7 +176,9 @@ class ADM:
             turbine_power = turbine_power[-iterations:-1].mean()
             turbine_velocity = turbine_velocity[-iterations:-1].mean()
             farm_power += turbine_power
-            turbine_obs[iturb][:3] = [turbine_velocity, turbine_power, yaw[iturb]]
+            turbine_obs[iturb][0] = turbine_velocity
+            turbine_obs[iturb][1] = turbine_power
+            turbine_obs[iturb][2] = yaw[iturb]
             # Read probes
             for iobs in range(self.probes_per_turbine):
                 fname = os.path.join(self.run_dir, f'probes/probe{iobs*(iturb+1)+1:04}')
