@@ -120,7 +120,7 @@ class TurbEnv(EnvBase):
         out = TensorDict(
             source=source,
             batch_size=self.batch_size,
-            # device=self.device,
+            device=self.device,
         )
 
         return out
