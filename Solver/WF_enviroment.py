@@ -59,7 +59,7 @@ class TurbEnv(EnvBase):
                           self.n_turbs, Turbine(diameter, 90, yaw=0),
                           offset=[2 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
-        self.adm = ADM(self.farm1, (self.obs_per_turbine-3)//2)
+        self.adm = ADM(self.farm1, params["probes_per_turbine"])
         self.adm.total_timesteps = params["run_steps"] + self.adm.init_timesteps
 
         self.dummy_update = dummy_update  # If True, perform a dummy update for testing
