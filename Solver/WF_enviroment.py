@@ -131,8 +131,8 @@ class TurbEnv(EnvBase):
         if not self.dummy_update:
             self.adm.restart()
 
-        high_alpha = torch.tensor(np.pi, device=self.device)
-        low_alpha = -high_alpha
+        high_alpha = self.max_angle
+        low_alpha = -self.max_angle
 
         # for non batch-locked envs, the input tensordict shape dictates the number
         # of simulators run simultaneously. In other contexts, the initial
