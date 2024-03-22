@@ -188,7 +188,7 @@ class ADM:
                 turbine_obs[iturb][iobs*2+3:(iobs+1)*2+3] = [probe_u, probe_w]
 
         print(f'Farm Power = {farm_power}')
-        return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32).flatten()
+        return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32)
 
     def restart(self, case_name=None):
         if case_name is not None:

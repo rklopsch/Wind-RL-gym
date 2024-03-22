@@ -94,7 +94,7 @@ class TurbEnv(EnvBase):
             power = power.to(self.device)
             observation = observation.to(self.device)
 
-        reward = power.view(*tensordict.shape, self.n_turbs, 1)
+        reward = power.expand(*tensordict.shape, self.n_turbs, 1)
         done = torch.zeros((*tensordict.shape, 1), dtype=torch.bool)
 
         source = {
