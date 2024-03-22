@@ -7,6 +7,7 @@ import torch.nn
 import torch.optim
 
 from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule
+from tensordict.nn.distributions import NormalParamExtractor
 from torchrl.data import CompositeSpec
 from torchrl.envs import (
     ClipTransform,
@@ -18,6 +19,7 @@ from torchrl.envs import (
     VecNorm,
 )
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
+from torchrl.modules.models.multiagent import MultiAgentMLP
 from Solver.WF_enviroment import TurbEnv
 
 # ====================================================================
@@ -25,8 +27,8 @@ from Solver.WF_enviroment import TurbEnv
 # --------------------------------------------------------------------
 
 
-def make_env(params, save=False, device="cpu"):
-    base_env = TurbEnv(params, save=save, device=device)
+def make_env(params, save=False, device="cpu", dummy_update=False):
+    base_env = TurbEnv(params, save=save, device=device, dummy_update=dummy_update)
     env = TransformedEnv(base_env)
     env.append_transform(RewardSum())
     return env
@@ -117,6 +119,71 @@ def make_ppo_models(params):
     return actor, critic
 
 
+def make_ma_ppo_models_state(proof_environment):
+    # Policy
+    actor_net = torch.nn.Sequential(
+        MultiAgentMLP(
+            n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1],
+            n_agent_outputs=2 * proof_environment.action_spec.shape[-1],
+            n_agents=proof_environment.n_turbs,
+            centralised=False,
+            share_params=True,
+            # device=cfg.train.device,
+            depth=2,
+            num_cells=256,
+            activation_class=torch.nn.Tanh,
+        ),
+        NormalParamExtractor(),
+    )
+    policy_module = TensorDictModule(
+        actor_net,
+        in_keys=[("agents", "observation")],
+        out_keys=[("agents", "loc"), ("agents", "scale")],
+    )
+    policy = ProbabilisticActor(
+        module=policy_module,
+        # spec=proof_environment.unbatched_action_spec,
+        spec=proof_environment.action_spec,
+        in_keys=[("agents", "loc"), ("agents", "scale")],
+        out_keys=[proof_environment.action_key],
+        distribution_class=TanhNormal,
+        distribution_kwargs={
+            # "min": proof_environment.unbatched_action_spec[("agents", "action")].space.low,
+            "min": proof_environment.action_spec.space.low,
+            # "max": proof_environment.unbatched_action_spec[("agents", "action")].space.high,
+            "max": proof_environment.action_spec.space.high,
+        },
+        return_log_prob=True,
+        log_prob_key=("agents", "sample_log_prob"),
+    )
+
+    # Critic
+    module = MultiAgentMLP(
+        n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1],
+        n_agent_outputs=1,
+        n_agents=proof_environment.n_turbs,
+        centralised=True,
+        share_params=True,
+        # device=cfg.train.device,
+        depth=2,
+        num_cells=256,
+        activation_class=torch.nn.Tanh,
+    )
+    value_module = ValueOperator(
+        module=module,
+        in_keys=[("agents", "observation")],
+        out_keys=[("agents", "state_value")]
+    )
+
+    return policy, value_module
+
+
+def make_ma_ppo_models(params, dummy_update):
+    proof_environment = make_env(params, device="cpu", dummy_update=dummy_update)
+    actor, critic = make_ma_ppo_models_state(proof_environment)
+    return actor, critic
+
+
 # ====================================================================
 # Evaluation utils
 # --------------------------------------------------------------------
@@ -138,12 +205,12 @@ def eval_model(actor, test_env, num_episodes=3, episode_length=1000):
             break_when_any_done=False,
             max_steps=episode_length,
         )
-        reward_mean = td_test["next", "reward"].mean().reshape(1)
-        reward_stdv = td_test["next", "reward"].std().reshape(1)
-        alpha_1_mean = td_test['alpha'][:, 0].mean().reshape(1)
-        alpha_2_mean = td_test['alpha'][:, 1].mean().reshape(1)
-        alpha_1_stdv = td_test['alpha'][:, 0].std().reshape(1)
-        alpha_2_stdv = td_test['alpha'][:, 1].std().reshape(1)
+        reward_mean = td_test["next", "agents", "reward"].mean().reshape(1)
+        reward_stdv = td_test["next", "agents", "reward"].std().reshape(1)
+        alpha_1_mean = td_test["agents", 'alpha'][:, 0].mean().reshape(1)
+        alpha_2_mean = td_test["agents", 'alpha'][:, 1].mean().reshape(1)
+        alpha_1_stdv = td_test["agents", 'alpha'][:, 0].std().reshape(1)
+        alpha_2_stdv = td_test["agents", 'alpha'][:, 1].std().reshape(1)
 
         test_rewards_mean.append(reward_mean.cpu())
         test_rewards_stdv.append(reward_stdv.cpu())

@@ -29,17 +29,15 @@ def main(cfg: "DictConfig"):
     from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
     from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
     from torchrl.envs import ExplorationType, set_exploration_type
-    from torchrl.objectives import ClipPPOLoss
+    from torchrl.objectives import ClipPPOLoss, ValueEstimators
     from torchrl.objectives.value.advantages import GAE
     from torchrl.record.loggers import generate_exp_name, get_logger
-    from utils import eval_model, make_env, make_ppo_models
+    from utils import eval_model, make_env, make_ppo_models, make_ma_ppo_models
 
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     print(f'Running on {device}')
     print(f'cuda version:{torch.version.cuda}')
 
-    results_dir = os.path.join('./RESULTS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    os.makedirs(results_dir, exist_ok=True)
 
     # Correct for frame_skip
     frame_skip = cfg.collector.frame_skip
@@ -49,32 +47,30 @@ def main(cfg: "DictConfig"):
     mini_batch_size = cfg.loss.mini_batch_size // frame_skip
     test_interval = cfg.logger.test_interval // frame_skip
 
-    params = TensorDict(
-        {
-            "params": TensorDict(
-                {
-                    "n_turbines": cfg.env.turbines,
-                    "probes_per_turbine": cfg.env.probes_per_turbine,
-                    "turbine_diameter": cfg.env.turbine_diameter,
-                    "turbine_spacing": cfg.env.turbine_spacing,
-                    "max_yaw_speed": cfg.env.max_yaw_speed,
-                    "max_yaw_angle": cfg.env.max_yaw_angle,
-                    "dt": cfg.env.steps_per_frame * 0.2,
-                    "run_steps": cfg.collector.total_frames,
-                },
-                [],
-            )
-        },
-        [],
-    )
+    dummy_update = cfg.env.dummy_update
+
+    if not dummy_update:
+        results_dir = os.path.join('./RESULTS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+        os.makedirs(results_dir, exist_ok=True)
+
+    params = {
+        "n_turbines": cfg.env.turbines,
+        "probes_per_turbine": cfg.env.probes_per_turbine,
+        "turbine_diameter": cfg.env.turbine_diameter,
+        "turbine_spacing": cfg.env.turbine_spacing,
+        "max_yaw_speed": cfg.env.max_yaw_speed,
+        "max_yaw_angle": cfg.env.max_yaw_angle,
+        "dt": cfg.env.steps_per_frame * 0.2,
+        "run_steps": cfg.collector.total_frames,
+    }
 
     # Create models (check utils.py)
-    actor, critic = make_ppo_models(params)
+    actor, critic = make_ma_ppo_models(params, dummy_update=dummy_update)
     actor, critic = actor.to(device), critic.to(device)
 
     # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_env(params, device=device),
+        create_env_fn=make_env(params, device=device, dummy_update=dummy_update),
         policy=actor,
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
@@ -91,14 +87,11 @@ def main(cfg: "DictConfig"):
         batch_size=mini_batch_size,
     )
 
-    # Create loss and adv modules
-    adv_module = GAE(
-        gamma=cfg.loss.gamma,
-        lmbda=cfg.loss.gae_lambda,
-        value_network=critic,
-        average_gae=False,
-    )
+    # Create test environment
+    test_env = make_env(params, save=True, device=device, dummy_update=dummy_update)
+    test_env.eval()
 
+    # Create loss and adv modules
     loss_module = ClipPPOLoss(
         actor=actor,
         critic=critic,
@@ -106,7 +99,36 @@ def main(cfg: "DictConfig"):
         loss_critic_type=cfg.loss.loss_critic_type,
         entropy_coef=cfg.loss.entropy_coef,
         critic_coef=cfg.loss.critic_coef,
-        normalize_advantage=True,
+        normalize_advantage=False,
+    )
+    loss_module.set_keys(  # We have to tell the loss where to find the keys
+        reward=test_env.reward_key,
+        action=test_env.action_key,
+        sample_log_prob=("agents", "sample_log_prob"),
+        value=("agents", "state_value"),
+        # These last 2 keys will be expanded to match the reward shape
+        done=("agents", "done"),
+        terminated=("agents", "terminated"),
+    )
+
+    """
+    loss_module.make_value_estimator(
+        ValueEstimators.GAE,
+        gamma=cfg.loss.gamma,
+        lmbda=cfg.loss.gae_lambda
+    )  # We build GAE
+    adv_module = loss_module.value_estimator
+    """
+
+    adv_module = GAE(
+        gamma=cfg.loss.gamma,
+        lmbda=cfg.loss.gae_lambda,
+        value_network=critic,
+        average_gae=False,
+    )
+    adv_module.set_keys(
+        value=("agents", "state_value"),
+        reward=test_env.reward_key,
     )
 
     # Create optimizers
@@ -123,10 +145,6 @@ def main(cfg: "DictConfig"):
         entity=str(cfg.logger.team_name),
         name=exp_name,
     )
-
-    # Create test environment
-    test_env = make_env(params, save=True, device=device)
-    test_env.eval()
 
     # Main loop
     collected_frames = 0
@@ -161,8 +179,36 @@ def main(cfg: "DictConfig"):
         collected_frames += frames_in_batch * frame_skip
         pbar.update(data.numel())
 
+        data.set(
+            ("next", "agents", "done"),
+            data.get(("next", "done"))
+            .unsqueeze(-1)
+            .expand(data.get_item_shape(("next", test_env.reward_key))),
+        )
+        data.set(
+            ("next", "agents", "terminated"),
+            data.get(("next", "terminated"))
+            .unsqueeze(-1)
+            .expand(data.get_item_shape(("next", test_env.reward_key))),
+        )
+        data.set(
+            ("next", "done"),
+            data.get(("next", "done"))
+            .unsqueeze(-1)
+            .expand(data.get_item_shape(("next", test_env.reward_key))),
+        )
+        data.set(
+            ("next", "terminated"),
+            data.get(("next", "terminated"))
+            .unsqueeze(-1)
+            .expand(data.get_item_shape(("next", test_env.reward_key))),
+        )
+        # We need to expand the done and terminated to match the reward shape (this is expected by the value estimator)
+
+        """
         # Get training rewards and episode lengths
-        episode_rewards = data["next", "episode_reward"][data["next", "done"]]
+        episode_rewards = data["next", "agents", "episode_reward"].sum(-2)
+        episode_rewards = episode_rewards[data["next", "done"]]
         if len(episode_rewards) > 0:
             episode_length = data["next", "step_count"][data["next", "done"]]
             log_info.update(
@@ -172,6 +218,7 @@ def main(cfg: "DictConfig"):
                     / len(episode_length),
                 }
             )
+        """
 
         training_start = time.time()
         for j in range(cfg_loss_ppo_epochs):
@@ -266,7 +313,8 @@ def main(cfg: "DictConfig"):
                     }
                 )
                 actor.train()
-                shutil.move('./Solver/ADM/TESTING/data', os.path.join(results_dir, f'TEST_{test_number}'))
+                if not dummy_update:
+                    shutil.move('./Solver/ADM/TESTING/data', os.path.join(results_dir, f'TEST_{test_number}'))
 
         wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()
