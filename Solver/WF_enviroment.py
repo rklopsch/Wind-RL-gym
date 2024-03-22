@@ -117,10 +117,6 @@ class TurbEnv(EnvBase):
         agent_tds = agent_tds.to_tensordict()
         source.update({"agents": agent_tds})
 
-        # print(f'\n\n SOURCE \n\n {source}')
-        f = open("./source.txt", "w")
-        f.write(f'{source}')
-        f.close()
         out = TensorDict(
             source=source,
             batch_size=self.batch_size,
