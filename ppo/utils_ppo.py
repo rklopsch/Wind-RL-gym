@@ -15,9 +15,12 @@ from torchrl.envs import (
     ExplorationType,
     RewardSum,
     StepCounter,
+    InitTracker,
+    FiniteTensorDictCheck,
     TransformedEnv,
     VecNorm,
     ParallelEnv,
+    Compose,
 )
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.modules.models.multiagent import MultiAgentMLP
@@ -31,7 +34,15 @@ from Solver.WF_enviroment import TurbEnv
 def make_env(params, instance=None, save=False, device="cpu", dummy_update=False):
     base_env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
     env = TransformedEnv(base_env)
-    env.append_transform(RewardSum())
+    transform_list = [
+        InitTracker(),
+        RewardSum(),
+        FiniteTensorDictCheck(),
+        VecNorm(in_keys=["observation"], decay=0.99),
+        # VecNorm(in_keys=["reward"], decay=0.99),  # make sure to save the UNSCALED reward too!
+    ]
+    transforms = Compose(*transform_list)
+    env.append_transform(transforms)
     return env
 
 
