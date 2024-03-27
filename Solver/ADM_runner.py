@@ -44,9 +44,9 @@ class ADM:
         self.stat_timesteps = int(self.lx / self.windspeed / self.dt * (total_flowthroughs - stat_flowthroughs))
 
         if base_dir is None:
-            self.dir = os.path.join('./LES_RUNS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+            self.dir = './LES_RUNS'
         else:
-            self.dir = os.path.join('./LES_RUNS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), base_dir)
+            self.dir = os.path.join('./LES_RUNS', base_dir)
 
         self.run_dir = os.path.join(self.dir, 'Running')
         self.precursor_dir = os.path.join(self.dir, 'PrecursorABL')
