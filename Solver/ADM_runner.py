@@ -22,7 +22,7 @@ def make_odd(i):
 
 class ADM:
 
-    def __init__(self, farm, probes_per_turbine, windspeed=10, run_dir=None, device='cpu'):
+    def __init__(self, farm, probes_per_turbine, windspeed=10, base_dir=None, device='cpu'):
         self.device = torch.device(device)
         self.farm = farm
         self.windspeed = windspeed
@@ -43,14 +43,14 @@ class ADM:
         self.init_timesteps = int(self.lx / self.windspeed / self.dt * init_flowthroughs)
         self.stat_timesteps = int(self.lx / self.windspeed / self.dt * (total_flowthroughs - stat_flowthroughs))
 
-        if run_dir is None:
+        if base_dir is None:
             self.dir = os.path.join('./LES_RUNS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
         else:
-            self.dir = run_dir
+            self.dir = os.path.join('./LES_RUNS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), base_dir)
 
-        self.run_dir = './Solver/ADM/TESTING'
-        self.precursor_dir = './Solver/ADM/TESTINGprecursor'
-        self.initialise_dir = './Solver/ADM/TESTINGinitialisation'
+        self.run_dir = os.path.join(self.dir, 'Running')
+        self.precursor_dir = os.path.join(self.dir, 'PrecursorABL')
+        self.initialise_dir = os.path.join(self.dir, 'Initialisation')
 
     def run_precursor(self):
         if os.path.isdir(self.precursor_dir):
@@ -237,7 +237,7 @@ if __name__ == '__main__':
 
     farm1 = Farm(126*14, 126*4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2*126])
     farm1.grid()
-    case = ADM(farm1, 25)
+    case = ADM(farm1, 25, base_dir='test')
     # case.total_timesteps = 3000
     case.run_precursor()
     case.initialise_flow(case.init_timesteps)
