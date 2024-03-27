@@ -33,7 +33,6 @@ from Solver.WF_enviroment import TurbEnv
 
 def make_env(params, instance=None, save=False, device="cpu", dummy_update=False):
     base_env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
-    env = TransformedEnv(base_env)
     transform_list = [
         InitTracker(),
         RewardSum(),
@@ -42,7 +41,7 @@ def make_env(params, instance=None, save=False, device="cpu", dummy_update=False
         # VecNorm(in_keys=["reward"], decay=0.99),  # make sure to save the UNSCALED reward too!
     ]
     transforms = Compose(*transform_list)
-    env.append_transform(transforms)
+    env = TransformedEnv(base_env, transforms)
     return env
 
 

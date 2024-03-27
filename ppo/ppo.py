@@ -9,6 +9,9 @@ results from Schulman et al. 2017 for the on MuJoCo Environments.
 """
 import os
 import sys
+
+import torchrl.data.replay_buffers
+
 import wandb
 from datetime import datetime
 import shutil
@@ -89,6 +92,11 @@ def main(cfg: "DictConfig"):
         batch_size=mini_batch_size,
     )
 
+    # Create replay buffer to remember entire history
+    full_buffer = TensorDictReplayBuffer(
+        storage=LazyMemmapStorage(total_frames),
+    )
+
     # Create test environment
     test_env = make_env(params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
     test_env.eval()
@@ -112,15 +120,6 @@ def main(cfg: "DictConfig"):
         done=("agents", "done"),
         terminated=("agents", "terminated"),
     )
-
-    """
-    loss_module.make_value_estimator(
-        ValueEstimators.GAE,
-        gamma=cfg.loss.gamma,
-        lmbda=cfg.loss.gae_lambda
-    )  # We build GAE
-    adv_module = loss_module.value_estimator
-    """
 
     adv_module = GAE(
         gamma=cfg.loss.gamma,
@@ -230,8 +229,9 @@ def main(cfg: "DictConfig"):
                 data = adv_module(data)
             data_reshape = data.reshape(-1)
 
-            # Update the data buffer
+            # Update the data buffers
             data_buffer.extend(data_reshape)
+            full_buffer.extend(data_reshape)
 
             for k, batch in enumerate(data_buffer):
 
@@ -317,6 +317,11 @@ def main(cfg: "DictConfig"):
                 actor.train()
                 if not dummy_update:
                     shutil.move('./LES_RUNS/TestEnv/Running/data', os.path.join(results_dir, f'TEST_{test_number}'))
+
+        if (i % 10 == 0 and i > 0) or i == total_frames // frames_per_batch:
+            output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+            full_buffer.dumps(output_dir + '/replay_buffer_checkpoint')
+            print(f"Checkpointed replay buffer. (Saved at {output_dir + '/replay_buffer_checkpoint'}).")
 
         wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()
