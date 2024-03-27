@@ -17,6 +17,7 @@ from torchrl.envs import (
     StepCounter,
     TransformedEnv,
     VecNorm,
+    ParallelEnv,
 )
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.modules.models.multiagent import MultiAgentMLP
@@ -33,6 +34,18 @@ def make_env(params, instance=None, save=False, device="cpu", dummy_update=False
     env.append_transform(RewardSum())
     return env
 
+
+def make_parallel_env(params, num_envs, device="cpu", dummy_update=False):
+    # need to pass a separate instance id to each one
+    # think there should be a better way to do this than defining separate functions for each
+    # Also need to modify it to match length n_environments
+    # https://pytorch.org/rl/tutorials/torchrl_envs.html#kwargs-for-parallel-environments may be better
+
+    env = ParallelEnv(num_envs, [
+            lambda: make_env(params, instance=0, device=device, dummy_update=dummy_update),
+            lambda: make_env(params, instance=1, device=device, dummy_update=dummy_update)],)
+                      # serial_for_single=True)
+    return env
 
 # ====================================================================
 # Model utils

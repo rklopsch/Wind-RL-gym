@@ -32,7 +32,7 @@ def main(cfg: "DictConfig"):
     from torchrl.objectives import ClipPPOLoss, ValueEstimators
     from torchrl.objectives.value.advantages import GAE
     from torchrl.record.loggers import generate_exp_name, get_logger
-    from utils import eval_model, make_env, make_ppo_models, make_ma_ppo_models
+    from utils_ppo import eval_model, make_env, make_parallel_env, make_ppo_models, make_ma_ppo_models
 
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     print(f'Running on {device}')
@@ -46,6 +46,7 @@ def main(cfg: "DictConfig"):
     max_episode_length = cfg.collector.max_episode_length // frame_skip
     mini_batch_size = cfg.loss.mini_batch_size // frame_skip
     test_interval = cfg.logger.test_interval // frame_skip
+    n_environments = cfg.env.n_parallel
 
     dummy_update = cfg.env.dummy_update
 
@@ -65,12 +66,12 @@ def main(cfg: "DictConfig"):
     }
 
     # Create models (check utils.py)
-    actor, critic = make_ma_ppo_models(params, dummy_update=dummy_update)
+    actor, critic = make_ma_ppo_models(params, dummy_update=True)
     actor, critic = actor.to(device), critic.to(device)
 
     # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_env(params, device=device, dummy_update=dummy_update),
+        create_env_fn=make_parallel_env(params, 2, device=device, dummy_update=dummy_update),
         policy=actor,
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
@@ -88,7 +89,7 @@ def main(cfg: "DictConfig"):
     )
 
     # Create test environment
-    test_env = make_env(params, save=True, device=device, dummy_update=dummy_update)
+    test_env = make_env(params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
     test_env.eval()
 
     # Create loss and adv modules
