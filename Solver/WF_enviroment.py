@@ -76,7 +76,6 @@ class TurbEnv(EnvBase):
         #       X = 1 for reward
 
         action = tensordict.get(("agents", "action"))
-        print(action)
         # action = action.unbind(dim=1)
         alpha = tensordict.get(("agents", "alpha"))
         # u = tensordict["action"].squeeze(-1)
