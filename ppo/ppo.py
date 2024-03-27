@@ -69,7 +69,7 @@ def main(cfg: "DictConfig"):
         "run_steps": cfg.collector.total_frames,
     }
 
-    # Create models (check utils.py)
+    # Create models (check verbose.py)
     actor, critic = make_ma_ppo_models(params, dummy_update=True)
     actor, critic = actor.to(device), critic.to(device)
 

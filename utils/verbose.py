@@ -1,4 +1,4 @@
-# utils.py
+# verbose.py
 import os
 
 def is_verbose():

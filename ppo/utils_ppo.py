@@ -21,27 +21,42 @@ from torchrl.envs import (
     VecNorm,
     ParallelEnv,
     Compose,
+    ObservationNorm,
 )
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.modules.models.multiagent import MultiAgentMLP
 from Solver.WF_enviroment import TurbEnv
 
+
 # ====================================================================
 # Environment utils
 # --------------------------------------------------------------------
+def add_env_transforms(env, obs_norm_params=None):
+    transform_list = [
+        InitTracker(),
+        RewardSum(),
+        StepCounter(),
+        FiniteTensorDictCheck(),
+    ]
+    if obs_norm_params is None:
+        transform_list.append(VecNorm(in_keys=["observation"], decay=0.99))
+    else:
+        for in_key, loc_scale_dict in obs_norm_params.items():
+            transform_list.append(
+                ObservationNorm(
+                    loc=loc_scale_dict['loc'],
+                    scale=loc_scale_dict['scale'],
+                    in_keys=[in_key]
+                )
+            )
+
+    transforms = Compose(*transform_list)
+    return TransformedEnv(env, transforms)
 
 
 def make_env(params, instance=None, save=False, device="cpu", dummy_update=False):
     base_env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
-    transform_list = [
-        InitTracker(),
-        RewardSum(),
-        FiniteTensorDictCheck(),
-        VecNorm(in_keys=["observation"], decay=0.99),
-        # VecNorm(in_keys=["reward"], decay=0.99),  # make sure to save the UNSCALED reward too!
-    ]
-    transforms = Compose(*transform_list)
-    env = TransformedEnv(base_env, transforms)
+    env = add_env_transforms(base_env)
     return env
 
 

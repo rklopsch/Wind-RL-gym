@@ -1,13 +1,11 @@
 import torch
 import os
-from datetime import datetime
-import sys
 import subprocess
 import shutil
 import numpy as np
 import f90nml
 from Solver.farm import Turbine, Farm
-from utils import is_verbose
+from utils.verbose import is_verbose
 
 
 def make_even(i):
