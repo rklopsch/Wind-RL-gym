@@ -51,7 +51,8 @@ def main(cfg: "DictConfig"):
     dummy_update = cfg.env.dummy_update
 
     if not dummy_update:
-        results_dir = os.path.join('./RESULTS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+        hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+        results_dir = os.path.join(hydra_dir, 'RESULTS')
         os.makedirs(results_dir, exist_ok=True)
 
     params = {
@@ -315,7 +316,7 @@ def main(cfg: "DictConfig"):
                 )
                 actor.train()
                 if not dummy_update:
-                    shutil.move('./Solver/ADM/TESTING/data', os.path.join(results_dir, f'TEST_{test_number}'))
+                    shutil.move('./LES_RUNS/TestEnv/Running/data', os.path.join(results_dir, f'TEST_{test_number}'))
 
         wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()
