@@ -27,8 +27,8 @@ from Solver.WF_enviroment import TurbEnv
 # --------------------------------------------------------------------
 
 
-def make_env(params, save=False, device="cpu", dummy_update=False):
-    base_env = TurbEnv(params, save=save, device=device, dummy_update=dummy_update)
+def make_env(params, instance=None, save=False, device="cpu", dummy_update=False):
+    base_env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
     env = TransformedEnv(base_env)
     env.append_transform(RewardSum())
     return env
