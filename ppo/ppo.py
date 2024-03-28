@@ -9,38 +9,29 @@ results from Schulman et al. 2017 for the on MuJoCo Environments.
 """
 import os
 import sys
-
-import torchrl.data.replay_buffers
-
+import time
+import torch.optim
+import tqdm
+from tensordict import TensorDict
+from torchrl.collectors import SyncDataCollector
+from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
+from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
+from torchrl.envs import ExplorationType, set_exploration_type
+from torchrl.objectives import ClipPPOLoss, ValueEstimators
+from torchrl.objectives.value.advantages import GAE
+from torchrl.record.loggers import generate_exp_name, get_logger
+from utils_ppo import eval_model, make_env, make_parallel_env, make_ppo_models, make_ma_ppo_models
 import wandb
-from datetime import datetime
 import shutil
 import hydra
 
 
 @hydra.main(config_path="./", config_name="config_ppo", version_base="1.2")
 def main(cfg: "DictConfig"):
-
-    import time
     sys.path.append(os.getcwd())
-
-    import torch.optim
-    import tqdm
-
-    from tensordict import TensorDict
-    from torchrl.collectors import SyncDataCollector
-    from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
-    from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
-    from torchrl.envs import ExplorationType, set_exploration_type
-    from torchrl.objectives import ClipPPOLoss, ValueEstimators
-    from torchrl.objectives.value.advantages import GAE
-    from torchrl.record.loggers import generate_exp_name, get_logger
-    from utils_ppo import eval_model, make_env, make_parallel_env, make_ppo_models, make_ma_ppo_models
-
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     print(f'Running on {device}')
     print(f'cuda version:{torch.version.cuda}')
-
 
     # Correct for frame_skip
     frame_skip = cfg.collector.frame_skip

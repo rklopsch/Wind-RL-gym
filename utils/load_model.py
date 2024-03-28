@@ -55,8 +55,6 @@ def load_model(env_params, filepath, id, dummy_update=False):
 
 
 if __name__ == '__main__':
-
-
     # Test the save model function
     env_params = None
     env = make_env(env_params, instance='TestEnv', save=False, device='cpu', dummy_update=True)
