@@ -51,8 +51,10 @@ if __name__ == '__main__':
 
 
     # Test the save model function
-    env = make_env(None, instance='TestEnv', save=False, device='cpu', dummy_update=True)
-    actor, critic = make_ma_ppo_models(None, dummy_update=True)
+    env_params = None
+    env = make_env(env_params, instance='TestEnv', save=False, device='cpu', dummy_update=True)
+    actor, critic = make_ma_ppo_models(env_params, dummy_update=True)
+    env.reset()
     env.rollout(100)
 
     save_model(env, actor, critic, './testing/', 0)

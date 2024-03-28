@@ -18,11 +18,12 @@ from torchrl.envs import (
     InitTracker,
     FiniteTensorDictCheck,
     TransformedEnv,
-    VecNorm,
+    # VecNorm,  # currently broken
     ParallelEnv,
     Compose,
     ObservationNorm,
 )
+from utils.vecnorm_fixed import VecNorm
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.modules.models.multiagent import MultiAgentMLP
 from Solver.WF_enviroment import TurbEnv
@@ -39,7 +40,7 @@ def add_env_transforms(env, obs_norm_params=None):
         FiniteTensorDictCheck(),
     ]
     if obs_norm_params is None:
-        transform_list.append(VecNorm(in_keys=["observation"], decay=0.99))
+        transform_list.append(VecNorm(in_keys=[("agents", "observation")], decay=0.99))
     else:
         for in_key, loc_scale_dict in obs_norm_params.items():
             transform_list.append(
