@@ -62,6 +62,7 @@ if __name__ == '__main__':
     loaded_env, loaded_actor, loaded_critic = load_model(None, './testing/', 0, dummy_update=True)
 
     # Test if loaded model is identical
-    model_the_same = compare_model_parameters(model, loaded_model)
-    print(f"Loaded model and model are identical? Answer: {model_the_same} \n")
+    actor_the_same = compare_model_parameters(actor, loaded_actor)
+    critic_the_same = compare_model_parameters(critic, loaded_critic)
+    print(f"Loaded model and model are identical? Actor: {actor_the_same}, Critic: {critic_the_same} \n")
 
