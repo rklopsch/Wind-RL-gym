@@ -31,6 +31,7 @@ class TurbEnv(EnvBase):
                  params=None,
                  seed=None,
                  save=False,
+                 instance=None,
                  device="cpu",
                  dummy_update=False):
 
@@ -59,7 +60,7 @@ class TurbEnv(EnvBase):
                           self.n_turbs, Turbine(diameter, 90, yaw=0),
                           offset=[2 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
-        self.adm = ADM(self.farm1, (self.obs_per_turbine-3)//2)
+        self.adm = ADM(self.farm1, params["probes_per_turbine"], base_dir=f'{instance}')
         self.adm.total_timesteps = params["run_steps"] + self.adm.init_timesteps
 
         self.dummy_update = dummy_update  # If True, perform a dummy update for testing
@@ -75,7 +76,6 @@ class TurbEnv(EnvBase):
         #       X = 1 for reward
 
         action = tensordict.get(("agents", "action"))
-        print(action)
         # action = action.unbind(dim=1)
         alpha = tensordict.get(("agents", "alpha"))
         # u = tensordict["action"].squeeze(-1)

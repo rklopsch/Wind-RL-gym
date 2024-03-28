@@ -9,35 +9,29 @@ results from Schulman et al. 2017 for the on MuJoCo Environments.
 """
 import os
 import sys
+import time
+import torch.optim
+import tqdm
+from tensordict import TensorDict
+from torchrl.collectors import SyncDataCollector
+from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
+from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
+from torchrl.envs import ExplorationType, set_exploration_type
+from torchrl.objectives import ClipPPOLoss, ValueEstimators
+from torchrl.objectives.value.advantages import GAE
+from torchrl.record.loggers import generate_exp_name, get_logger
+from utils_ppo import eval_model, make_env, make_parallel_env, make_ppo_models, make_ma_ppo_models
 import wandb
-from datetime import datetime
 import shutil
 import hydra
 
 
 @hydra.main(config_path="./", config_name="config_ppo", version_base="1.2")
 def main(cfg: "DictConfig"):
-
-    import time
     sys.path.append(os.getcwd())
-
-    import torch.optim
-    import tqdm
-
-    from tensordict import TensorDict
-    from torchrl.collectors import SyncDataCollector
-    from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
-    from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
-    from torchrl.envs import ExplorationType, set_exploration_type
-    from torchrl.objectives import ClipPPOLoss, ValueEstimators
-    from torchrl.objectives.value.advantages import GAE
-    from torchrl.record.loggers import generate_exp_name, get_logger
-    from utils import eval_model, make_env, make_ppo_models, make_ma_ppo_models
-
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     print(f'Running on {device}')
     print(f'cuda version:{torch.version.cuda}')
-
 
     # Correct for frame_skip
     frame_skip = cfg.collector.frame_skip
@@ -46,11 +40,13 @@ def main(cfg: "DictConfig"):
     max_episode_length = cfg.collector.max_episode_length // frame_skip
     mini_batch_size = cfg.loss.mini_batch_size // frame_skip
     test_interval = cfg.logger.test_interval // frame_skip
+    n_environments = cfg.env.n_parallel
 
     dummy_update = cfg.env.dummy_update
 
     if not dummy_update:
-        results_dir = os.path.join('./RESULTS', datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+        hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+        results_dir = os.path.join(hydra_dir, 'RESULTS')
         os.makedirs(results_dir, exist_ok=True)
 
     params = {
@@ -64,13 +60,13 @@ def main(cfg: "DictConfig"):
         "run_steps": cfg.collector.total_frames,
     }
 
-    # Create models (check utils.py)
-    actor, critic = make_ma_ppo_models(params, dummy_update=dummy_update)
+    # Create models (check verbose.py)
+    actor, critic = make_ma_ppo_models(params, dummy_update=True)
     actor, critic = actor.to(device), critic.to(device)
 
     # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_env(params, device=device, dummy_update=dummy_update),
+        create_env_fn=make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update),
         policy=actor,
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
@@ -87,8 +83,13 @@ def main(cfg: "DictConfig"):
         batch_size=mini_batch_size,
     )
 
+    # Create replay buffer to remember entire history
+    full_buffer = TensorDictReplayBuffer(
+        storage=LazyMemmapStorage(total_frames),
+    )
+
     # Create test environment
-    test_env = make_env(params, save=True, device=device, dummy_update=dummy_update)
+    test_env = make_env(params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
     test_env.eval()
 
     # Create loss and adv modules
@@ -110,15 +111,6 @@ def main(cfg: "DictConfig"):
         done=("agents", "done"),
         terminated=("agents", "terminated"),
     )
-
-    """
-    loss_module.make_value_estimator(
-        ValueEstimators.GAE,
-        gamma=cfg.loss.gamma,
-        lmbda=cfg.loss.gae_lambda
-    )  # We build GAE
-    adv_module = loss_module.value_estimator
-    """
 
     adv_module = GAE(
         gamma=cfg.loss.gamma,
@@ -228,8 +220,9 @@ def main(cfg: "DictConfig"):
                 data = adv_module(data)
             data_reshape = data.reshape(-1)
 
-            # Update the data buffer
+            # Update the data buffers
             data_buffer.extend(data_reshape)
+            full_buffer.extend(data_reshape)
 
             for k, batch in enumerate(data_buffer):
 
@@ -314,7 +307,12 @@ def main(cfg: "DictConfig"):
                 )
                 actor.train()
                 if not dummy_update:
-                    shutil.move('./Solver/ADM/TESTING/data', os.path.join(results_dir, f'TEST_{test_number}'))
+                    shutil.move('./LES_RUNS/TestEnv/Running/data', os.path.join(results_dir, f'TEST_{test_number}'))
+
+        if (i % 10 == 0 and i > 0) or i == total_frames // frames_per_batch:
+            output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+            full_buffer.dumps(output_dir + '/replay_buffer_checkpoint')
+            print(f"Checkpointed replay buffer. (Saved at {output_dir + '/replay_buffer_checkpoint'}).")
 
         wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()

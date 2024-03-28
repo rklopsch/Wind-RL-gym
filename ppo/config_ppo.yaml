@@ -1,5 +1,6 @@
 # task and env
 env:
+  n_parallel: 2
   dummy_update: True
   env_name: WindFarm
   turbines: 3
