@@ -32,7 +32,14 @@ def load_model(env_params, filepath, id, dummy_update=False):
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     # Build the env without transforms
     # Since the purpose of loading a trained model is to test, we only build a single env
-    env = make_env(env_params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
+    env = make_env(
+        env_params,
+        instance='TestEnv',
+        save=True,
+        device=device,
+        dummy_update=dummy_update,
+        add_transforms=False,
+    )
 
     # Rebuild the Transforms, but replacing the VecNorm with an ObservationNorm
     env = add_env_transforms(env, obs_norm_params=transforms_params)
@@ -65,4 +72,9 @@ if __name__ == '__main__':
     actor_the_same = compare_model_parameters(actor, loaded_actor)
     critic_the_same = compare_model_parameters(critic, loaded_critic)
     print(f"Loaded model and model are identical? Actor: {actor_the_same}, Critic: {critic_the_same} \n")
+
+    print("Environment transforms of original env:")
+    print(env.transform)
+    print("Environment transforms of loaded env:")
+    print(loaded_env.transform)
 

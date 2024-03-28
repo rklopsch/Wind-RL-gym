@@ -1,6 +1,6 @@
 import pickle
 import torch
-from torchrl.envs.transforms import VecNorm
+from utils.vecnorm_fixed import VecNorm
 
 
 def save_model(env, actor, critic, filepath, id):
@@ -16,7 +16,9 @@ def save_model(env, actor, critic, filepath, id):
             loc = obs_norm.loc
             scale = obs_norm.scale
             norm_dict[key] = {'loc': loc, 'scale': scale}
-    
+
+    print(norm_dict)
+
     # Save env transforms
     with open(filepath+'env_transforms' + f"_{id}" + '.pkl', 'wb') as file:
         pickle.dump(norm_dict, file)

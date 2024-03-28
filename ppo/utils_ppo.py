@@ -55,9 +55,10 @@ def add_env_transforms(env, obs_norm_params=None):
     return TransformedEnv(env, transforms)
 
 
-def make_env(params, instance=None, save=False, device="cpu", dummy_update=False):
-    base_env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
-    env = add_env_transforms(base_env)
+def make_env(params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True):
+    env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
+    if add_transforms:
+        env = add_env_transforms(env)
     return env
 
 
