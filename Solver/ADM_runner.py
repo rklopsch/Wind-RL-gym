@@ -214,7 +214,7 @@ class ADM:
 
         probe_locations = np.zeros((3, self.farm.n_turbines*probes_per_turbine))
         for i, turb in enumerate(self.farm.turbines):
-            probe_locations[0, i*probes_per_turbine:(i+1)*probes_per_turbine] = x.flatten() - turb.location[0]
+            probe_locations[0, i*probes_per_turbine:(i+1)*probes_per_turbine] = x.flatten() + turb.location[0]
             probe_locations[1, i*probes_per_turbine:(i+1)*probes_per_turbine] = y.flatten()
             probe_locations[2, i*probes_per_turbine:(i+1)*probes_per_turbine] = z.flatten() + turb.location[1]
 
