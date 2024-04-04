@@ -85,7 +85,7 @@ class Farm:
         else:
             for i in range(self.n_turbines):
                 turbine = self.turbines[i]
-                turbine.yaw = yaws[i]
+                turbine.yaw = yaws.squeeze()[i]
 
 
 class Turbine:
