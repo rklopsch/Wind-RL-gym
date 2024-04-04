@@ -3,3 +3,7 @@ __pycache__
 outputs
 wandb
 .venv
+Solver/ADM/TESTING
+Solver/.ADM*
+RESULTS
+LES_RUNS

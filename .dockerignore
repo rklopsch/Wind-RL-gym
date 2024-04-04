@@ -4,5 +4,7 @@ outputs
 wandb
 .venv
 .git
-Solver/ADM/TEST*
+Solver/ADM/TESTING
 Solver/.ADM*
+RESULTS
+LES_RUNS
