@@ -58,7 +58,7 @@ class TurbEnv(EnvBase):
         spacing = params["turbine_spacing"]
         self.farm1 = Farm(diameter * spacing * self.n_turbs, diameter * 4,
                           self.n_turbs, Turbine(diameter, 90, yaw=0),
-                          offset=[2 * diameter, 2 * diameter])
+                          offset=[4 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
         self.adm = ADM(self.farm1, params["probes_per_turbine"], base_dir=f'{instance}')
         self.adm.total_timesteps = params["run_steps"] + self.adm.init_timesteps
