@@ -283,29 +283,32 @@ def main(cfg: "DictConfig"):
                 test_number += 1
                 actor.eval()
                 eval_start = time.time()
-                (test_rewards_mean,
-                 test_rewards_stdv,
-                 test_alpha_1_mean,
-                 test_alpha_2_mean,
-                 test_alpha_1_stdv,
-                 test_alpha_2_stdv) = eval_model(
-                    actor, test_env,
+
+                test_rewards_mean, test_rewards_stdv, test_alpha_means, test_alpha_stdvs = eval_model(
+                    actor, test_env, cfg.env.turbines,
                     num_episodes=cfg_logger_num_test_episodes,
                     episode_length=cfg_logger_test_episode_length
                 )
+
                 eval_time = time.time() - eval_start
-                log_info.update(
-                    {
-                        "eval/reward_mean": test_rewards_mean.mean(),
-                        "eval/reward_stdv": test_rewards_stdv.mean(),
-                        "eval/alpha_1_mean": test_alpha_1_mean.mean(),
-                        "eval/alpha_2_mean": test_alpha_2_mean.mean(),
-                        "eval/alpha_1_stdv": test_alpha_1_stdv.mean(),
-                        "eval/alpha_2_stdv": test_alpha_2_stdv.mean(),
-                        "eval/time": eval_time,
-                    }
-                )
+
+                # Prepare to update log_info with dynamic alpha means and stdvs
+                log_info.update({
+                    "eval/reward_mean": test_rewards_mean,
+                    "eval/reward_stdv": test_rewards_stdv,
+                    "eval/time": eval_time,
+                })
+
+                # Dynamically update log_info for each turbine
+                turbine_log = {}
+                for idx, (mean, stdv) in enumerate(zip(test_alpha_means, test_alpha_stdvs), start=1):
+                    turbine_log[f"eval/alpha_{idx}_mean"] = mean
+                    turbine_log[f"eval/alpha_{idx}_stdv"] = stdv
+
+                log_info.update(turbine_log)
                 actor.train()
+
+                # Copy LES data from evaluation into results directory in output
                 if not dummy_update:
                     shutil.move('./LES_RUNS/TestEnv/Running/data', os.path.join(results_dir, f'TEST_{test_number}'))
 

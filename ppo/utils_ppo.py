@@ -224,15 +224,14 @@ def make_ma_ppo_models(params, dummy_update):
 # --------------------------------------------------------------------
 
 
-def eval_model(actor, test_env, num_episodes=3, episode_length=1000):
+def eval_model(actor, test_env, num_turbines, num_episodes=3, episode_length=1000):
     print('\n\nMODEL EVALUATION\n')
-    test_rewards_mean = []
-    test_rewards_stdv = []
-    test_alpha_1_mean = []
-    test_alpha_2_mean = []
-    test_alpha_1_stdv = []
-    test_alpha_2_stdv = []
-    for _ in range(num_episodes):
+
+    rewards = torch.zeros(num_episodes, 2)  # Mean and Std Dev for rewards
+    alpha_means_list = [torch.zeros(num_episodes) for _ in range(num_turbines)]
+    alpha_stds_list = [torch.zeros(num_episodes) for _ in range(num_turbines)]
+
+    for episode_idx in range(num_episodes):
         td_test = test_env.rollout(
             policy=actor,
             auto_reset=True,
@@ -240,25 +239,27 @@ def eval_model(actor, test_env, num_episodes=3, episode_length=1000):
             break_when_any_done=False,
             max_steps=episode_length,
         )
-        reward_mean = td_test["next", "agents", "reward"].mean().reshape(1)
-        reward_stdv = td_test["next", "agents", "reward"].std().reshape(1)
-        alpha_1_mean = td_test["agents", 'alpha'][:, 0].mean().reshape(1)
-        alpha_2_mean = td_test["agents", 'alpha'][:, 1].mean().reshape(1)
-        alpha_1_stdv = td_test["agents", 'alpha'][:, 0].std().reshape(1)
-        alpha_2_stdv = td_test["agents", 'alpha'][:, 1].std().reshape(1)
 
-        test_rewards_mean.append(reward_mean.cpu())
-        test_rewards_stdv.append(reward_stdv.cpu())
-        test_alpha_1_mean.append(alpha_1_mean.cpu())
-        test_alpha_2_mean.append(alpha_2_mean.cpu())
-        test_alpha_1_stdv.append(alpha_1_stdv.cpu())
-        test_alpha_2_stdv.append(alpha_2_stdv.cpu())
+        rewards[episode_idx, 0] = td_test["next", "agents", "reward"].mean().item()
+        rewards[episode_idx, 1] = td_test["next", "agents", "reward"].std().item()
 
+        alpha_means = td_test["agents", 'alpha'][:, :num_turbines].mean(dim=0)
+        alpha_stds = td_test["agents", 'alpha'][:, :num_turbines].std(dim=0)
+
+        for turbine_idx in range(num_turbines):
+            alpha_means_list[turbine_idx][episode_idx] = alpha_means[turbine_idx]
+            alpha_stds_list[turbine_idx][episode_idx] = alpha_stds[turbine_idx]
+
+    # Compute the overall mean and standard deviation of rewards
+    rewards_mean = rewards[:, 0].mean().item()
+    rewards_stdv = rewards[:, 1].mean().item()
+
+    # Compute the mean of means and mean of stds for alpha values across all episodes
+    alpha_means_final = [alpha_means.mean().item() for alpha_means in alpha_means_list]
+    alpha_stds_final = [alpha_stds.mean().item() for alpha_stds in alpha_stds_list]
+
+    # Cleanup
     del td_test
-    return (torch.cat(test_rewards_mean, 0).mean(),
-            torch.cat(test_rewards_stdv, 0).mean(),
-            torch.cat(test_alpha_1_mean, 0).mean(),
-            torch.cat(test_alpha_2_mean, 0).mean(),
-            torch.cat(test_alpha_1_stdv, 0).mean(),
-            torch.cat(test_alpha_2_stdv, 0).mean())
 
+    # Return matching the structure: mean/std for rewards, lists for alpha means/stds
+    return rewards_mean, rewards_stdv, alpha_means_final, alpha_stds_final
