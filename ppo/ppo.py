@@ -57,7 +57,7 @@ def main(cfg: "DictConfig"):
         "max_yaw_speed": cfg.env.max_yaw_speed,
         "max_yaw_angle": cfg.env.max_yaw_angle,
         "dt": cfg.env.steps_per_frame * 0.2,
-        "run_steps": cfg.collector.total_frames,
+        "run_steps": cfg.collector.total_frames * cfg.env.steps_per_frame,
     }
 
     # Create models (check verbose.py)
