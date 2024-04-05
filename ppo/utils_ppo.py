@@ -36,7 +36,6 @@ def add_env_transforms(env, obs_norm_params=None):
     transform_list = [
         InitTracker(),
         RewardSum(),
-        StepCounter(),
         FiniteTensorDictCheck(),
     ]
     if obs_norm_params is None:
