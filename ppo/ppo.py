@@ -21,6 +21,7 @@ from torchrl.objectives import ClipPPOLoss, ValueEstimators
 from torchrl.objectives.value.advantages import GAE
 from torchrl.record.loggers import generate_exp_name, get_logger
 from utils_ppo import eval_model, make_env, make_parallel_env, make_ppo_models, make_ma_ppo_models
+from omegaconf import OmegaConf
 import wandb
 import shutil
 import hydra
@@ -136,6 +137,7 @@ def main(cfg: "DictConfig"):
         project=str(cfg.logger.project_name),
         entity=str(cfg.logger.team_name),
         name=exp_name,
+        config=OmegaConf.to_container(cfg, resolve=True),
     )
 
     # Main loop
