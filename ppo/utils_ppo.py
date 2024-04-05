@@ -22,6 +22,7 @@ from torchrl.envs import (
     ParallelEnv,
     Compose,
     ObservationNorm,
+    EnvCreator,
 )
 from utils.vecnorm_fixed import VecNorm
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
@@ -62,10 +63,19 @@ def make_env(params, instance=None, save=False, device="cpu", dummy_update=False
 
 
 def make_parallel_env(params, num_envs, device="cpu", dummy_update=False):
+    """
+    # Different way of creating parallel envs, this way the VecNorm is synchronised
+    # However idk how to figure out the instance parameter here...
+    env_creator = EnvCreator(lambda: make_env(params, device=device, dummy_update=dummy_update))
+    env = ParallelEnv(num_envs, env_creator)
+    env_creator.state_dict()["transforms.3._extra_state"]["td"]["agents_observation_count"].fill_(0.0)
+    env_creator.state_dict()["transforms.3._extra_state"]["td"]["agents_observation_ssq"].fill_(0.0)
+    env_creator.state_dict()["transforms.3._extra_state"]["td"]["agents_observation_sum"].fill_(0.0)
+    # return env
+    """
     function_list = [lambda i=i: make_env(params, instance=i, device=device, dummy_update=dummy_update) for i in range(num_envs)]
     env = ParallelEnv(num_envs, function_list,)
                       # serial_for_single=True)
-
     return env
 
 # ====================================================================

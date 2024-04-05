@@ -4,20 +4,16 @@ from utils.vecnorm_fixed import VecNorm
 
 
 def save_model(env, actor, critic, filepath, id):
-    # Get the env transforms
-    transforms = env.transform
-    # The only thing we need to remember is the VecNorm
-    norm_dict = {}
-    for t in transforms:
-        if isinstance(t, VecNorm):
-            obs_norm = t.to_observation_norm()
-            assert len(obs_norm.in_keys) == 1
-            key = obs_norm.in_keys[0]
-            loc = obs_norm.loc
-            scale = obs_norm.scale
-            norm_dict[key] = {'loc': loc, 'scale': scale}
+    # Extract the VecNorm from the 1st environment
+    # Note this is very suboptimal code and hacky
+    _sum = env.state_dict()["worker0"]["transforms.3._extra_state"]["td"]["agents_observation_sum"]
+    _count = env.state_dict()["worker0"]["transforms.3._extra_state"]["td"]["agents_observation_count"]
+    _ssq = env.state_dict()["worker0"]["transforms.3._extra_state"]["td"]["agents_observation_ssq"]
 
-    print(norm_dict)
+    norm_dict = {}
+    mean = _sum / _count
+    std = (_ssq / _count - mean.pow(2)).clamp_min(1e-4).sqrt()
+    norm_dict[("agents", "observation")] = {'loc': mean, 'scale': std}
 
     # Save env transforms
     with open(filepath+'env_transforms' + f"_{id}" + '.pkl', 'wb') as file:

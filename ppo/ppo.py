@@ -21,6 +21,7 @@ from torchrl.objectives import ClipPPOLoss, ValueEstimators
 from torchrl.objectives.value.advantages import GAE
 from torchrl.record.loggers import generate_exp_name, get_logger
 from utils_ppo import eval_model, make_env, make_parallel_env, make_ppo_models, make_ma_ppo_models
+from utils.save_model import save_model
 from omegaconf import OmegaConf
 import wandb
 import shutil
@@ -65,9 +66,14 @@ def main(cfg: "DictConfig"):
     actor, critic = make_ma_ppo_models(params, dummy_update=True)
     actor, critic = actor.to(device), critic.to(device)
 
+    # Create environments
+    train_env = make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update)
+    test_env = make_env(params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
+    test_env.eval()
+
     # Create collector
     collector = SyncDataCollector(
-        create_env_fn=make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update),
+        train_env,
         policy=actor,
         frames_per_batch=frames_per_batch,
         total_frames=total_frames,
@@ -88,10 +94,6 @@ def main(cfg: "DictConfig"):
     full_buffer = TensorDictReplayBuffer(
         storage=LazyMemmapStorage(total_frames),
     )
-
-    # Create test environment
-    test_env = make_env(params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
-    test_env.eval()
 
     # Create loss and adv modules
     loss_module = ClipPPOLoss(
@@ -314,10 +316,12 @@ def main(cfg: "DictConfig"):
                 if not dummy_update:
                     shutil.move('./LES_RUNS/TestEnv/Running/data', os.path.join(results_dir, f'TEST_{test_number}'))
 
-        if (i % 10 == 0 and i > 0) or i == total_frames // frames_per_batch:
-            output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-            full_buffer.dumps(output_dir + '/replay_buffer_checkpoint')
+        if i % cfg.logger.checkpoint_interval == 0 or i == total_frames // frames_per_batch:
+            output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
+            full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
             print(f"Checkpointed replay buffer. (Saved at {output_dir + '/replay_buffer_checkpoint'}).")
+            save_model(train_env, actor, critic, output_dir, i)
+            print(f"Checkpointed model.")
 
         wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()

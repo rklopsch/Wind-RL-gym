@@ -2,7 +2,7 @@ import pickle
 from hydra import compose, initialize
 import torch
 from utils.save_model import save_model
-from ppo.utils_ppo import make_env
+from ppo.utils_ppo import make_env, make_parallel_env
 from ppo.utils_ppo import make_ma_ppo_models
 from ppo.utils_ppo import add_env_transforms
 
@@ -57,7 +57,7 @@ def load_model(env_params, filepath, id, dummy_update=False):
 if __name__ == '__main__':
     # Test the save model function
     env_params = None
-    env = make_env(env_params, instance='TestEnv', save=False, device='cpu', dummy_update=True)
+    env = make_parallel_env(env_params, 3, dummy_update=True)
     actor, critic = make_ma_ppo_models(env_params, dummy_update=True)
     env.reset()
     env.rollout(100)

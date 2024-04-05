@@ -25,6 +25,7 @@ logger:
   test_interval: 5_000
   num_test_episodes: 2
   test_episode_length: 1_000
+  checkpoint_interval: 10
   project_name: Wind-PPO
   team_name: windrl
 
