@@ -72,8 +72,8 @@ class ADM:
                             'nz': self.nz,
                         },
                          'InOutParam': {
-                            'ntimesteps': self.total_timesteps//10,
-                            'ioutput': self.total_timesteps//10
+                            'ntimesteps': self.total_timesteps//100,
+                            'ioutput': self.total_timesteps//100
                             }
                          }
             f90nml.patch(os.path.join(self.precursor_dir, 'old_input.i3d'),
@@ -120,9 +120,10 @@ class ADM:
                             'irestart': 0,
                             'icheckpoint': iterations,
                             'ioutput': iterations,
-                            'ilist': iterations//10,
+                            'ilist': iterations//1000,
                             'inflowpath': relative_precursor,
-                            'ntimesteps': self.total_timesteps//10,
+                            'ntimesteps': self.total_timesteps//100,
+                            'ninflows': 100,
                             'nprobes': self.probes_per_turbine*self.farm.n_turbines
                             },
                          'ADMParam': {
