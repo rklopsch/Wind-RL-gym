@@ -44,10 +44,11 @@ class Farm:
         # adjust spacings to fill box
         dx = self.lx/max(nx-1, 1)
         dz = self.lz/max(nz-1+staggered, 1)
+        center = self.lz/2 if nz == 1 else 0
         for i in range(self.n_turbines):
             turbine = self.turbines[i]
             turbine.location[0] = self.offset[0] + math.floor(i/nz) * dx
-            turbine.location[1] = self.offset[1] + i % nz * dz + staggered*((i/nz) % 2 * dz/2)
+            turbine.location[1] = self.offset[1] + i % nz * dz + staggered*((i/nz) % 2 * dz/2) + center
 
     def scatter(self):
         for i in range(self.n_turbines):
@@ -85,7 +86,7 @@ class Farm:
         else:
             for i in range(self.n_turbines):
                 turbine = self.turbines[i]
-                turbine.yaw = yaws[i]
+                turbine.yaw = yaws.squeeze()[i]
 
 
 class Turbine:

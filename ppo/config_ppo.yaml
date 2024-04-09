@@ -1,13 +1,22 @@
 # task and env
 env:
+  n_parallel: 2
+  dummy_update: True
   env_name: WindFarm
+  turbines: 3
+  probes_per_turbine: 25
+  turbine_diameter: 126
+  turbine_spacing: 7
+  max_yaw_speed: 0.25
+  max_yaw_angle: 40
+  steps_per_frame: 50
 
 # collector
 collector:
   frame_skip: 1  # Env takes 50 time steps per update
-  frames_per_batch: 100 # this is the actual number of frames we see in a batch
+  frames_per_batch: 200 # this is the actual number of frames we see in a batch
   max_episode_length: 1_000  # Timesteps (disregarding frame skip)
-  total_frames: 30_000  # Timesteps (disregarding frame skip)
+  total_frames: 50_000  # Timesteps (disregarding frame skip)
 
 # logger
 logger:
@@ -16,12 +25,13 @@ logger:
   test_interval: 5_000
   num_test_episodes: 2
   test_episode_length: 1_000
+  checkpoint_interval: 10
   project_name: Wind-PPO
   team_name: windrl
 
 # Optim
 optim:
-  lr: 3e-4
+  lr: 1e-4
   weight_decay: 0.0
   anneal_lr: True
 

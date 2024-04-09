@@ -20,3 +20,8 @@ python3 ./ppo/ppo.py
 This will log the results to the Wind-RL project on weights and biases.
 
 The run configurations can be modified in ./ppo/config_ppo.yaml
+
+For a more verbose output set the enviroment variable
+```bash
+export WINDRL_VERBOSE=true
+```
