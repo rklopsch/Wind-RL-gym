@@ -1,6 +1,7 @@
 from functools import partial
 
 import numpy as np
+import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 import matplotlib.animation as ani
@@ -37,16 +38,44 @@ def plot_slice(t, casename, env, ax, height=90):
         a.set_ylabel(r'$y \; (km)$')
 
 
+# def plot_power(t, casename, env, ax):
+
+class TimeSeries:
+    def __init__(self, casename, env):
+        self.casename = casename
+        self.nturbines = env.n_turbs
+        self.data = []
+
+    def collect_data(self):
+        for turbine in range(self.nturbines):
+            file = os.path.join(self.casename, f'disc{turbine+1}.adm')
+            dat = pd.read_csv(file, sep="\s+|, ", engine='python')
+            self.data.append(dat)
+
+    def draw(self, it, ax):
+        total_power = 0
+        for turbine in range(self.nturbines):
+            ax.plot(self.data[turbine]['Time'][:it], self.data[turbine]['Power'][:it] / 1e6,
+                    color='k',
+                    alpha=0.3,
+                    label=f'Turbine {turbine + 1}')
+            total_power += self.data[turbine]['Power'][:it]
+        ax.plot(self.data[turbine]['Time'][:it], total_power / 1e6,
+                color='k',
+                alpha=1,
+                label=f'Total')
+        # ax.legend(loc='upper right', ncol=len(cases), columnspacing=0.5, frameon=False)
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('Power (MW)')
+        ax.set_xlim(self.data[0]['Time'][0], self.data[0]['Time'].iloc[-1])
+        ax.set_ylim(0, max(total_power/1e6))
+        ax.legend(frameon=False)
+
+
 @hydra.main(config_path="../ppo/", config_name="config_ppo", version_base="1.2")
 def main(cfg: "DictConfig"):
 
-    casename = '/home/amole/Downloads/TEST_8'
-
-    fig, axs = plt.subplots(2, 1,
-                            figsize=(10, 6),
-                            constrained_layout=True,
-                            sharex=True,
-                            sharey=True)
+    casename = '/home/amole/Downloads/discs'
 
     params = {
         "n_turbines": cfg.env.turbines,
@@ -60,15 +89,25 @@ def main(cfg: "DictConfig"):
     }
     env = TurbEnv(params, dummy_update=True)
 
-    optimisation_iter = 30
-    iters = tqdm.tqdm(range(129, 1128), desc="Optimisation Iteration", position=0)
+    # Plotting velocity and pressure
+    fig, axs = plt.subplots(2, 1,
+                            figsize=(10, 6),
+                            constrained_layout=True,
+                            sharex=True,
+                            sharey=True)
 
+    iters = tqdm.tqdm(range(129, 1128), desc="Optimisation Iteration", position=0)
     anim = ani.FuncAnimation(fig, partial(plot_slice, casename=casename, env=env, ax=axs), frames=iters)
     anim.save(f'animations/test2.mp4', fps=20, dpi=400)#codec='h263p')
 
-    # for i in range(1000, 1010):
-    #     print(i)
-    #     plot_slice(i, casename, env, axs[0], mean=False)
+    # Plotting Time series
+    fig, axs = plt.subplots(1, 1,
+                            figsize=(6, 4),
+                            constrained_layout=True)
+    series1 = TimeSeries(casename, env)
+    series1.collect_data()
+    series1.draw(-1, axs)
+    fig.savefig('figures/power.pdf')
 
 
 if __name__ == "__main__":
