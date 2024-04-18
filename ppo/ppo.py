@@ -20,7 +20,7 @@ from torchrl.envs import ExplorationType, set_exploration_type
 from torchrl.objectives import ClipPPOLoss, ValueEstimators
 from torchrl.objectives.value.advantages import GAE
 from torchrl.record.loggers import generate_exp_name, get_logger
-from utils_ppo import eval_model, make_env, make_parallel_env, make_ppo_models, make_ma_ppo_models
+from utils_ppo import eval_model, make_env, make_parallel_env, make_ma_ppo_models, load_model
 from utils.save_model import save_model
 from omegaconf import OmegaConf
 import wandb
@@ -62,8 +62,17 @@ def main(cfg: "DictConfig"):
         "run_steps": cfg.collector.total_frames * cfg.env.steps_per_frame,
     }
 
-    # Create models (check verbose.py)
-    actor, critic = make_ma_ppo_models(params)
+    # Create models
+    if not cfg.optim.load_from_checkpoint:
+        # Create a new model
+        actor, critic = make_ma_ppo_models(params)
+    else:
+        # Load from specified checkpoint
+        _, actor, critic = load_model(
+            env_params=None,
+            filepath=cfg.optim.model_checkpoint_path,
+            id=cfg.optim.model_checkpoint_id,
+            dummy_update=True)
     actor, critic = actor.to(device), critic.to(device)
 
     # Create environments

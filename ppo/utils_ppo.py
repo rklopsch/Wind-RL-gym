@@ -240,6 +240,45 @@ def make_ma_ppo_models(params):
     return actor, critic
 
 
+def load_model(env_params, filepath, id, dummy_update=False):
+    try:
+        # Load env transforms
+        with open(filepath + 'env_transforms' + f"_{id}" + '.pkl', 'rb') as file:
+            transforms_params = pickle.load(file)
+        # Load model parameters
+        with open(filepath + 'actor' + f"_{id}" + '.pkl', 'rb') as file:
+            actor_params = torch.load(file)
+        with open(filepath + 'critic' + f"_{id}" + '.pkl', 'rb') as file:
+            critic_params = torch.load(file)
+    except FileNotFoundError:
+        print(f"File {filepath}env_transforms_{id}.pkl or {filepath}model_{id}.pkl has not been found.")
+        return False
+
+    device = "cpu" if not torch.cuda.device_count() else "cuda"
+    # Build the env without transforms
+    # Since the purpose of loading a trained model is to test, we only build a single env
+    env = make_env(
+        env_params,
+        instance='TestEnv',
+        save=True,
+        device=device,
+        dummy_update=dummy_update,
+        add_transforms=False,
+    )
+
+    # Rebuild the Transforms, but replacing the VecNorm with an ObservationNorm
+    env = add_env_transforms(env, obs_norm_params=transforms_params)
+
+    # Instantiating the model with random params
+    actor, critic = make_ma_ppo_models(env_params)
+    actor, critic = actor.to(device), critic.to(device)
+    # Inserting the loaded parameters
+    actor.load_state_dict(actor_params)
+    critic.load_state_dict(critic_params)
+
+    return env, actor, critic
+
+
 # ====================================================================
 # Evaluation utils
 # --------------------------------------------------------------------
