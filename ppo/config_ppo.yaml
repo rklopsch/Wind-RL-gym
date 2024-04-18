@@ -34,6 +34,9 @@ optim:
   lr: 1e-4
   weight_decay: 0.0
   anneal_lr: True
+  load_from_checkpoint: True
+  model_checkpoint_path: ../utils/testing/  # Path to checkpoint, RELATIVE to ppo/ppo.py
+  model_checkpoint_id: 0  # ID of checkpoint
 
 # loss
 loss:
