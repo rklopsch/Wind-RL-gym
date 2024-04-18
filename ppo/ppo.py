@@ -320,7 +320,7 @@ def main(cfg: "DictConfig"):
             output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
             full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
             print(f"Checkpointed replay buffer. (Saved at {output_dir + '/replay_buffer_checkpoint'}).")
-            save_model(train_env, actor, critic, output_dir, i)
+            save_model(test_env, actor, critic, output_dir, i)
             print(f"Checkpointed model.")
 
         wandb.log(data=log_info, step=collected_frames)
