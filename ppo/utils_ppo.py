@@ -5,7 +5,7 @@
 
 import torch.nn
 import torch.optim
-
+import pickle
 from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule
 from tensordict.nn.distributions import NormalParamExtractor
 from torchrl.data import CompositeSpec
@@ -24,33 +24,44 @@ from torchrl.envs import (
     ObservationNorm,
     EnvCreator,
 )
-from utils.vecnorm_fixed import VecNorm
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.modules.models.multiagent import MultiAgentMLP
 from Solver.WF_enviroment import TurbEnv
+import numpy as np
 
 
 # ====================================================================
 # Environment utils
 # --------------------------------------------------------------------
+def obs_normalisation():
+    return {'loc': np.array([5.75, 0., 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.,
+                             5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75,
+                             0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.,
+                             5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75,
+                             0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.]),
+            'scale': np.array([0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75,
+                               0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75,
+                               0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75,
+                               0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75,
+                               0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75])}
+
+
 def add_env_transforms(env, obs_norm_params=None):
+    # Load observation normalisation parameters from file
+    if not obs_norm_params:
+        obs_norm_params = obs_normalisation()
+    assert obs_norm_params is not None
+
     transform_list = [
         InitTracker(),
         RewardSum(),
         FiniteTensorDictCheck(),
+        ObservationNorm(
+            loc=obs_norm_params['loc'],
+            scale=obs_norm_params['scale'],
+            in_keys=[('agents', 'observation')]
+        )
     ]
-    if obs_norm_params is None:
-        transform_list.append(VecNorm(in_keys=[("agents", "observation")], decay=0.99))
-    else:
-        for in_key, loc_scale_dict in obs_norm_params.items():
-            transform_list.append(
-                ObservationNorm(
-                    loc=loc_scale_dict['loc'],
-                    scale=loc_scale_dict['scale'],
-                    in_keys=[in_key]
-                )
-            )
-
     transforms = Compose(*transform_list)
     return TransformedEnv(env, transforms)
 
@@ -73,10 +84,12 @@ def make_parallel_env(params, num_envs, device="cpu", dummy_update=False):
     env_creator.state_dict()["transforms.3._extra_state"]["td"]["agents_observation_sum"].fill_(0.0)
     # return env
     """
-    function_list = [lambda i=i: make_env(params, instance=i, device=device, dummy_update=dummy_update) for i in range(num_envs)]
-    env = ParallelEnv(num_envs, function_list,)
-                      # serial_for_single=True)
+    function_list = [lambda i=i: make_env(params, instance=i, device=device, dummy_update=dummy_update) for i in
+                     range(num_envs)]
+    env = ParallelEnv(num_envs, function_list, )
+    # serial_for_single=True)
     return env
+
 
 # ====================================================================
 # Model utils
@@ -84,7 +97,6 @@ def make_parallel_env(params, num_envs, device="cpu", dummy_update=False):
 
 
 def make_ppo_models_state(proof_environment):
-
     # Define input shape
     input_shape = proof_environment.observation_spec["observation"].shape
 

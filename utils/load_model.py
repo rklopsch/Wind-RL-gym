@@ -58,11 +58,12 @@ if __name__ == '__main__':
     # Test the save model function
     env_params = None
     env = make_parallel_env(env_params, 3, dummy_update=True)
+    test_env = make_env(env_params, dummy_update=True)
     actor, critic = make_ma_ppo_models(env_params, dummy_update=True)
     env.reset()
     env.rollout(100)
 
-    save_model(env, actor, critic, './testing/', 0)
+    save_model(test_env, actor, critic, './testing/', 0)
 
     loaded_env, loaded_actor, loaded_critic = load_model(None, './testing/', 0, dummy_update=True)
 
