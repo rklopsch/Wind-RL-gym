@@ -59,7 +59,7 @@ if __name__ == '__main__':
     env_params = None
     env = make_parallel_env(env_params, 3, dummy_update=True)
     test_env = make_env(env_params, dummy_update=True)
-    actor, critic = make_ma_ppo_models(env_params, dummy_update=True)
+    actor, critic = make_ma_ppo_models(env_params)
     env.reset()
     env.rollout(100)
 
