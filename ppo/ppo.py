@@ -63,7 +63,7 @@ def main(cfg: "DictConfig"):
     }
 
     # Create models (check verbose.py)
-    actor, critic = make_ma_ppo_models(params, dummy_update=True)
+    actor, critic = make_ma_ppo_models(params)
     actor, critic = actor.to(device), critic.to(device)
 
     # Create environments
