@@ -234,8 +234,8 @@ def make_ma_ppo_models_state(proof_environment):
     return policy, value_module
 
 
-def make_ma_ppo_models(params, dummy_update):
-    proof_environment = make_env(params, device="cpu", dummy_update=dummy_update)
+def make_ma_ppo_models(params):
+    proof_environment = make_env(params, device="cpu", dummy_update=True)
     actor, critic = make_ma_ppo_models_state(proof_environment)
     return actor, critic
 
