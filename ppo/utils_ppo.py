@@ -34,6 +34,8 @@ import numpy as np
 # Environment utils
 # --------------------------------------------------------------------
 def obs_normalisation():
+    # The first three inputs are: turbine velocity, turbine power and turbine yaw.
+    # Then the inputs are the u_x and u_x velocities behind the turbine at the sample points
     return {'loc': np.array([4.5, 0., 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.,
                              5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75,
                              0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.,
