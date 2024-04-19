@@ -6,6 +6,7 @@
 import torch.nn
 import torch.optim
 import pickle
+import logging
 from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule
 from tensordict.nn.distributions import NormalParamExtractor
 from torchrl.data import CompositeSpec
@@ -287,7 +288,7 @@ def load_model(env_params, filepath, id, dummy_update=False):
 
 
 def eval_model(actor, test_env, num_turbines, num_episodes=3, episode_length=1000):
-    print('\n\nMODEL EVALUATION\n')
+    logging.info('Model evaluation')
 
     rewards = torch.zeros(num_episodes, 2)  # Mean and Std Dev for rewards
     alpha_means_list = [torch.zeros(num_episodes) for _ in range(num_turbines)]
