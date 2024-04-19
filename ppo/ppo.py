@@ -10,6 +10,7 @@ results from Schulman et al. 2017 for the on MuJoCo Environments.
 import os
 import sys
 import time
+import logging
 import torch.optim
 import tqdm
 from tensordict import TensorDict
@@ -34,6 +35,8 @@ def main(cfg: "DictConfig"):
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     print(f'Running on {device}')
     print(f'cuda version:{torch.version.cuda}')
+
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
     # Correct for frame_skip
     frame_skip = cfg.collector.frame_skip
@@ -156,7 +159,7 @@ def main(cfg: "DictConfig"):
     num_network_updates = 0
     test_number = 0
     start_time = time.time()
-    pbar = tqdm.tqdm(total=total_frames)
+    #pbar = tqdm.tqdm(total=total_frames)
     num_mini_batches = frames_per_batch // mini_batch_size
     total_network_updates = (
         (total_frames // frames_per_batch)
@@ -182,7 +185,8 @@ def main(cfg: "DictConfig"):
         sampling_time = time.time() - sampling_start
         frames_in_batch = data.numel()
         collected_frames += frames_in_batch * frame_skip
-        pbar.update(data.numel())
+        #pbar.update(data.numel())
+        logging.info(f"Training step {collected_frames}/{total_frames}.")
 
         data.set(
             ("next", "agents", "done"),
@@ -328,9 +332,9 @@ def main(cfg: "DictConfig"):
         if i % cfg.logger.checkpoint_interval == 0 or i == total_frames // frames_per_batch:
             output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
             full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
-            print(f"Checkpointed replay buffer. (Saved at {output_dir + '/replay_buffer_checkpoint'}).")
+            logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
             save_model(test_env, actor, critic, output_dir, i)
-            print(f"Checkpointed model.")
+            logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{i}.pkl and {output_dir}critic_{i}.pkl")
 
         wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()
