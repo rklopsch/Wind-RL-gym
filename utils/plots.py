@@ -11,7 +11,7 @@ import hydra
 import tqdm
 # import fonts
 import os
-
+import re
 
 def plot_slice(t, casename, env, ax, height=90):
     for a in ax:
@@ -29,7 +29,7 @@ def plot_slice(t, casename, env, ax, height=90):
     pr = p.reshape((env.adm.nx, env.adm.ny, env.adm.nz), order='F')
     slice_loc = int(height / env.adm.ly * env.adm.ny)
     contour_u = ax[0].contourf(gridx/1000, gridz/1000, ur[:, slice_loc, :].T,
-                               cmap='plasma', levels=100, extend='both', vmin=4, vmax=12)
+                               cmap='inferno_r', levels=100, vmin=0, vmax=10)
     contour_p = ax[1].contourf(gridx/1000, gridz/1000, pr[:, slice_loc, :].T,
                                cmap='Blues_r', levels=100, vmin=-10, vmax=10)
     for a in ax:
@@ -72,10 +72,21 @@ class TimeSeries:
         ax.legend(frameon=False)
 
 
+def extract_integers_from_filenames(directory):
+    pattern = r'^snapshot-(\d+)\.xdmf'
+    integers = []
+    for filename in os.listdir(directory):
+        match = re.match(pattern, filename)
+        if match:
+            integers.append(int(match.group(1)))
+    integers.sort()
+    return integers
+
+
 @hydra.main(config_path="../ppo/", config_name="config_ppo", version_base="1.2")
 def main(cfg: "DictConfig"):
 
-    casename = '/home/amole/Downloads/discs'
+    casename = './outputs/2024-04-18/14-15-25/RESULTS/TEST_2'
 
     params = {
         "n_turbines": cfg.env.turbines,
@@ -96,9 +107,10 @@ def main(cfg: "DictConfig"):
                             sharex=True,
                             sharey=True)
 
-    iters = tqdm.tqdm(range(129, 1128), desc="Optimisation Iteration", position=0)
+    snaps = extract_integers_from_filenames(os.path.join(casename, 'data'))
+    iters = tqdm.tqdm(snaps, desc="Animation Iteration", position=0)
     anim = ani.FuncAnimation(fig, partial(plot_slice, casename=casename, env=env, ax=axs), frames=iters)
-    anim.save(f'animations/test2.mp4', fps=20, dpi=400)#codec='h263p')
+    anim.save(os.path.join(casename, 'slice.mp4'), fps=20, dpi=400)#codec='h263p')
 
     # Plotting Time series
     fig, axs = plt.subplots(1, 1,
@@ -107,7 +119,7 @@ def main(cfg: "DictConfig"):
     series1 = TimeSeries(casename, env)
     series1.collect_data()
     series1.draw(-1, axs)
-    fig.savefig('figures/power.pdf')
+    fig.savefig(os.path.join(casename, 'power.pdf'))
 
 
 if __name__ == "__main__":
