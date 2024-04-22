@@ -34,9 +34,9 @@ class ADM:
         self.ny = make_odd(self.ly // self.gridsize)
         self.nz = make_even(self.lz // self.gridsize)
         self.dt = 0.2 * self.gridsize / self.windspeed
-        total_flowthroughs = 6
-        stat_flowthroughs = 1
-        init_flowthroughs = 4
+        total_flowthroughs = 20
+        stat_flowthroughs = 4
+        init_flowthroughs = 10
         self.total_timesteps = int(self.lx / self.windspeed / self.dt * total_flowthroughs)
         self.init_timesteps = int(self.lx / self.windspeed / self.dt * init_flowthroughs)
         self.stat_timesteps = int(self.lx / self.windspeed / self.dt * (total_flowthroughs - stat_flowthroughs))
@@ -64,10 +64,10 @@ class ADM:
             patch_nml = {'BasicParam': {
                             'ifirst': 1,
                             'ilast': self.total_timesteps,
-                            'xlx': self.ly*2,
+                            'xlx': self.ly*4,
                             'yly': self.ly,
                             'zlz': self.lz,
-                            'nx': self.ny*2,
+                            'nx': self.ny*4,
                             'ny': self.ny,
                             'nz': self.nz,
                         },
