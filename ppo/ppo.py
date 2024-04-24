@@ -56,6 +56,8 @@ def main(cfg: "DictConfig"):
 
     params = {
         "n_turbines": cfg.env.turbines,
+        "n_procs": cfg.env.n_processors_per_env,
+        "n_parallel": cfg.env.n_parallel,
         "probes_per_turbine": cfg.env.probes_per_turbine,
         "turbine_diameter": cfg.env.turbine_diameter,
         "turbine_spacing": cfg.env.turbine_spacing,

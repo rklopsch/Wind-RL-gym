@@ -20,8 +20,9 @@ def make_odd(i):
 
 class ADM:
 
-    def __init__(self, farm, probes_per_turbine, windspeed=10, base_dir=None, device='cpu'):
+    def __init__(self, farm, probes_per_turbine, windspeed=10, base_dir=None, device='cpu', nprocs=8):
         self.device = torch.device(device)
+        self.nprocs = nprocs
         self.farm = farm
         self.windspeed = windspeed
         self.probes_per_turbine = probes_per_turbine
@@ -82,7 +83,9 @@ class ADM:
             # Run for iterations
             if is_verbose():
                 print(f'Running XCompact3D precursor simulation for ABL from 0 to {self.total_timesteps}')
-            subprocess.run(os.path.join(self.precursor_dir, 'run.sh'))
+            mpi_command = ['mpirun', '-np', f'{self.nprocs}', 'xcompact3d'] 
+            subprocess.run(mpi_command, cwd=self.precursor_dir)
+
 
     def initialise_flow(self, iterations=100):
         if os.path.isdir(self.initialise_dir):
@@ -136,7 +139,8 @@ class ADM:
             # Run for iterations
             if is_verbose():
                 print(f'Initialisation Xcompact3D case from {1} to {iterations}')
-            subprocess.run(os.path.join(self.initialise_dir, 'run.sh'))
+            mpi_command = ['mpirun', '-np', f'{self.nprocs}', 'xcompact3d'] 
+            subprocess.run(mpi_command, cwd=self.initialise_dir)
 
     def advance(self, yaws, iterations=50, save=False):
         yaw = yaws.numpy()
@@ -169,7 +173,8 @@ class ADM:
         # Run for iterations
         if is_verbose():
             print(f'Running xcompact from {old_ilast+1} to {old_ilast+iterations}')
-        subprocess.run(os.path.join(self.run_dir, 'run.sh'))
+        mpi_command = ['mpirun', '-np', f'{self.nprocs}', 'xcompact3d'] 
+        subprocess.run(mpi_command, cwd=self.run_dir)
 
         # Retrieve Power
         turbine_obs = np.zeros((self.farm.n_turbines, 3+2*self.probes_per_turbine))
