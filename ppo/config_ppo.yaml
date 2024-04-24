@@ -1,7 +1,8 @@
 # task and env
 env:
-  n_parallel: 2
-  dummy_update: True
+  n_parallel: 4
+  n_processors_per_env: 32
+  dummy_update: False
   env_name: WindFarm
   turbines: 3
   probes_per_turbine: 25
@@ -23,7 +24,7 @@ logger:
   backend: wandb
   mode: online
   test_interval: 5_000
-  num_test_episodes: 2
+  num_test_episodes: 1
   test_episode_length: 1_000
   checkpoint_interval: 10
   project_name: Wind-PPO-testing
