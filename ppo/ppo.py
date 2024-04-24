@@ -10,6 +10,7 @@ results from Schulman et al. 2017 for the on MuJoCo Environments.
 import os
 import sys
 import time
+import copy
 import logging
 import torch.optim
 import tqdm
