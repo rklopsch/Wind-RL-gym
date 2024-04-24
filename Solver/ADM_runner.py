@@ -20,9 +20,10 @@ def make_odd(i):
 
 class ADM:
 
-    def __init__(self, farm, probes_per_turbine, windspeed=10, base_dir=None, device='cpu', nprocs=8):
+    def __init__(self, farm, probes_per_turbine, windspeed=10, base_dir=None, device='cpu', nprocs=8, nenvs=1):
         self.device = torch.device(device)
         self.nprocs = nprocs
+        self.nenvs = nenvs
         self.farm = farm
         self.windspeed = windspeed
         self.probes_per_turbine = probes_per_turbine
@@ -83,7 +84,7 @@ class ADM:
             # Run for iterations
             if is_verbose():
                 print(f'Running XCompact3D precursor simulation for ABL from 0 to {self.total_timesteps}')
-            mpi_command = ['mpirun', '-np', f'{self.nprocs}', 'xcompact3d'] 
+            mpi_command = ['mpirun', '-np', f'{self.nprocs*self.nenvs}', 'xcompact3d'] 
             subprocess.run(mpi_command, cwd=self.precursor_dir)
 
 
@@ -139,7 +140,7 @@ class ADM:
             # Run for iterations
             if is_verbose():
                 print(f'Initialisation Xcompact3D case from {1} to {iterations}')
-            mpi_command = ['mpirun', '-np', f'{self.nprocs}', 'xcompact3d'] 
+            mpi_command = ['mpirun', '-np', f'{self.nprocs*self.nenvs}', 'xcompact3d'] 
             subprocess.run(mpi_command, cwd=self.initialise_dir)
 
     def advance(self, yaws, iterations=50, save=False):

@@ -57,7 +57,7 @@ def main(cfg: "DictConfig"):
     params = {
         "n_turbines": cfg.env.turbines,
         "n_procs": cfg.env.n_processors_per_env,
-        "n_parallel": cfg.env.n_parallel,
+        "n_envs": cfg.env.n_parallel,
         "probes_per_turbine": cfg.env.probes_per_turbine,
         "turbine_diameter": cfg.env.turbine_diameter,
         "turbine_spacing": cfg.env.turbine_spacing,
@@ -66,6 +66,10 @@ def main(cfg: "DictConfig"):
         "dt": cfg.env.steps_per_frame * 0.2,
         "run_steps": cfg.collector.max_episode_length * cfg.env.steps_per_frame,
     }
+
+    test_params = copy.deepcopy(params)
+    test_params["n_procs"]=cfg.env.n_processors_per_env*cfg.env.n_parallel
+    test_params["n_envs"]=1
 
     # Create models
     if not cfg.optim.load_from_checkpoint:
@@ -82,7 +86,7 @@ def main(cfg: "DictConfig"):
 
     # Create environments
     train_env = make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update)
-    test_env = make_env(params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
+    test_env = make_env(test_params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
     test_env.eval()
 
     # Create collector
