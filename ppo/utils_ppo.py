@@ -173,7 +173,7 @@ def make_ppo_models_state(proof_environment):
 
 
 def make_ppo_models(params):
-    proof_environment = make_env(params, device="cpu")
+    proof_environment = make_env(params, device="cpu", dummy_update=True)
     actor, critic = make_ppo_models_state(proof_environment)
     return actor, critic
 
