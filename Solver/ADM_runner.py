@@ -84,9 +84,10 @@ class ADM:
             # Run for iterations
             if is_verbose():
                 print(f'Running XCompact3D precursor simulation for ABL from 0 to {self.total_timesteps}')
-            mpi_command = ['mpirun', '-np', f'{self.nprocs*self.nenvs}', 'xcompact3d'] 
-            subprocess.run(mpi_command, cwd=self.precursor_dir)
-
+            mpi_command = ['mpirun', '-np', f'{self.nprocs*self.nenvs}', 'xcompact3d']
+            log_file_path = os.path.join(self.precursor_dir, "log.x3d")
+            with open(log_file_path, 'a') as log_file:
+                subprocess.run(mpi_command, cwd=self.precursor_dir, stdout=log_file, stderr=log_file)
 
     def initialise_flow(self, iterations=100):
         if os.path.isdir(self.initialise_dir):
@@ -140,8 +141,10 @@ class ADM:
             # Run for iterations
             if is_verbose():
                 print(f'Initialisation Xcompact3D case from {1} to {iterations}')
-            mpi_command = ['mpirun', '-np', f'{self.nprocs*self.nenvs}', 'xcompact3d'] 
-            subprocess.run(mpi_command, cwd=self.initialise_dir)
+            mpi_command = ['mpirun', '-np', f'{self.nprocs*self.nenvs}', 'xcompact3d']
+            log_file_path = os.path.join(self.initialise_dir, "log.x3d")
+            with open(log_file_path, 'a') as log_file:
+                subprocess.run(mpi_command, cwd=self.initialise_dir, stdout=log_file, stderr=log_file)
 
     def advance(self, yaws, iterations=50, save=False):
         yaw = yaws.numpy()
@@ -174,8 +177,10 @@ class ADM:
         # Run for iterations
         if is_verbose():
             print(f'Running xcompact from {old_ilast+1} to {old_ilast+iterations}')
-        mpi_command = ['mpirun', '-np', f'{self.nprocs}', 'xcompact3d'] 
-        subprocess.run(mpi_command, cwd=self.run_dir)
+        mpi_command = ['mpirun', '-np', f'{self.nprocs}', 'xcompact3d']
+        log_file_path = os.path.join(self.run_dir, "log.x3d")
+        with open(log_file_path, 'a') as log_file:
+            subprocess.run(mpi_command, cwd=self.run_dir, stdout=log_file, stderr=log_file)
 
         # Retrieve Power
         turbine_obs = np.zeros((self.farm.n_turbines, 3+2*self.probes_per_turbine))
