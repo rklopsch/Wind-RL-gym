@@ -336,7 +336,7 @@ def main(cfg: "DictConfig"):
                 if not dummy_update:
                     shutil.move('./LES_RUNS/TestEnv/Running/data', os.path.join(results_dir, f'TEST_{test_number}/data'))
                     for turb in range(test_env.n_turbs):
-                        shutil.move(f'./LES_RUNS/TestEnv/Running/disc{turb+1}.adm', os.path.join(results_dir, f'TEST_{test_number}'))
+                        shutil.copy(f'./LES_RUNS/TestEnv/Running/disc{turb+1}.adm', os.path.join(results_dir, f'TEST_{test_number}'))
 
         if i % cfg.logger.checkpoint_interval == 0 or i == total_frames // frames_per_batch:
             output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
