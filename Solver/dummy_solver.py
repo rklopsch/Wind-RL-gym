@@ -13,7 +13,7 @@ instance = 0
 
 for i in range(10):
     # only for testing this file on its own
-    client.put_tensor(f'{instance}_yaws_done', np.array([1]))
+    # client.put_tensor(f'{instance}_yaws_done', np.array([1]))
     
     # Check if the yaws have been written by the agent
     while not client.get_tensor(f'{instance}_yaws_done')[0]:
@@ -23,8 +23,8 @@ for i in range(10):
     client.put_tensor(f'{instance}_yaws_done', np.array([0]))
 
     # Read yaws determined by agent
-    # yaws = client.get_tensor(f'{instance}_yaws')
-    yaws = np.zeros([3])
+    yaws = client.get_tensor(f'{instance}_yaws')
+    # yaws = np.zeros([3])
     
     # Do the numerical magic
     for _ in range(50):
