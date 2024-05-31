@@ -233,7 +233,7 @@ class ADM:
 
         if is_verbose():
             print(f'Farm Power = {farm_power}')
-        """
+        
 
         return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32)
 
