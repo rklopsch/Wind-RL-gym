@@ -6,6 +6,7 @@ import numpy as np
 import f90nml
 from Solver.farm import Turbine, Farm
 from utils.verbose import is_verbose
+from smartredis import Client
 
 
 def make_even(i):
@@ -151,13 +152,19 @@ class ADM:
         yaw = yaws.numpy()
         if is_verbose():
             print(f'Turbine yaw angles = {yaw}')
-        # set up case for ADM
-        self.farm.set_yaw(yaw)
+        # set up case for ADM (Could be deleted?)
+        self.farm.set_yaw(yaw) 
 
-        # Update *.ad file
-        self.farm.write_adm(os.path.join(self.run_dir, 'adm'))
+        ## Update *.ad file (deprecated)
+        #self.farm.write_adm(os.path.join(self.run_dir, 'adm'))
 
-        # Update case parameters input.i3d file
+        # send yaws to X3D
+        self.client.put_tensor(f"{self.instance}_yaws", yaw)
+        # Set i_yaws_done flag to True (one)
+        self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1)) # setting one as True
+
+        # Update case parameters input.i3d file (deprecated)
+        """
         ioutput = iterations if save else iterations*1000
         shutil.move(os.path.join(self.run_dir, 'input.i3d'), os.path.join(self.run_dir, 'old_input.i3d'))
         old_input = f90nml.read(os.path.join(self.run_dir, 'old_input.i3d'))
@@ -174,7 +181,8 @@ class ADM:
                         }
                      }
         f90nml.patch(os.path.join(self.run_dir, 'old_input.i3d'), patch_nml, os.path.join(self.run_dir, 'input.i3d'))
-
+        
+        
         # Run for iterations
         if is_verbose():
             print(f'Running xcompact from {old_ilast+1} to {old_ilast+iterations}')
@@ -182,10 +190,27 @@ class ADM:
         log_file_path = os.path.join(self.run_dir, "log.x3d")
         with open(log_file_path, 'a') as log_file:
             subprocess.run(mpi_command, cwd=self.run_dir, stdout=log_file, stderr=log_file)
+        """
+        
+        # Poll whether X3D simulation is done
+        while(self.client.get_tensor(f"{self.instance}_sim_done")[0] == False):
+            continue
 
-        # Retrieve Power
-        turbine_obs = np.zeros((self.farm.n_turbines, 3+2*self.probes_per_turbine))
-        farm_power = 0
+        turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")
+
+        turbine_obs = self.client.get_tensor(f"{self.instance}_probe_data")
+
+        # Retrieve Power (deprecated)
+        """ turbine_obs = np.zeros((self.farm.n_turbines, 3+2*self.probes_per_turbine))
+        farm_power = 0 """
+
+        # Andrew/Max can fill in some physics here
+        # ...
+
+        # Set i_sim_done flag to false (zero)
+        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1)) 
+
+        """
 
         for iturb in range(self.farm.n_turbines):
             fname = os.path.join(self.run_dir, f'disc{iturb + 1}.adm')
@@ -207,6 +232,7 @@ class ADM:
 
         if is_verbose():
             print(f'Farm Power = {farm_power}')
+        """
 
         return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32)
 
