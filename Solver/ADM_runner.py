@@ -21,7 +21,7 @@ def make_odd(i):
 
 class ADM:
 
-    def __init__(self, farm, probes_per_turbine, windspeed=10, base_dir=None, device='cpu', nprocs=8, nenvs=1):
+    def __init__(self, farm, probes_per_turbine, windspeed=10, instance=None, device='cpu', nprocs=8, nenvs=1):
         self.device = torch.device(device)
         self.nprocs = nprocs
         self.nenvs = nenvs
@@ -44,11 +44,12 @@ class ADM:
         self.total_timesteps = int(self.lx / self.windspeed / self.dt * total_flowthroughs)
         self.init_timesteps = int(self.lx / self.windspeed / self.dt * init_flowthroughs)
         self.stat_timesteps = int(self.lx / self.windspeed / self.dt * (total_flowthroughs - stat_flowthroughs))
-
-        if base_dir is None:
+        self.instance = instance
+        # below can be deleted?
+        if instance is None:
             self.dir = './LES_RUNS'
         else:
-            self.dir = os.path.join('./LES_RUNS', base_dir)
+            self.dir = os.path.join('./LES_RUNS', instance)
 
         self.run_dir = os.path.join(self.dir, 'Running')
         self.precursor_dir = os.path.join(self.dir, 'PrecursorABL')
@@ -180,8 +181,7 @@ class ADM:
                         'ilist': iterations
                         }
                      }
-        f90nml.patch(os.path.join(self.run_dir, 'old_input.i3d'), patch_nml, os.path.join(self.run_dir, 'input.i3d'))
-        
+        # f90nml.patch(os.path.join(self.run_dir, 'old_input.i3d'), patch_nml, os.path.join(self.run_dir, 'input.i3d'))
         
         # Run for iterations
         if is_verbose():
@@ -213,8 +213,9 @@ class ADM:
         """
 
         for iturb in range(self.farm.n_turbines):
-            fname = os.path.join(self.run_dir, f'disc{iturb + 1}.adm')
-            turbine_velocity, turbine_power = np.loadtxt(fname, usecols=(2, 3), skiprows=1, unpack=True)
+             fname = os.path.join(self.run_dir, f'disc{iturb + 1}.adm')
+            turbine_velocity, turbine_power = np.loadtxt(fname, usecols=(2, 3), skiprows=1, unpack=True)  
+
             turbine_power /= 1e06
             turbine_power = turbine_power[-iterations:-1].mean()
             turbine_velocity = turbine_velocity[-iterations:-1].mean()
@@ -228,7 +229,7 @@ class ADM:
                 probe_u, probe_w = np.loadtxt(fname, usecols=(1, 3), unpack=True)
                 probe_u = probe_u[-iterations:-1].mean()
                 probe_w = probe_w[-iterations:-1].mean()
-                turbine_obs[iturb][iobs*2+3:(iobs+1)*2+3] = [probe_u, probe_w]
+                turbine_obs[iturb][iobs*2+3:(iobs+1)*2+3] = [probe_u, probe_w] """
 
         if is_verbose():
             print(f'Farm Power = {farm_power}')
