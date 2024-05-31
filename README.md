@@ -1,10 +1,10 @@
 # Wind-RL
 Reinforcement Learning for Wind Farm Control
 
-## Requirements
+## How to install
 
 
-### Requirements for v1: using mpi run to restart the simulation at every agent interaction
+### v1: using mpi run to restart the simulation at every agent interaction
 Python requirements are available in requirements.txt
 [XCompact3D](https://github.com/admole/Incompact3d/tree/my_dev) is required to run the wind farm simulations.
 
@@ -13,7 +13,7 @@ Xcompact should be compiled following its instructions and added to a known path
 sudo ln -s /path/to/Incompact3D/xcompact3d /usr/bin/xcompact3d
 ```
 
-### Requirements for v2: using SmartSim to couple xcompact3d and RL code
+### v2: using SmartSim to couple xcompact3d and RL code
 The following approach seems to be working:
 
 1. Install SmartSim with `pip install smartsim`.
@@ -36,6 +36,7 @@ Note that this will install PyTorch 2.2.1 (GPU version). However we did not inst
 ## Running
 
 ### v1
+
 The reinforcement learning can be run with the ppo algorithm from the main directory using
 ```bash
 python3 ./ppo/ppo.py
@@ -51,4 +52,5 @@ export WINDRL_VERBOSE=true
 
 
 ### v2
+
 Coming soon!
