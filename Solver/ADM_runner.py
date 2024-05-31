@@ -26,6 +26,7 @@ class ADM:
         self.nprocs = nprocs
         self.nenvs = nenvs
         self.farm = farm
+        self.n_turbines = self.farm.n_turbines
         self.windspeed = windspeed
         self.probes_per_turbine = probes_per_turbine
         self.diameter = farm.turbines[0].diam
@@ -236,12 +237,21 @@ class ADM:
 
         return torch.tensor(farm_power, dtype=torch.float32), torch.tensor(turbine_obs, dtype=torch.float32)
 
-    def restart(self, case_name=None):
+    def restart(self):
+        for _ in range(150):
+            self.advance(yaws=torch.zero([self.n_turbines]))
+        # Make sure the flags for yaws_done and sim_done are both set to False at the end of reset
+        self.client.put_tensor(f"{self.instance}_yaws_done", np.array([0]))
+        self.client.put_tensor(f"{self.instance}_sim_done", np.array([0]))
+        
+
+        """
         if case_name is not None:
             self.run_dir = os.path.join(self.dir, case_name)
         if is_verbose():
             print(f'copying {self.initialise_dir} to {self.run_dir}')
         shutil.copytree(self.initialise_dir, self.run_dir, dirs_exist_ok=True)
+        """
 
     def add_probes(self, directory):
         probes_per_turbine = self.probes_per_turbine
