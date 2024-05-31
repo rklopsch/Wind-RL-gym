@@ -193,25 +193,27 @@ class ADM:
         """
         
         # Poll whether X3D simulation is done
-        while(self.client.get_tensor(f"{self.instance}_sim_done")[0] == False):
+        while not self.client.get_tensor(f"{self.instance}_sim_done")[0]:
             continue
 
-        turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")
+        turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # n_turbs x iterations
 
-        turbine_obs = self.client.get_tensor(f"{self.instance}_probe_data")
+        turbine_obs = self.client.get_tensor(f"{self.instance}_probe_data")  # n_turbs x obs_per_turbine x iterations
 
         # Retrieve Power (deprecated)
         """ turbine_obs = np.zeros((self.farm.n_turbines, 3+2*self.probes_per_turbine))
         farm_power = 0 """
 
-        # Andrew/Max can fill in some physics here
-        # ...
+        # Process the outputs from the solver
+        turbine_powers /= 1e06
+        farm_power = turbine_powers.mean(axis=-1)  # Compute mean over iterations many time steps
+        turbine_obs = turbine_obs.mean(axis=-1)  # Compute mean over iterations many time steps
+        # Missing turbine velocities here!! Stack the velocities, individual turbine power and yaw before the turbine_obs
 
         # Set i_sim_done flag to false (zero)
         self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1)) 
 
         """
-
         for iturb in range(self.farm.n_turbines):
              fname = os.path.join(self.run_dir, f'disc{iturb + 1}.adm')
             turbine_velocity, turbine_power = np.loadtxt(fname, usecols=(2, 3), skiprows=1, unpack=True)  
@@ -229,7 +231,8 @@ class ADM:
                 probe_u, probe_w = np.loadtxt(fname, usecols=(1, 3), unpack=True)
                 probe_u = probe_u[-iterations:-1].mean()
                 probe_w = probe_w[-iterations:-1].mean()
-                turbine_obs[iturb][iobs*2+3:(iobs+1)*2+3] = [probe_u, probe_w] """
+                turbine_obs[iturb][iobs*2+3:(iobs+1)*2+3] = [probe_u, probe_w]
+        """
 
         if is_verbose():
             print(f'Farm Power = {farm_power}')
