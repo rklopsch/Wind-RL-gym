@@ -28,6 +28,7 @@ pip install tensordict==0.2.0
 smart build --device cpu --no_tf
 ```
 This will install torch 2.0.1 (CPU only).
+
 5. Install the remaining requirements by running `pip install tqdm matplotlib hydra-core wandb f90nml`
 
 Happy times.
