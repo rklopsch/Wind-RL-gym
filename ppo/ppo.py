@@ -9,6 +9,7 @@ results from Schulman et al. 2017 for the on MuJoCo Environments.
 """
 import os
 import sys
+sys.path.append(os.getcwd())
 import time
 import copy
 import logging
@@ -32,7 +33,6 @@ import hydra
 
 @hydra.main(config_path="./", config_name="config_ppo", version_base="1.2")
 def main(cfg: "DictConfig"):
-    sys.path.append(os.getcwd())
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     print(f'Running on {device}')
     print(f'cuda version:{torch.version.cuda}')
@@ -338,13 +338,16 @@ def main(cfg: "DictConfig"):
                     for turb in range(test_env.n_turbs):
                         shutil.copy(f'./LES_RUNS/TestEnv/Running/disc{turb+1}.adm', os.path.join(results_dir, f'TEST_{test_number}'))
 
+        """
+        # Deactivate all saving and checkpointing for now, since this uses functionality from torchrl > 0.2.1
         if i % cfg.logger.checkpoint_interval == 0 or i == total_frames // frames_per_batch:
             output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
             full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
             logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
             save_model(test_env, actor, critic, output_dir, i)
             logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{i}.pkl and {output_dir}critic_{i}.pkl")
-
+        """
+            
         wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()
         sampling_start = time.time()
