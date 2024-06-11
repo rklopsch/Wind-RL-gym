@@ -15,6 +15,10 @@ for i in range(10):
     # only for testing this file on its own
     # client.put_tensor(f'{instance}_yaws_done', np.array([1]))
     
+    # Check if the file exists - idle until it does
+    while not client.poll_key(f'{instance}_yaws_done', 100, 10):
+        continue
+
     # Check if the yaws have been written by the agent
     while not client.get_tensor(f'{instance}_yaws_done')[0]:
         continue

@@ -4,9 +4,10 @@ import subprocess
 import shutil
 import numpy as np
 import f90nml
-from Solver.farm import Turbine, Farm
-from utils.verbose import is_verbose
+from farm import Turbine, Farm
 from smartredis import Client
+
+is_verbose = False
 
 
 def make_even(i):

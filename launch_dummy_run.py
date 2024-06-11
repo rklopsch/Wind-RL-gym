@@ -41,8 +41,8 @@ def launch_ppo(experiment):
 
     # create directories for the output files and copy
     # scripts to execution location inside newly created dir
-    # only necessary if its not an executable (python is executable here)
-    producer.attach_generator_files(to_copy=["./ppo/ppo.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml"])
+    # only necessary if its not an executable (python is executable here) 
+    producer.attach_generator_files(to_copy=["./ppo/ppo.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml", "./Solver/WF_enviroment.py", "./Solver/ADM_runner.py", "./Solver/farm.py"])
 
     experiment.generate(producer, overwrite=True)
     return producer

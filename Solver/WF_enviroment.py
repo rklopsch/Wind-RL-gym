@@ -8,8 +8,8 @@ from tensordict.nn import TensorDictModule
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torch import nn
 
-from Solver.ADM_runner import ADM
-from Solver.farm import Turbine, Farm
+from ADM_runner import ADM
+from farm import Turbine, Farm
 
 from torchrl.data import BoundedTensorSpec, CompositeSpec, UnboundedContinuousTensorSpec
 from torchrl.envs import (
