@@ -14,23 +14,23 @@ sudo ln -s /path/to/Incompact3D/xcompact3d /usr/bin/xcompact3d
 ```
 
 ### v2: using SmartSim to couple xcompact3d and RL code
-The following approach seems to be working:
+These instructions will get SmartSim installed together with TorchRL:
 
-1. Install SmartSim with `pip install smartsim`.
-2. Build SmartSim by running
+1. Install torchrl with `pip install torchrl==0.2.1`
+2. Install the correct version of tensordict with 
+```bash
+pip uninstall tensordict
+pip install tensordict==0.2.0
+```
+3. Uninstall the PyTorch build with `pip uninstall torch`
+4. Build SmartSim, requesting PyTorch as an ML backend
 ```bash
 smart build --device cpu --no_tf
 ```
-This will build SmartSim and request the PyTorch backend and RedisAI. Note that currently, this will install PyTorch 2.0.1 (CPU only), but we need a newer version of PyTorch.
-3. Avoid dependency conflicts by unsintalling torchvision (which is not used anyway)
-```bash
-pip uninstall torchvision
-```
-4. Install the rest of the requirements by running 
-```bash
-pip install -r requirements.txt
-```
-Note that this will install PyTorch 2.2.1 (GPU version). However we did not install GPU support for SmartSim so that we can only run on CPU. This is okay since the time to train the RL models is a tiny fraction of time required for the wind farm simulations.
+This will install torch 2.0.1 (CPU only).
+5. Install the remaining requirements by running `pip install tqdm matplotlib hydra-core wandb f90nml`
+
+Happy times.
 
 
 ## Running
