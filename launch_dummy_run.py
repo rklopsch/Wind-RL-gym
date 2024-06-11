@@ -34,6 +34,19 @@ def launch_solver(experiment):
     experiment.generate(producer, overwrite=True)
     return producer
 
+def launch_ppo(experiment):
+    aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py")
+    aprun.set_tasks(1)
+    producer = experiment.create_model("ppo", aprun)
+
+    # create directories for the output files and copy
+    # scripts to execution location inside newly created dir
+    # only necessary if its not an executable (python is executable here)
+    producer.attach_generator_files(to_copy="./ppo/ppo.py")
+
+    experiment.generate(producer, overwrite=True)
+    return producer
+
 
 if __name__ == '__main__':
     exp = Experiment("launch_dummy_run", launcher="local")
@@ -43,6 +56,9 @@ if __name__ == '__main__':
 
     solver_app = launch_solver(exp)
     exp.start(solver_app, block=False, summary=False)
+
+    rl_app = launch_ppo(exp)
+    exp.start(rl_app, block=False, summary=False)
 
     # shutdown the database because we don't need it anymore
     time.sleep(15)
