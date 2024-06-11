@@ -7,3 +7,5 @@ Solver/ADM/TESTING
 Solver/.ADM*
 RESULTS
 LES_RUNS
+*.out
+*.err
