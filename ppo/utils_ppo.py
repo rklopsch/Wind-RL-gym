@@ -30,7 +30,6 @@ from torchrl.envs import (
 )
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.modules.models.multiagent import MultiAgentMLP
-from Solver.WF_enviroment import TurbEnv
 import numpy as np
 
 
@@ -73,6 +72,7 @@ def add_env_transforms(env, obs_norm_params=None):
 
 
 def make_env(params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True):
+    from Solver.WF_enviroment import TurbEnv
     env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
     if add_transforms:
         env = add_env_transforms(env)
