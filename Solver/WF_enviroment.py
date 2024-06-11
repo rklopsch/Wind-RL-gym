@@ -7,6 +7,7 @@ import tqdm
 from tensordict.nn import TensorDictModule
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torch import nn
+import time
 
 from Solver.ADM_runner import ADM
 from Solver.farm import Turbine, Farm
@@ -47,6 +48,7 @@ class TurbEnv(EnvBase):
         self.max_speed = params["max_yaw_speed"]  # maximum angular velocity of wind turbine
         self.max_angle = params["max_yaw_angle"]
         self.dt = params["dt"]
+        self.instance = instance
 
         self._make_spec()
         if seed is None:
@@ -74,6 +76,8 @@ class TurbEnv(EnvBase):
         # where X = num_obs_per_turbine for observation
         #       X = num_actions_per_turbine for action
         #       X = 1 for reward
+
+        print(f"Hello. I am instance {self.instance} This is the time at start of step: {time.time():.4f}.")
 
         action = tensordict.get(("agents", "action"))
         # action = action.unbind(dim=1)
@@ -122,6 +126,8 @@ class TurbEnv(EnvBase):
             batch_size=self.batch_size,
             device=self.device,
         )
+
+        print(f"Hello again. I am instance {self.instance} This is the time at END of step: {time.time():.4f}.")
 
         return out
 
