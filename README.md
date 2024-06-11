@@ -16,20 +16,32 @@ sudo ln -s /path/to/Incompact3D/xcompact3d /usr/bin/xcompact3d
 ### v2: using SmartSim to couple xcompact3d and RL code
 These instructions will get SmartSim installed together with TorchRL:
 
-1. Install torchrl with `pip install torchrl==0.2.1`
+1. Install torchrl with
+```bash
+pip install torchrl==0.2.1
+```
+
 2. Install the correct version of tensordict with 
 ```bash
 pip uninstall tensordict
 pip install tensordict==0.2.0
 ```
-3. Uninstall the PyTorch build with `pip uninstall torch`
+
+3. Uninstall the PyTorch build with
+```bash
+`pip uninstall torch`
+```
+
 4. Build SmartSim, requesting PyTorch as an ML backend
 ```bash
 smart build --device cpu --no_tf
 ```
 This will install torch 2.0.1 (CPU only).
 
-5. Install the remaining requirements by running `pip install tqdm matplotlib hydra-core wandb f90nml`
+5. Install the remaining requirements by running
+```bash
+pip install tqdm matplotlib hydra-core wandb f90nml
+```
 
 Happy times.
 
