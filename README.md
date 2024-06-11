@@ -29,7 +29,7 @@ pip install tensordict==0.2.0
 
 3. Uninstall the PyTorch build with
 ```bash
-`pip uninstall torch`
+pip uninstall torch
 ```
 
 4. Build SmartSim, requesting PyTorch as an ML backend
