@@ -1,0 +1,580 @@
+{
+  "schema info": {
+    "schema_name": "entity manifest",
+    "version": "0.0.4"
+  },
+  "experiment": {
+    "name": "launch_dummy_run",
+    "path": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run",
+    "launcher": "Local",
+    "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/logs/smartsim.out",
+    "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/logs/smartsim.err"
+  },
+  "runs": [
+    {
+      "run_id": "be65b04",
+      "timestamp": 1717152968203630395,
+      "model": [],
+      "orchestrator": [
+        {
+          "name": "orchestrator",
+          "type": "redis",
+          "interface": [
+            "lo"
+          ],
+          "shards": [
+            {
+              "name": "orchestrator_0",
+              "hostname": "127.0.0.1",
+              "port": 6783,
+              "cluster": false,
+              "conf_file": null,
+              "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/be65b04/database/orchestrator/orchestrator_0/orchestrator_0.out",
+              "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/be65b04/database/orchestrator/orchestrator_0/orchestrator_0.err",
+              "memory_file": "",
+              "client_file": "",
+              "client_count_file": "",
+              "telemetry_metadata": {
+                "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/be65b04/database/orchestrator/orchestrator_0",
+                "step_id": null,
+                "task_id": "3698290",
+                "managed": false
+              }
+            }
+          ]
+        }
+      ],
+      "ensemble": []
+    },
+    {
+      "run_id": "21bd28c",
+      "timestamp": 1717152968411062610,
+      "model": [
+        {
+          "name": "dummy_solver",
+          "path": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/dummy_solver",
+          "exe_args": [
+            "Solver/dummy_solver.py"
+          ],
+          "run_settings": {
+            "exe": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/test1/bin/python"
+            ],
+            "run_command": null,
+            "run_args": {}
+          },
+          "batch_settings": {},
+          "params": {},
+          "files": {
+            "Symlink": [],
+            "Configure": [],
+            "Copy": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/Solver/dummy_solver.py"
+            ]
+          },
+          "colocated_db": {},
+          "telemetry_metadata": {
+            "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/21bd28c/model/dummy_solver",
+            "step_id": null,
+            "task_id": "3698484",
+            "managed": false
+          },
+          "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/21bd28c/model/dummy_solver/dummy_solver.out",
+          "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/21bd28c/model/dummy_solver/dummy_solver.err"
+        }
+      ],
+      "orchestrator": [],
+      "ensemble": []
+    },
+    {
+      "run_id": "6794c81",
+      "timestamp": 1717153193324374540,
+      "model": [],
+      "orchestrator": [
+        {
+          "name": "orchestrator",
+          "type": "redis",
+          "interface": [
+            "lo"
+          ],
+          "shards": [
+            {
+              "name": "orchestrator_0",
+              "hostname": "127.0.0.1",
+              "port": 6783,
+              "cluster": false,
+              "conf_file": null,
+              "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/6794c81/database/orchestrator/orchestrator_0/orchestrator_0.out",
+              "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/6794c81/database/orchestrator/orchestrator_0/orchestrator_0.err",
+              "memory_file": "",
+              "client_file": "",
+              "client_count_file": "",
+              "telemetry_metadata": {
+                "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/6794c81/database/orchestrator/orchestrator_0",
+                "step_id": null,
+                "task_id": "3699203",
+                "managed": false
+              }
+            }
+          ]
+        }
+      ],
+      "ensemble": []
+    },
+    {
+      "run_id": "1698fb4",
+      "timestamp": 1717153193531811636,
+      "model": [
+        {
+          "name": "dummy_solver",
+          "path": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/dummy_solver",
+          "exe_args": [
+            "Solver/dummy_solver.py"
+          ],
+          "run_settings": {
+            "exe": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/test1/bin/python"
+            ],
+            "run_command": null,
+            "run_args": {}
+          },
+          "batch_settings": {},
+          "params": {},
+          "files": {
+            "Symlink": [],
+            "Configure": [],
+            "Copy": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/Solver/dummy_solver.py"
+            ]
+          },
+          "colocated_db": {},
+          "telemetry_metadata": {
+            "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/1698fb4/model/dummy_solver",
+            "step_id": null,
+            "task_id": "3699375",
+            "managed": false
+          },
+          "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/1698fb4/model/dummy_solver/dummy_solver.out",
+          "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/1698fb4/model/dummy_solver/dummy_solver.err"
+        }
+      ],
+      "orchestrator": [],
+      "ensemble": []
+    },
+    {
+      "run_id": "e901004",
+      "timestamp": 1717153671811514902,
+      "model": [],
+      "orchestrator": [
+        {
+          "name": "orchestrator",
+          "type": "redis",
+          "interface": [
+            "lo"
+          ],
+          "shards": [
+            {
+              "name": "orchestrator_0",
+              "hostname": "127.0.0.1",
+              "port": 6783,
+              "cluster": false,
+              "conf_file": null,
+              "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/e901004/database/orchestrator/orchestrator_0/orchestrator_0.out",
+              "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/e901004/database/orchestrator/orchestrator_0/orchestrator_0.err",
+              "memory_file": "",
+              "client_file": "",
+              "client_count_file": "",
+              "telemetry_metadata": {
+                "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/e901004/database/orchestrator/orchestrator_0",
+                "step_id": null,
+                "task_id": "3700392",
+                "managed": false
+              }
+            }
+          ]
+        }
+      ],
+      "ensemble": []
+    },
+    {
+      "run_id": "83a7113",
+      "timestamp": 1717153672018497543,
+      "model": [
+        {
+          "name": "dummy_solver",
+          "path": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/dummy_solver",
+          "exe_args": [
+            "Solver/dummy_solver.py"
+          ],
+          "run_settings": {
+            "exe": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/test1/bin/python"
+            ],
+            "run_command": null,
+            "run_args": {}
+          },
+          "batch_settings": {},
+          "params": {},
+          "files": {
+            "Symlink": [],
+            "Configure": [],
+            "Copy": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/Solver/dummy_solver.py"
+            ]
+          },
+          "colocated_db": {},
+          "telemetry_metadata": {
+            "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/83a7113/model/dummy_solver",
+            "step_id": null,
+            "task_id": "3700575",
+            "managed": false
+          },
+          "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/83a7113/model/dummy_solver/dummy_solver.out",
+          "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/83a7113/model/dummy_solver/dummy_solver.err"
+        }
+      ],
+      "orchestrator": [],
+      "ensemble": []
+    },
+    {
+      "run_id": "f3f2f05",
+      "timestamp": 1717154280729043417,
+      "model": [],
+      "orchestrator": [
+        {
+          "name": "orchestrator",
+          "type": "redis",
+          "interface": [
+            "lo"
+          ],
+          "shards": [
+            {
+              "name": "orchestrator_0",
+              "hostname": "127.0.0.1",
+              "port": 6783,
+              "cluster": false,
+              "conf_file": null,
+              "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/f3f2f05/database/orchestrator/orchestrator_0/orchestrator_0.out",
+              "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/f3f2f05/database/orchestrator/orchestrator_0/orchestrator_0.err",
+              "memory_file": "",
+              "client_file": "",
+              "client_count_file": "",
+              "telemetry_metadata": {
+                "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/f3f2f05/database/orchestrator/orchestrator_0",
+                "step_id": null,
+                "task_id": "3701071",
+                "managed": false
+              }
+            }
+          ]
+        }
+      ],
+      "ensemble": []
+    },
+    {
+      "run_id": "ef47a85",
+      "timestamp": 1717154280936893613,
+      "model": [
+        {
+          "name": "dummy_solver",
+          "path": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/dummy_solver",
+          "exe_args": [
+            "dummy_solver.py"
+          ],
+          "run_settings": {
+            "exe": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/test1/bin/python"
+            ],
+            "run_command": null,
+            "run_args": {}
+          },
+          "batch_settings": {},
+          "params": {},
+          "files": {
+            "Symlink": [],
+            "Configure": [],
+            "Copy": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/Solver/dummy_solver.py"
+            ]
+          },
+          "colocated_db": {},
+          "telemetry_metadata": {
+            "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/ef47a85/model/dummy_solver",
+            "step_id": null,
+            "task_id": "3701269",
+            "managed": false
+          },
+          "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/ef47a85/model/dummy_solver/dummy_solver.out",
+          "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/ef47a85/model/dummy_solver/dummy_solver.err"
+        }
+      ],
+      "orchestrator": [],
+      "ensemble": []
+    },
+    {
+      "run_id": "902c66e",
+      "timestamp": 1717154352572085784,
+      "model": [],
+      "orchestrator": [
+        {
+          "name": "orchestrator",
+          "type": "redis",
+          "interface": [
+            "lo"
+          ],
+          "shards": [
+            {
+              "name": "orchestrator_0",
+              "hostname": "127.0.0.1",
+              "port": 6783,
+              "cluster": false,
+              "conf_file": null,
+              "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/902c66e/database/orchestrator/orchestrator_0/orchestrator_0.out",
+              "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/902c66e/database/orchestrator/orchestrator_0/orchestrator_0.err",
+              "memory_file": "",
+              "client_file": "",
+              "client_count_file": "",
+              "telemetry_metadata": {
+                "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/902c66e/database/orchestrator/orchestrator_0",
+                "step_id": null,
+                "task_id": "3701523",
+                "managed": false
+              }
+            }
+          ]
+        }
+      ],
+      "ensemble": []
+    },
+    {
+      "run_id": "489b120",
+      "timestamp": 1717154352785081897,
+      "model": [
+        {
+          "name": "dummy_solver",
+          "path": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/dummy_solver",
+          "exe_args": [
+            "dummy_solver.py"
+          ],
+          "run_settings": {
+            "exe": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/test1/bin/python"
+            ],
+            "run_command": null,
+            "run_args": {}
+          },
+          "batch_settings": {},
+          "params": {},
+          "files": {
+            "Symlink": [],
+            "Configure": [],
+            "Copy": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/Solver/dummy_solver.py"
+            ]
+          },
+          "colocated_db": {},
+          "telemetry_metadata": {
+            "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/489b120/model/dummy_solver",
+            "step_id": null,
+            "task_id": "3701709",
+            "managed": false
+          },
+          "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/489b120/model/dummy_solver/dummy_solver.out",
+          "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/489b120/model/dummy_solver/dummy_solver.err"
+        }
+      ],
+      "orchestrator": [],
+      "ensemble": []
+    },
+    {
+      "run_id": "5daf3eb",
+      "timestamp": 1717154398850555276,
+      "model": [],
+      "orchestrator": [
+        {
+          "name": "orchestrator",
+          "type": "redis",
+          "interface": [
+            "lo"
+          ],
+          "shards": [
+            {
+              "name": "orchestrator_0",
+              "hostname": "127.0.0.1",
+              "port": 6783,
+              "cluster": false,
+              "conf_file": null,
+              "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/5daf3eb/database/orchestrator/orchestrator_0/orchestrator_0.out",
+              "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/5daf3eb/database/orchestrator/orchestrator_0/orchestrator_0.err",
+              "memory_file": "",
+              "client_file": "",
+              "client_count_file": "",
+              "telemetry_metadata": {
+                "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/5daf3eb/database/orchestrator/orchestrator_0",
+                "step_id": null,
+                "task_id": "3701955",
+                "managed": false
+              }
+            }
+          ]
+        }
+      ],
+      "ensemble": []
+    },
+    {
+      "run_id": "74e2834",
+      "timestamp": 1717154399063501260,
+      "model": [
+        {
+          "name": "dummy_solver",
+          "path": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/dummy_solver",
+          "exe_args": [
+            "dummy_solver.py"
+          ],
+          "run_settings": {
+            "exe": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/test1/bin/python"
+            ],
+            "run_command": null,
+            "run_args": {}
+          },
+          "batch_settings": {},
+          "params": {},
+          "files": {
+            "Symlink": [],
+            "Configure": [],
+            "Copy": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/Solver/dummy_solver.py"
+            ]
+          },
+          "colocated_db": {},
+          "telemetry_metadata": {
+            "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/74e2834/model/dummy_solver",
+            "step_id": null,
+            "task_id": "3702147",
+            "managed": false
+          },
+          "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/74e2834/model/dummy_solver/dummy_solver.out",
+          "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/74e2834/model/dummy_solver/dummy_solver.err"
+        }
+      ],
+      "orchestrator": [],
+      "ensemble": []
+    },
+    {
+      "run_id": "0f328a6",
+      "timestamp": 1718109102533522451,
+      "model": [],
+      "orchestrator": [
+        {
+          "name": "orchestrator",
+          "type": "redis",
+          "interface": [
+            "lo"
+          ],
+          "shards": [
+            {
+              "name": "orchestrator_0",
+              "hostname": "127.0.0.1",
+              "port": 6783,
+              "cluster": false,
+              "conf_file": null,
+              "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/0f328a6/database/orchestrator/orchestrator_0/orchestrator_0.out",
+              "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/0f328a6/database/orchestrator/orchestrator_0/orchestrator_0.err",
+              "memory_file": "",
+              "client_file": "",
+              "client_count_file": "",
+              "telemetry_metadata": {
+                "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/0f328a6/database/orchestrator/orchestrator_0",
+                "step_id": null,
+                "task_id": "3760621",
+                "managed": false
+              }
+            }
+          ]
+        }
+      ],
+      "ensemble": []
+    },
+    {
+      "run_id": "2711c33",
+      "timestamp": 1718109102742755573,
+      "model": [
+        {
+          "name": "dummy_solver",
+          "path": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/dummy_solver",
+          "exe_args": [
+            "dummy_solver.py"
+          ],
+          "run_settings": {
+            "exe": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/smartsim/bin/python"
+            ],
+            "run_command": null,
+            "run_args": {}
+          },
+          "batch_settings": {},
+          "params": {},
+          "files": {
+            "Symlink": [],
+            "Configure": [],
+            "Copy": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/Solver/dummy_solver.py"
+            ]
+          },
+          "colocated_db": {},
+          "telemetry_metadata": {
+            "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/2711c33/model/dummy_solver",
+            "step_id": null,
+            "task_id": "3760796",
+            "managed": false
+          },
+          "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/2711c33/model/dummy_solver/dummy_solver.out",
+          "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/2711c33/model/dummy_solver/dummy_solver.err"
+        }
+      ],
+      "orchestrator": [],
+      "ensemble": []
+    },
+    {
+      "run_id": "939f1db",
+      "timestamp": 1718109102947856047,
+      "model": [
+        {
+          "name": "ppo",
+          "path": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/ppo",
+          "exe_args": [
+            "ppo.py"
+          ],
+          "run_settings": {
+            "exe": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/smartsim/bin/python"
+            ],
+            "run_command": null,
+            "run_args": {}
+          },
+          "batch_settings": {},
+          "params": {},
+          "files": {
+            "Symlink": [],
+            "Configure": [],
+            "Copy": [
+              "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/ppo/ppo.py"
+            ]
+          },
+          "colocated_db": {},
+          "telemetry_metadata": {
+            "status_dir": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/939f1db/model/ppo",
+            "step_id": null,
+            "task_id": "3760844",
+            "managed": false
+          },
+          "out_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/939f1db/model/ppo/ppo.out",
+          "err_file": "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/.smartsim/telemetry/launch_dummy_run/939f1db/model/ppo/ppo.err"
+        }
+      ],
+      "orchestrator": [],
+      "ensemble": []
+    }
+  ]
+}

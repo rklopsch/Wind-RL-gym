@@ -1,0 +1,9 @@
+{
+  "timestamp": 1717154296054,
+  "job_id": 3701071,
+  "step_id": "",
+  "type": "dbnode",
+  "action": "stop",
+  "detail": "Process 3701169 finished with return code: 0",
+  "return_code": 0
+}

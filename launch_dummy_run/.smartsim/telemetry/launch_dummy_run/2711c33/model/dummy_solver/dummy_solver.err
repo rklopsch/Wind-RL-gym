@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/dummy_solver/dummy_solver.py", line 19, in <module>
+    while not client.get_tensor(f'{instance}_yaws_done')[0]:
+  File "/home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/smartsim/lib/python3.10/site-packages/smartredis/util.py", line 155, in smartredis_api_wrapper
+    raise getattr(error, exception_name)(cpp_error_str, method_name) from None
+smartredis.error.RedisRuntimeError: Client.get_tensor execution failed
+File "/project/src/cpp/redis.cpp", line 692, in SmartRedis library
+Redis error when executing command: ERR tensor key is empty or in a different shard

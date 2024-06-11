@@ -1,0 +1,42 @@
+----------- Running Command ----------
+COMMAND: /home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/test1/lib/python3.10/site-packages/smartsim/_core/bin/redis-server /home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/test1/lib/python3.10/site-packages/smartsim/_core/config/redis.conf --loadmodule /home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/test1/lib/python3.10/site-packages/smartsim/_core/lib/redisai.so --port 6783 --bind 127.0.0.1 --bind-source-addr 127.0.0.1
+IPADDRESS: 127.0.0.1
+NETWORK: lo
+SMARTSIM_ORC_SHARD_INFO: {"name": "orchestrator_0", "hostname": "127.0.0.1", "port": 6783, "cluster": false}
+--------------------------------------
+
+--------------- Output ---------------
+
+
+3698445:C 31 May 2024 10:55:58.831 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+3698445:C 31 May 2024 10:55:58.831 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+3698445:C 31 May 2024 10:55:58.831 * Redis version=7.2.4, bits=64, commit=d2c8a4b9, modified=0, pid=3698445, just started
+3698445:C 31 May 2024 10:55:58.831 * Configuration loaded
+3698445:M 31 May 2024 10:55:58.832 * monotonic clock: POSIX clock_gettime
+3698445:M 31 May 2024 10:55:58.835 # Failed to write PID file: Permission denied
+                _._
+           _.-``__ ''-._
+      _.-``    `.  `_.  ''-._           Redis 7.2.4 (d2c8a4b9/0) 64 bit
+  .-`` .-```.  ```\/    _.,_ ''-._
+ (    '      ,       .-`  | `,    )     Running in standalone mode
+ |`-._`-...-` __...-.``-._|'` _.-'|     Port: 6783
+ |    `-._   `._    /     _.-'    |     PID: 3698445
+  `-._    `-._  `-./  _.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |           https://redis.io
+  `-._    `-._`-.__.-'_.-'    _.-'
+ |`-._`-._    `-.__.-'    _.-'_.-'|
+ |    `-._`-._        _.-'_.-'    |
+  `-._    `-._`-.__.-'_.-'    _.-'
+      `-._    `-.__.-'    _.-'
+          `-._        _.-'
+              `-.__.-'
+
+3698445:M 31 May 2024 10:55:58.836 * <ai> Redis version found by RedisAI: 7.2.4 - oss
+3698445:M 31 May 2024 10:55:58.836 * <ai> RedisAI version 10207, git_sha=1bf38d86233ba06e1350ca9de794df2b07cdb274
+3698445:M 31 May 2024 10:55:58.836 * Module 'ai' loaded from /home/eidf079/eidf079/mweissen-ai4nz/miniconda3/envs/test1/lib/python3.10/site-packages/smartsim/_core/lib/redisai.so
+3698445:M 31 May 2024 10:55:58.837 * Server initialized
+3698445:M 31 May 2024 10:55:58.837 * Ready to accept connections tcp
+3698445:signal-handler (1717152980) Received SIGINT scheduling shutdown...
+3698445:signal-handler (1717152980) Received SIGTERM scheduling shutdown...
+3698445:signal-handler (1717152980) Received SIGTERM scheduling shutdown...

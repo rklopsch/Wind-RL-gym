@@ -1,0 +1,4 @@
+12:31:32 eidf079-gpu1.vms.os.eidf.epcc.ed.ac.uk __main__.orchestrator_0-D1X6UCR7D88O[3760621:MainThread] INFO Indirect proxy 3760621 child process 3760719 started
+12:31:32 eidf079-gpu1.vms.os.eidf.epcc.ed.ac.uk __main__.orchestrator_0-D1X6UCR7D88O[3760621:MainThread] INFO Waiting for child process 3760719 to complete
+12:31:58 eidf079-gpu1.vms.os.eidf.epcc.ed.ac.uk __main__.orchestrator_0-D1X6UCR7D88O[3760621:MainThread] INFO Indirect proxy 3760621 child process 3760719 complete. return code: 0
+12:31:58 eidf079-gpu1.vms.os.eidf.epcc.ed.ac.uk __main__.orchestrator_0-D1X6UCR7D88O[3760621:MainThread] INFO Performing cleanup

@@ -1,8 +1,8 @@
 # task and env
 env:
-  n_parallel: 4
+  n_parallel: 1
   n_processors_per_env: 32
-  dummy_update: False
+  dummy_update: True
   env_name: WindFarm
   turbines: 3
   probes_per_turbine: 25
@@ -22,7 +22,7 @@ collector:
 # logger
 logger:
   backend: wandb
-  mode: online
+  mode: offline
   test_interval: 5_000
   num_test_episodes: 1
   test_episode_length: 1_000

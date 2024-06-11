@@ -3,6 +3,9 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
+print(os.getcwd())
+
 import torch.nn
 import torch.optim
 import pickle
@@ -36,7 +39,7 @@ import numpy as np
 # --------------------------------------------------------------------
 def obs_normalisation():
     # The first three inputs are: turbine velocity, turbine power and turbine yaw.
-    # Then the inputs are the u_x and u_x velocities behind the turbine at the sample points
+    # Then the inputs are the u_x and u_z velocities behind the turbine at the sample points
     return {'loc': np.array([4.5, 0., 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.,
                              5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75,
                              0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.,
