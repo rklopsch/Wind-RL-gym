@@ -41,8 +41,15 @@ while True:
     print(f"Yaws are {yaws}")
     
     # Do the numerical magic
+    pows_list = []
+    obs_list = []
     for _ in range(50):
         pows, obs = dummy_solve(yaws)
+        pows_list.append(pows)
+        obs_list.append(obs)
+
+    pows = np.stack(pows, axis=-1)
+    obs = np.stack(obs, axis=-1)
     
     # Store the new outputs of the simulation on the database
     client.put_tensor(f'{instance}_turbine_powers', pows)

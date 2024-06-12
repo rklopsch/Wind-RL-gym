@@ -79,6 +79,14 @@ def make_env(client, params, instance=None, save=False, device="cpu", dummy_upda
     return env
 
 
+def make_smartsim_env(client, params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True):
+    from WF_enviroment import TurbEnv
+    env = TurbEnv(client, params, save=save, instance=0, device=device, dummy_update=dummy_update)
+    if add_transforms:
+        env = add_env_transforms(env)
+    return env
+
+
 def make_parallel_env(client, params, num_envs, device="cpu", dummy_update=False):
     """
     # Different way of creating parallel envs, this way the VecNorm is synchronised

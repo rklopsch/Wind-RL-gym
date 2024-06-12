@@ -65,10 +65,14 @@ class TurbEnv(EnvBase):
         self.adm.total_timesteps = params["run_steps"] + self.adm.init_timesteps
 
         self.dummy_update = dummy_update  # If True, perform a dummy update for testing
+        """
         if not self.dummy_update:
             # self.adm.run_precursor()
             # self.adm.initialise_flow(self.adm.init_timesteps)
+            print("In init, calling restart")
             self.adm.restart()
+            print("In init, end of restart")
+        """
 
     def _step(self, tensordict):
         # All tensors are expected to be of shape [*batch_size, num_turbs, X]
@@ -86,6 +90,8 @@ class TurbEnv(EnvBase):
         new_alpha = alpha + u * self.dt
         new_alpha = new_alpha.clamp(-self.max_angle, self.max_angle)
 
+        print(f"In step (Turbenv): angles = {new_alpha}")
+
         # update by running ADM
         if self.dummy_update:
             power = torch.ones((*tensordict.shape, self.n_turbs, 1), device=self.device)
@@ -97,6 +103,8 @@ class TurbEnv(EnvBase):
 
         reward = power.expand(*tensordict.shape, self.n_turbs, 1)
         done = torch.zeros((*tensordict.shape, 1), dtype=torch.bool)
+
+        print(f"observation shape {observation.shape}")
 
         source = {
             "done": done,
@@ -127,6 +135,8 @@ class TurbEnv(EnvBase):
         return out
 
     def _reset(self, tensordict):
+
+        print(f"Resetting now")
 
         if not self.dummy_update:
             self.adm.restart()

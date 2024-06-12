@@ -19,11 +19,10 @@ from tensordict import TensorDict
 from torchrl.collectors import SyncDataCollector
 from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
-from torchrl.envs import ExplorationType, set_exploration_type
-from torchrl.objectives import ClipPPOLoss, ValueEstimators
+from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value.advantages import GAE
-from torchrl.record.loggers import generate_exp_name, get_logger
-from utils_ppo import eval_model, make_env, make_parallel_env, make_ma_ppo_models, load_model
+from torchrl.record.loggers import generate_exp_name
+from utils_ppo import make_smartsim_env, make_ma_ppo_models, load_model
 # from utils.save_model import save_model
 from omegaconf import OmegaConf
 import wandb
@@ -78,9 +77,9 @@ def main(cfg: "DictConfig"):
     client = Client(address=None, cluster=False)
 
     # Set all relevant flags to False at initialisation
-    instance = 0
-    client.put_tensor(f'{instance}_sim_done', np.array([0]))
-    client.put_tensor(f"{instance}_yaws_done", np.array([0]))
+    for instance in [0]:
+        client.put_tensor(f'{instance}_sim_done', np.array([0]))
+        client.put_tensor(f"{instance}_yaws_done", np.array([0]))
 
     # Create models
     if not cfg.optim.load_from_checkpoint:
@@ -96,9 +95,7 @@ def main(cfg: "DictConfig"):
     actor, critic = actor.to(device), critic.to(device)
 
     # Create environments
-    train_env = make_parallel_env(client, params, n_environments, device=device, dummy_update=dummy_update)
-    test_env = make_env(client, test_params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
-    test_env.eval()
+    train_env = make_smartsim_env(client, params, n_environments, device=device, dummy_update=dummy_update)
 
     # Create collector
     collector = SyncDataCollector(
@@ -135,8 +132,8 @@ def main(cfg: "DictConfig"):
         normalize_advantage=False,
     )
     loss_module.set_keys(  # We have to tell the loss where to find the keys
-        reward=test_env.reward_key,
-        action=test_env.action_key,
+        reward=train_env.reward_key,
+        action=train_env.action_key,
         sample_log_prob=("agents", "sample_log_prob"),
         value=("agents", "state_value"),
         # These last 2 keys will be expanded to match the reward shape
@@ -152,7 +149,7 @@ def main(cfg: "DictConfig"):
     )
     adv_module.set_keys(
         value=("agents", "state_value"),
-        reward=test_env.reward_key,
+        reward=train_env.reward_key,
     )
 
     # Create optimizers
@@ -174,7 +171,6 @@ def main(cfg: "DictConfig"):
     # Main loop
     collected_frames = 0
     num_network_updates = 0
-    test_number = 0
     start_time = time.time()
     #pbar = tqdm.tqdm(total=total_frames)
     num_mini_batches = frames_per_batch // mini_batch_size
@@ -192,8 +188,6 @@ def main(cfg: "DictConfig"):
     cfg_optim_lr = cfg.optim.lr
     cfg_loss_anneal_clip_eps = cfg.loss.anneal_clip_epsilon
     cfg_loss_clip_epsilon = cfg.loss.clip_epsilon
-    cfg_logger_num_test_episodes = cfg.logger.num_test_episodes
-    cfg_logger_test_episode_length = cfg.logger.test_episode_length
     losses = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
 
     for i, data in enumerate(collector):
@@ -209,25 +203,25 @@ def main(cfg: "DictConfig"):
             ("next", "agents", "done"),
             data.get(("next", "done"))
             .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", test_env.reward_key))),
+            .expand(data.get_item_shape(("next", train_env.reward_key))),
         )
         data.set(
             ("next", "agents", "terminated"),
             data.get(("next", "terminated"))
             .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", test_env.reward_key))),
+            .expand(data.get_item_shape(("next", train_env.reward_key))),
         )
         data.set(
             ("next", "done"),
             data.get(("next", "done"))
             .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", test_env.reward_key))),
+            .expand(data.get_item_shape(("next", train_env.reward_key))),
         )
         data.set(
             ("next", "terminated"),
             data.get(("next", "terminated"))
             .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", test_env.reward_key))),
+            .expand(data.get_item_shape(("next", train_env.reward_key))),
         )
         # We need to expand the done and terminated to match the reward shape (this is expected by the value estimator)
 
@@ -309,52 +303,13 @@ def main(cfg: "DictConfig"):
             }
         )
 
-        # Get test rewards
-        with torch.no_grad(), set_exploration_type(ExplorationType.MODE):
-            if ((i - 1) * frames_in_batch * frame_skip) // test_interval < (
-                i * frames_in_batch * frame_skip
-            ) // test_interval:
-                test_number += 1
-                actor.eval()
-                eval_start = time.time()
-
-                test_rewards_mean, test_rewards_stdv, test_alpha_means, test_alpha_stdvs = eval_model(
-                    actor, test_env, cfg.env.turbines,
-                    num_episodes=cfg_logger_num_test_episodes,
-                    episode_length=cfg_logger_test_episode_length
-                )
-
-                eval_time = time.time() - eval_start
-
-                # Prepare to update log_info with dynamic alpha means and stdvs
-                log_info.update({
-                    "eval/reward_mean": test_rewards_mean,
-                    "eval/reward_stdv": test_rewards_stdv,
-                    "eval/time": eval_time,
-                })
-
-                # Dynamically update log_info for each turbine
-                turbine_log = {}
-                for idx, (mean, stdv) in enumerate(zip(test_alpha_means, test_alpha_stdvs), start=1):
-                    turbine_log[f"eval/alpha_{idx}_mean"] = mean
-                    turbine_log[f"eval/alpha_{idx}_stdv"] = stdv
-
-                log_info.update(turbine_log)
-                actor.train()
-
-                # Copy LES data from evaluation into results directory in output
-                if not dummy_update:
-                    shutil.move('./LES_RUNS/TestEnv/Running/data', os.path.join(results_dir, f'TEST_{test_number}/data'))
-                    for turb in range(test_env.n_turbs):
-                        shutil.copy(f'./LES_RUNS/TestEnv/Running/disc{turb+1}.adm', os.path.join(results_dir, f'TEST_{test_number}'))
-
         """
         # Deactivate all saving and checkpointing for now, since this uses functionality from torchrl > 0.2.1
         if i % cfg.logger.checkpoint_interval == 0 or i == total_frames // frames_per_batch:
             output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
             full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
             logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
-            save_model(test_env, actor, critic, output_dir, i)
+            save_model(train_env, actor, critic, output_dir, i)
             logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{i}.pkl and {output_dir}critic_{i}.pkl")
         """
             
