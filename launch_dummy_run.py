@@ -61,7 +61,7 @@ if __name__ == '__main__':
     exp.start(rl_app, block=False, summary=False)
 
     # shutdown the database because we don't need it anymore
-    time.sleep(15)
+    time.sleep(30)
     exp.stop(db)
 
     print(exp.summary())

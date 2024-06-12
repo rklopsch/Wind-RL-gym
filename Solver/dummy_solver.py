@@ -11,16 +11,20 @@ def dummy_solve(yaws):
 client = Client(address=None, cluster=False)
 instance = 0
 
-for i in range(10):
+while True:
     # only for testing this file on its own
     # client.put_tensor(f'{instance}_yaws_done', np.array([1]))
     
     # Check if the file exists - idle until it does
     while not client.poll_key(f'{instance}_yaws_done', 100, 10):
+        time.sleep(0.1)
+        print(f"Waiting for yaws done to be created")
         continue
 
     # Check if the yaws have been written by the agent
     while not client.get_tensor(f'{instance}_yaws_done')[0]:
+        time.sleep(0.1)
+        print(f"Waiting for yaws to be done. Time {time.time()}")
         continue
 
     # Reset the yaw done to False
@@ -33,6 +37,8 @@ for i in range(10):
     # Read yaws determined by agent
     yaws = client.get_tensor(f'{instance}_yaws')
     # yaws = np.zeros([3])
+
+    print(f"Yaws are {yaws}")
     
     # Do the numerical magic
     for _ in range(50):

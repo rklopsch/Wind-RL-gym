@@ -22,8 +22,9 @@ def make_odd(i):
 
 class ADM:
 
-    def __init__(self, farm, probes_per_turbine, windspeed=10, instance=None, device='cpu', nprocs=8, nenvs=1):
+    def __init__(self, client, farm, probes_per_turbine, windspeed=10, instance=None, device='cpu', nprocs=8, nenvs=1):
         self.device = torch.device(device)
+        self.client = client
         self.nprocs = nprocs
         self.nenvs = nenvs
         self.farm = farm
@@ -58,7 +59,7 @@ class ADM:
 
     def run_precursor(self):
         if os.path.isdir(self.precursor_dir):
-            if is_verbose():
+            if is_verbose:
                 print(f'Using precursor simulation that already exists in {self.precursor_dir}')
         else:
             base_dir = './Solver/ADM/precursor_Base'
@@ -86,7 +87,7 @@ class ADM:
                          patch_nml, os.path.join(self.precursor_dir, 'input.i3d'))
 
             # Run for iterations
-            if is_verbose():
+            if is_verbose:
                 print(f'Running XCompact3D precursor simulation for ABL from 0 to {self.total_timesteps}')
             mpi_command = ['mpirun', '-np', f'{self.nprocs*self.nenvs}', 'xcompact3d']
             log_file_path = os.path.join(self.precursor_dir, "log.x3d")
@@ -95,7 +96,7 @@ class ADM:
 
     def initialise_flow(self, iterations=100):
         if os.path.isdir(self.initialise_dir):
-            if is_verbose():
+            if is_verbose:
                 print(f'Using initialisation simulation that already exists in {self.initialise_dir}')
         else:
             base_dir = './Solver/ADM/Base'
@@ -143,7 +144,7 @@ class ADM:
                          patch_nml, os.path.join(self.initialise_dir, 'input.i3d'))
 
             # Run for iterations
-            if is_verbose():
+            if is_verbose:
                 print(f'Initialisation Xcompact3D case from {1} to {iterations}')
             mpi_command = ['mpirun', '-np', f'{self.nprocs*self.nenvs}', 'xcompact3d']
             log_file_path = os.path.join(self.initialise_dir, "log.x3d")
@@ -152,7 +153,7 @@ class ADM:
 
     def advance(self, yaws, iterations=50, save=False):
         yaw = yaws.numpy()
-        if is_verbose():
+        if is_verbose:
             print(f'Turbine yaw angles = {yaw}')
         # set up case for ADM (Could be deleted?)
         self.farm.set_yaw(yaw) 
@@ -164,6 +165,9 @@ class ADM:
         self.client.put_tensor(f"{self.instance}_yaws", yaw)
         # Set i_yaws_done flag to True (one)
         self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1)) # setting one as True
+
+        print(f"Set yaws to {yaw} for key {self.instance}_yaws")
+        print(f"Set yaws done to True for key {self.instance}_yaws_done")
 
         # Update case parameters input.i3d file (deprecated)
         """
@@ -185,7 +189,7 @@ class ADM:
         # f90nml.patch(os.path.join(self.run_dir, 'old_input.i3d'), patch_nml, os.path.join(self.run_dir, 'input.i3d'))
         
         # Run for iterations
-        if is_verbose():
+        if is_verbose:
             print(f'Running xcompact from {old_ilast+1} to {old_ilast+iterations}')
         mpi_command = ['mpirun', '-np', f'{self.nprocs}', 'xcompact3d']
         log_file_path = os.path.join(self.run_dir, "log.x3d")
@@ -194,6 +198,7 @@ class ADM:
         """
         
         # Poll whether X3D simulation is done
+        print(f"This is instance {self.instance}")
         while not self.client.get_tensor(f"{self.instance}_sim_done")[0]:
             continue
 
@@ -213,6 +218,8 @@ class ADM:
 
         # Set i_sim_done flag to false (zero)
         self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1)) 
+
+        print(f"Set sim done to True for key {self.instance}_sim_done")
 
         """
         for iturb in range(self.farm.n_turbines):
@@ -235,7 +242,7 @@ class ADM:
                 turbine_obs[iturb][iobs*2+3:(iobs+1)*2+3] = [probe_u, probe_w]
         """
 
-        if is_verbose():
+        if is_verbose:
             print(f'Farm Power = {farm_power}')
         
 
@@ -243,7 +250,7 @@ class ADM:
 
     def restart(self):
         for _ in range(150):
-            self.advance(yaws=torch.zero([self.n_turbines]))
+            self.advance(yaws=torch.zeros([self.n_turbines]))
         # Make sure the flags for yaws_done and sim_done are both set to False at the end of reset
         self.client.put_tensor(f"{self.instance}_yaws_done", np.array([0]))
         self.client.put_tensor(f"{self.instance}_sim_done", np.array([0]))
@@ -252,7 +259,7 @@ class ADM:
         """
         if case_name is not None:
             self.run_dir = os.path.join(self.dir, case_name)
-        if is_verbose():
+        if is_verbose:
             print(f'copying {self.initialise_dir} to {self.run_dir}')
         shutil.copytree(self.initialise_dir, self.run_dir, dirs_exist_ok=True)
         """

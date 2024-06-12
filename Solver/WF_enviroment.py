@@ -28,6 +28,7 @@ class TurbEnv(EnvBase):
     batch_locked = False
 
     def __init__(self,
+                 client,
                  params=None,
                  seed=None,
                  save=False,
@@ -60,13 +61,13 @@ class TurbEnv(EnvBase):
                           self.n_turbs, Turbine(diameter, 90, yaw=0),
                           offset=[4 * diameter, 2 * diameter])
         self.farm1.grid(staggered=False)
-        self.adm = ADM(self.farm1, params["probes_per_turbine"], instance=f'{instance}', nprocs=params["n_procs"], nenvs=params["n_envs"])
+        self.adm = ADM(client, self.farm1, params["probes_per_turbine"], instance=f'{instance}', nprocs=params["n_procs"], nenvs=params["n_envs"])
         self.adm.total_timesteps = params["run_steps"] + self.adm.init_timesteps
 
         self.dummy_update = dummy_update  # If True, perform a dummy update for testing
         if not self.dummy_update:
-            self.adm.run_precursor()
-            self.adm.initialise_flow(self.adm.init_timesteps)
+            # self.adm.run_precursor()
+            # self.adm.initialise_flow(self.adm.init_timesteps)
             self.adm.restart()
 
     def _step(self, tensordict):

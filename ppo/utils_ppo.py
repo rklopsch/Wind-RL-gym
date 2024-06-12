@@ -71,15 +71,15 @@ def add_env_transforms(env, obs_norm_params=None):
     return TransformedEnv(env, transforms)
 
 
-def make_env(params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True):
+def make_env(client, params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True):
     from WF_enviroment import TurbEnv
-    env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
+    env = TurbEnv(client, params, save=save, instance=instance, device=device, dummy_update=dummy_update)
     if add_transforms:
         env = add_env_transforms(env)
     return env
 
 
-def make_parallel_env(params, num_envs, device="cpu", dummy_update=False):
+def make_parallel_env(client, params, num_envs, device="cpu", dummy_update=False):
     """
     # Different way of creating parallel envs, this way the VecNorm is synchronised
     # However idk how to figure out the instance parameter here...
@@ -90,7 +90,7 @@ def make_parallel_env(params, num_envs, device="cpu", dummy_update=False):
     env_creator.state_dict()["transforms.3._extra_state"]["td"]["agents_observation_sum"].fill_(0.0)
     # return env
     """
-    function_list = [lambda i=i: make_env(params, instance=i, device=device, dummy_update=dummy_update) for i in
+    function_list = [lambda i=i: make_env(client, params, instance=i, device=device, dummy_update=dummy_update) for i in
                      range(num_envs)]
     env = ParallelEnv(num_envs, function_list, )
     # serial_for_single=True)
@@ -240,8 +240,8 @@ def make_ma_ppo_models_state(proof_environment):
     return policy, value_module
 
 
-def make_ma_ppo_models(params):
-    proof_environment = make_env(params, device="cpu", dummy_update=True)
+def make_ma_ppo_models(client, params):
+    proof_environment = make_env(client, params, device="cpu", dummy_update=True)
     actor, critic = make_ma_ppo_models_state(proof_environment)
     return actor, critic
 

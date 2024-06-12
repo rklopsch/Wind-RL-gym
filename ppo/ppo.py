@@ -29,6 +29,8 @@ from omegaconf import OmegaConf
 import wandb
 import shutil
 import hydra
+from smartredis import Client
+import numpy as np
 
 
 @hydra.main(config_path="./", config_name="config_ppo", version_base="1.2")
@@ -72,10 +74,18 @@ def main(cfg: "DictConfig"):
     test_params["n_procs"]=cfg.env.n_processors_per_env*cfg.env.n_parallel
     test_params["n_envs"]=1
 
+    # Create client
+    client = Client(address=None, cluster=False)
+
+    # Set all relevant flags to False at initialisation
+    instance = 0
+    client.put_tensor(f'{instance}_sim_done', np.array([0]))
+    client.put_tensor(f"{instance}_yaws_done", np.array([0]))
+
     # Create models
     if not cfg.optim.load_from_checkpoint:
         # Create a new model
-        actor, critic = make_ma_ppo_models(params)
+        actor, critic = make_ma_ppo_models(client, params)
     else:
         # Load from specified checkpoint
         _, actor, critic = load_model(
@@ -86,8 +96,8 @@ def main(cfg: "DictConfig"):
     actor, critic = actor.to(device), critic.to(device)
 
     # Create environments
-    train_env = make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update)
-    test_env = make_env(test_params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
+    train_env = make_parallel_env(client, params, n_environments, device=device, dummy_update=dummy_update)
+    test_env = make_env(client, test_params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
     test_env.eval()
 
     # Create collector
