@@ -49,30 +49,51 @@ class TurbEnv(EnvBase):
         self.max_angle = params["max_yaw_angle"]
         self.dt = params["dt"]
 
+        self.client = client
+
         self._make_spec()
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
 
-        # set up a farm environment (probably better to pass params to ADM_runner and set up there)
-        diameter = params["turbine_diameter"]
-        spacing = params["turbine_spacing"]
-        self.farm1 = Farm(diameter * spacing * self.n_turbs, diameter * 4,
-                          self.n_turbs, Turbine(diameter, 90, yaw=0),
-                          offset=[4 * diameter, 2 * diameter])
-        self.farm1.grid(staggered=False)
-        self.adm = ADM(client, self.farm1, params["probes_per_turbine"], instance=f'{instance}', nprocs=params["n_procs"], nenvs=params["n_envs"])
-        self.adm.total_timesteps = params["run_steps"] + self.adm.init_timesteps
+        self.instance = 0  # Needs to be replaced with a list of instances
 
         self.dummy_update = dummy_update  # If True, perform a dummy update for testing
-        """
-        if not self.dummy_update:
-            # self.adm.run_precursor()
-            # self.adm.initialise_flow(self.adm.init_timesteps)
-            print("In init, calling restart")
-            self.adm.restart()
-            print("In init, end of restart")
-        """
+
+    def _communicate(self, new_alpha):
+        ######### Communication with SmartRedis server ###########
+        # Send yaws to X3D
+        self.client.put_tensor(f"{self.instance}_yaws", new_alpha.detach().cpu().numpy())
+        # Set i_yaws_done flag to True (one)
+        self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1)) # setting one as True
+
+        print(f"Set yaws to {new_alpha} for key {self.instance}_yaws")
+        print(f"Set yaws done to True for key {self.instance}_yaws_done")
+
+        # Poll whether X3D simulation is done
+        # This is done now for only one but we need to loop over ALL instances here
+        while not self.client.get_tensor(f"{self.instance}_sim_done")[0]:
+            continue
+
+        # Here need to loop over ALL instances, and stack the results into one tensor
+        turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # n_turbs x iterations
+        turbine_obs = self.client.get_tensor(f"{self.instance}_probe_data")  # n_turbs x obs_per_turbine x iterations
+
+        # Here: Stack the outputs from all the parallel envs into one
+
+        print("turbine powers shape", turbine_powers.shape)
+
+        # Process the outputs from the solver
+        turbine_powers /= 1e06
+        farm_power = turbine_powers.mean(axis=-1)  # Compute mean over iterations many time steps
+        turbine_obs = turbine_obs.mean(axis=-1)  # Compute mean over iterations many time steps
+        # Missing turbine velocities here!! Stack the velocities, individual turbine power and yaw before the turbine_obs
+
+        # Convert to Torch tensors
+        power = torch.tensor(farm_power, dtype=torch.float32).to(self.device)
+        observation = torch.tensor(turbine_obs, dtype=torch.float32).to(self.device)
+
+        return power, observation
 
     def _step(self, tensordict):
         # All tensors are expected to be of shape [*batch_size, num_turbs, X]
@@ -80,29 +101,32 @@ class TurbEnv(EnvBase):
         #       X = num_actions_per_turbine for action
         #       X = 1 for reward
 
+        # Retrieve action and previous alpha from tensordict
         action = tensordict.get(("agents", "action"))
-        # action = action.unbind(dim=1)
         alpha = tensordict.get(("agents", "alpha"))
-        # u = tensordict["action"].squeeze(-1)
         u = action
         u = u.clamp(-self.max_speed, self.max_speed)
         
+        # Compute new alpha
         new_alpha = alpha + u * self.dt
         new_alpha = new_alpha.clamp(-self.max_angle, self.max_angle)
 
         print(f"In step (Turbenv): angles = {new_alpha}")
 
-        # update by running ADM
+        power, observation = self._communicate(new_alpha)
+
+        # Do a dummy update if desired - this probs needs to be changed
         if self.dummy_update:
             power = torch.ones((*tensordict.shape, self.n_turbs, 1), device=self.device)
             observation = torch.zeros((*tensordict.shape, self.n_turbs, self.obs_per_turbine), device=self.device)
-        else:
-            power, observation = (self.adm.advance(new_alpha.cpu(), save=self.save))
-            power = power.to(self.device)
-            observation = observation.to(self.device)
 
         reward = power.expand(*tensordict.shape, self.n_turbs, 1)
         done = torch.zeros((*tensordict.shape, 1), dtype=torch.bool)
+
+        # Set i_sim_done flag to false (zero)
+        # This needs to be done in a for loop for ALL instances here
+        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1)) 
+        print(f"Set sim done to True for key {self.instance}_sim_done")
 
         print(f"observation shape {observation.shape}")
 
@@ -135,11 +159,13 @@ class TurbEnv(EnvBase):
         return out
 
     def _reset(self, tensordict):
-
         print(f"Resetting now")
 
-        if not self.dummy_update:
-            self.adm.restart()
+        for _ in range(150):
+            _, _ = self._communicate(new_alpha=torch.zeros([self.n_turbs]))
+        # Make sure the flags for yaws_done and sim_done are both set to False at the end of reset
+        self.client.put_tensor(f"{self.instance}_yaws_done", np.array([0]))
+        self.client.put_tensor(f"{self.instance}_sim_done", np.array([0]))
 
         # for non batch-locked envs, the input tensordict shape dictates the number
         # of simulators run simultaneously. In other contexts, the initial
