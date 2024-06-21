@@ -29,6 +29,7 @@ logger:
   checkpoint_interval: 10
   project_name: Wind-PPO-testing
   team_name: why_are_all_the_good_names_taken_aaa
+  logging_stream: stdout  # stdout to print to console or empty (None) to print to standard log file
 
 # Optim
 optim:

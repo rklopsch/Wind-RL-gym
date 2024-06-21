@@ -67,8 +67,8 @@ class TurbEnv(EnvBase):
         # Set i_yaws_done flag to True (one)
         self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1)) # setting one as True
 
-        print(f"Set yaws to {new_alpha} for key {self.instance}_yaws")
-        print(f"Set yaws done to True for key {self.instance}_yaws_done")
+        # print(f"Set yaws to {new_alpha} for key {self.instance}_yaws")
+        # print(f"Set yaws done to True for key {self.instance}_yaws_done")
 
         # Poll whether X3D simulation is done
         # This is done now for only one but we need to loop over ALL instances here
@@ -80,8 +80,6 @@ class TurbEnv(EnvBase):
         turbine_obs = self.client.get_tensor(f"{self.instance}_probe_data")  # n_turbs x obs_per_turbine x iterations
 
         # Here: Stack the outputs from all the parallel envs into one
-
-        print("turbine powers shape", turbine_powers.shape)
 
         # Process the outputs from the solver
         turbine_powers /= 1e06
@@ -111,24 +109,29 @@ class TurbEnv(EnvBase):
         new_alpha = alpha + u * self.dt
         new_alpha = new_alpha.clamp(-self.max_angle, self.max_angle)
 
-        print(f"In step (Turbenv): angles = {new_alpha}")
+        # print(f"In step (Turbenv): angles = {new_alpha}")
 
         power, observation = self._communicate(new_alpha)
 
         # Do a dummy update if desired - this probs needs to be changed
+        self.dummy_update=False
         if self.dummy_update:
             power = torch.ones((*tensordict.shape, self.n_turbs, 1), device=self.device)
             observation = torch.zeros((*tensordict.shape, self.n_turbs, self.obs_per_turbine), device=self.device)
+        self.dummy_update=False
 
-        reward = power.expand(*tensordict.shape, self.n_turbs, 1)
+        if len(power.shape) < len(tensordict.shape) + 2:
+            reward = power.unsqueeze(dim=-1)
+        else:
+            reward = power
         done = torch.zeros((*tensordict.shape, 1), dtype=torch.bool)
 
         # Set i_sim_done flag to false (zero)
         # This needs to be done in a for loop for ALL instances here
         self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1)) 
-        print(f"Set sim done to True for key {self.instance}_sim_done")
+        # print(f"Set sim done to True for key {self.instance}_sim_done")
 
-        print(f"observation shape {observation.shape}")
+        # print(f"observation shape {observation.shape}")
 
         source = {
             "done": done,

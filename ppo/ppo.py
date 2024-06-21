@@ -38,7 +38,12 @@ def main(cfg: "DictConfig"):
     print(f'Running on {device}')
     print(f'cuda version:{torch.version.cuda}')
 
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging_stream = sys.stdout if cfg.logger.logging_stream == 'stdout' else None
+    logging.basicConfig(
+        level=logging.INFO, 
+        format='%(asctime)s - %(levelname)s - %(message)s', 
+        stream=logging_stream,
+    )
 
     # Correct for frame_skip
     frame_skip = cfg.collector.frame_skip
@@ -46,7 +51,6 @@ def main(cfg: "DictConfig"):
     frames_per_batch = cfg.collector.frames_per_batch // frame_skip
     max_episode_length = cfg.collector.max_episode_length // frame_skip
     mini_batch_size = cfg.loss.mini_batch_size // frame_skip
-    test_interval = cfg.logger.test_interval // frame_skip
     n_environments = cfg.env.n_parallel
 
     dummy_update = cfg.env.dummy_update

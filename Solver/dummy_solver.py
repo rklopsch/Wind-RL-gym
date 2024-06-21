@@ -5,7 +5,7 @@ import time
 
 def dummy_solve(yaws):
     pows = np.ones(3)
-    obs = np.zeros([3, 5])
+    obs = np.zeros([3, 53])
     return pows, obs 
 
 client = Client(address=None, cluster=False)
@@ -17,14 +17,12 @@ while True:
     
     # Check if the file exists - idle until it does
     while not client.poll_key(f'{instance}_yaws_done', 100, 10):
-        time.sleep(0.1)
-        print(f"Waiting for yaws done to be created")
+        # print(f"Waiting for yaws done to be created")
         continue
 
     # Check if the yaws have been written by the agent
     while not client.get_tensor(f'{instance}_yaws_done')[0]:
-        time.sleep(0.1)
-        print(f"Waiting for yaws to be done. Time {time.time()}")
+        # print(f"Waiting for yaws to be done. Time {time.time()}")
         continue
 
     # Reset the yaw done to False
@@ -38,7 +36,7 @@ while True:
     yaws = client.get_tensor(f'{instance}_yaws')
     # yaws = np.zeros([3])
 
-    print(f"Yaws are {yaws}")
+    # print(f"Yaws are {yaws}")
     
     # Do the numerical magic
     pows_list = []
@@ -48,8 +46,10 @@ while True:
         pows_list.append(pows)
         obs_list.append(obs)
 
-    pows = np.stack(pows, axis=-1)
-    obs = np.stack(obs, axis=-1)
+    pows = np.stack(pows_list, axis=-1)
+    obs = np.stack(obs_list, axis=-1)
+
+    # print("Inside dummy solver, obs shape", obs.shape)
     
     # Store the new outputs of the simulation on the database
     client.put_tensor(f'{instance}_turbine_powers', pows)

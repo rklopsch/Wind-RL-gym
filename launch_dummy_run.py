@@ -51,6 +51,8 @@ def launch_ppo(experiment):
 if __name__ == '__main__':
     exp = Experiment("launch_dummy_run", launcher="local")
 
+    total_runtime = 60  # seconds, without including setup of orchestrator etc.
+
     db_port = 6783
     db = launch_database(exp, db_port)
 
@@ -61,7 +63,7 @@ if __name__ == '__main__':
     exp.start(rl_app, block=False, summary=False)
 
     # shutdown the database because we don't need it anymore
-    time.sleep(30)
+    time.sleep(total_runtime)
     exp.stop(db)
 
     print(exp.summary())
