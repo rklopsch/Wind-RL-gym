@@ -34,6 +34,7 @@ pip uninstall torch
 
 4. Build SmartSim, requesting PyTorch as an ML backend
 ```bash
+pip install smartsim==0.7.0
 smart build --device cpu --no_tf
 ```
 This will install torch 2.0.1 (CPU only).
@@ -41,6 +42,11 @@ This will install torch 2.0.1 (CPU only).
 5. Install the remaining requirements by running
 ```bash
 pip install tqdm matplotlib hydra-core wandb f90nml
+```
+
+6. Install Numpy 1.x (who knows why, I've stopped caring a long time ago)
+```bash
+pip install numpy==1.26.4
 ```
 
 Happy times.
