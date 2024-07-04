@@ -1,4 +1,0 @@
-12:31:43 eidf079-gpu1.vms.os.eidf.epcc.ed.ac.uk __main__.ppo-D1X6UHJS8LLH[3760844:MainThread] INFO Indirect proxy 3760844 child process 3760944 started
-12:31:43 eidf079-gpu1.vms.os.eidf.epcc.ed.ac.uk __main__.ppo-D1X6UHJS8LLH[3760844:MainThread] INFO Waiting for child process 3760944 to complete
-12:31:44 eidf079-gpu1.vms.os.eidf.epcc.ed.ac.uk __main__.ppo-D1X6UHJS8LLH[3760844:MainThread] INFO Indirect proxy 3760844 child process 3760944 complete. return code: 1
-12:31:44 eidf079-gpu1.vms.os.eidf.epcc.ed.ac.uk __main__.ppo-D1X6UHJS8LLH[3760844:MainThread] INFO Performing cleanup

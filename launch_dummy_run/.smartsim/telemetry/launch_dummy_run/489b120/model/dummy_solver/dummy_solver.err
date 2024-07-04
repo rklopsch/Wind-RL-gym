@@ -1,6 +1,0 @@
-Traceback (most recent call last):
-  File "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/dummy_solver/dummy_solver.py", line 31, in <module>
-    pows, obs = dummy_solve(yaws)
-  File "/home/eidf079/eidf079/mweissen-ai4nz/windrl/Wind-RL/launch_dummy_run/dummy_solver/dummy_solver.py", line 8, in dummy_solve
-    obs = np.zeros(3, 5)
-TypeError: Cannot interpret '5' as a data type

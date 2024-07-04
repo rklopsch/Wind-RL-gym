@@ -1,3 +1,0 @@
-SmartRedis Library@12-31-43:WARNING: Environment variable SR_LOG_FILE is not set. Defaulting to stdout
-SmartRedis Library@12-31-43:WARNING: Environment variable SR_LOG_LEVEL is not set. Defaulting to INFO
-SmartRedis Library@12-31-43:ERROR: Exception at "/project/src/cpp/redis.cpp", line 692: Redis error when executing command: ERR tensor key is empty or in a different shard
