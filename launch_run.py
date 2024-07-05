@@ -1,6 +1,7 @@
 import numpy as np
 from smartsim import Experiment
 import time
+import os
 from smartredis import Client
 
 
@@ -22,14 +23,20 @@ def launch_database(experiment, port):
     return db
 
 def launch_solver(experiment):
+    os.environ['SR_DB_TYPE'] = "Standalone" # visible in this process + all children
+    os.environ['SSDB'] = "127.0.0.1:6783" # visible in this process + all children
+    os.environ['LD_LIBRARY_PATH'] = "/home/eidf079/eidf079/amole-ai4nz/XcompactSmartRedis/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
+    os.environ['PATH'] = os.environ['PATH'] + ":/home/eidf079/eidf079/amole-ai4nz/XcompactSmartRedis/Incompact3d/build/bin"
+
     aprun = experiment.create_run_settings(exe="xcompact3d")
     aprun.set_tasks(1)
-    producer = experiment.create_model("xcompact3d", aprun)
+    producer = experiment.create_model("WindFarm", aprun)
 
     # create directories for the output files and copy
     # scripts to execution location inside newly created dir
     # only necessary if its not an executable (python is executable here)
-    producer.attach_generator_files(to_copy="./Solver/ADM/Base/input.i3d")
+    files = ["./Solver/ADM/Base"]
+    producer.attach_generator_files(to_copy=files)
 
     experiment.generate(producer, overwrite=True)
     return producer
@@ -49,15 +56,12 @@ def launch_ppo(experiment):
 
 
 if __name__ == '__main__':
-    exp = Experiment("launch_dummy_run", launcher="local")
+    exp = Experiment("launch_run", launcher="local")
 
-    total_runtime = 60  # seconds, without including setup of orchestrator etc.
+    total_runtime = 200  # seconds, without including setup of orchestrator etc.
 
     db_port = 6783
     db = launch_database(exp, db_port)
-
-    print(f"Database setup... waiting now...")
-    time.sleep(60)
 
     solver_app = launch_solver(exp)
     exp.start(solver_app, block=False, summary=False)
@@ -67,6 +71,5 @@ if __name__ == '__main__':
 
     # shutdown the database because we don't need it anymore
     time.sleep(total_runtime)
-    exp.stop(db)
-
+    exp.stop(solver_app, rl_app, db)
     print(exp.summary())
