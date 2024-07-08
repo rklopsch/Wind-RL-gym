@@ -62,7 +62,7 @@ class TurbEnv(EnvBase):
     def _communicate(self, new_alpha):
         ######### Communication with SmartRedis server ###########
         # Send yaws to X3D
-        self.client.put_tensor(f"{self.instance}_yaws", new_alpha.detach().cpu().numpy())
+        self.client.put_tensor(f"{self.instance}_yaws", new_alpha.detach().cpu().numpy().squeeze().astype(np.float64))
         # Set i_yaws_done flag to True (one)
         self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1)) # setting one as True
 
