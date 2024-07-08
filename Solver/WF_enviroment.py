@@ -39,7 +39,9 @@ class TurbEnv(EnvBase):
         super().__init__(device=device, batch_size=[])
 
         self.save = save
-        self.obs_per_turbine = params["probes_per_turbine"] * 2 + 3
+        self.probes_per_turbine = params["probes_per_turbine"]
+        self.obs_per_probe = 3
+        self.obs_per_turbine = self.probes_per_turbine * self.obs_per_probe
         self.n_turbs = params["n_turbines"]
         self.total_obs = self.obs_per_turbine * self.n_turbs
         self.max_speed = params["max_yaw_speed"]  # maximum angular velocity of wind turbine
@@ -73,15 +75,19 @@ class TurbEnv(EnvBase):
             continue
 
         # Here need to loop over ALL instances, and stack the results into one tensor
-        turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # n_turbs x iterations
-        turbine_obs = self.client.get_tensor(f"{self.instance}_probe_data")  # n_turbs x obs_per_turbine x iterations
+        turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # [n_turbs]
+        turbine_obs = self.client.get_tensor(f"{self.instance}_probe_data")  # [n_turbs*probes_per_turbine, obs_per_probe]
+        turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine, self.obs_per_probe)
+        turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)  # [n_turbs, probes_per_turbine*obs_per_probe]
 
         # Here: Stack the outputs from all the parallel envs into one
 
         # Process the outputs from the solver
         turbine_powers /= 1e06
         farm_power = turbine_powers.mean(axis=-1)  # Compute mean over iterations many time steps
-        turbine_obs = turbine_obs.mean(axis=-1)  # Compute mean over iterations many time steps
+        farm_power = np.broadcast_to(farm_power, (self.n_turbs,))  # repeat farm power for all turbines
+        # farm_power = turbine_powers.mean(axis=-1)  # Compute mean over iterations many time steps
+        # turbine_obs = turbine_obs.mean(axis=-1)  # Compute mean over iterations many time steps
         # Missing turbine velocities here!! Stack the velocities, individual turbine power and yaw before the turbine_obs
 
         # Convert to Torch tensors

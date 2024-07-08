@@ -61,11 +61,12 @@ def add_env_transforms(env, obs_norm_params=None):
         InitTracker(),
         RewardSum(),
         FiniteTensorDictCheck(),
-        ObservationNorm(
-            loc=obs_norm_params['loc'],
-            scale=obs_norm_params['scale'],
-            in_keys=[('agents', 'observation')]
-        )
+        # ObservationNorm(
+        #     loc=obs_norm_params['loc'],
+        #     scale=obs_norm_params['scale'],
+        #     in_keys=[('agents', 'observation')]
+        # )
+        # TODO: add scaling back in (think we will want to do it in a better way than this if n_turbs or n_obs changes
     ]
     transforms = Compose(*transform_list)
     return TransformedEnv(env, transforms)
