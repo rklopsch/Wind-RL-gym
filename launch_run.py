@@ -3,6 +3,8 @@ from smartsim import Experiment
 import time
 import os
 from smartredis import Client
+from Solver.ADM_runner import ADM
+from Solver.farm import Farm, Turbine
 
 
 def launch_database(experiment, port):
@@ -22,24 +24,30 @@ def launch_database(experiment, port):
 
     return db
 
+
 def launch_solver(experiment):
-    os.environ['SR_DB_TYPE'] = "Standalone" # visible in this process + all children
-    os.environ['SSDB'] = "127.0.0.1:6783" # visible in this process + all children
-    os.environ['LD_LIBRARY_PATH'] = "/home/eidf079/eidf079/amole-ai4nz/XcompactSmartRedis/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
-    os.environ['PATH'] = os.environ['PATH'] + ":/home/eidf079/eidf079/amole-ai4nz/XcompactSmartRedis/Incompact3d/build/bin"
+    os.environ['SR_DB_TYPE'] = "Standalone"  # visible in this process + all children
+    os.environ['SSDB'] = "127.0.0.1:6783"  # visible in this process + all children
+    os.environ['LD_LIBRARY_PATH'] = "/home/amole/Documents/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
+    os.environ['PATH'] = os.environ['PATH'] + ":/home/amole/Documents/Incompact3d/build/bin"
+    # TODO: probably (definitely) want a better way to set these
 
     aprun = experiment.create_run_settings(exe="xcompact3d")
     aprun.set_tasks(1)
     producer = experiment.create_model("WindFarm", aprun)
-
-    # create directories for the output files and copy
-    # scripts to execution location inside newly created dir
-    # only necessary if its not an executable (python is executable here)
     files = ["./Solver/ADM/Base"]
     producer.attach_generator_files(to_copy=files)
 
     experiment.generate(producer, overwrite=True)
+    # Smartsims to_configure flag not working so doing manually with ADM_runner function
+    # TODO: use the config to set the variables used here
+    farm1 = Farm(126*14, 126*4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2*126])
+    farm1.grid()
+    case = ADM(farm1, 25)
+    case.modify_input("./launch_run/WindFarm")
+
     return producer
+
 
 def launch_ppo(experiment):
     aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py")
@@ -49,7 +57,12 @@ def launch_ppo(experiment):
     # create directories for the output files and copy
     # scripts to execution location inside newly created dir
     # only necessary if its not an executable (python is executable here) 
-    producer.attach_generator_files(to_copy=["./ppo/ppo.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml", "./Solver/WF_enviroment.py", "./Solver/ADM_runner.py", "./Solver/farm.py"])
+    producer.attach_generator_files(to_copy=["./ppo/ppo.py",
+                                             "./ppo/utils_ppo.py",
+                                             "./ppo/config_ppo.yaml",
+                                             "./Solver/WF_enviroment.py",
+                                             "./Solver/ADM_runner.py",
+                                             "./Solver/farm.py"])
 
     experiment.generate(producer, overwrite=True)
     return producer

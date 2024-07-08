@@ -56,7 +56,7 @@ class Farm:
             turbine.location[0] = self.offset[0] + random.uniform(0, self.lx)
             turbine.location[1] = self.offset[1] + random.uniform(0, self.lz)
 
-    """ def write_adm(self, filename='adm'):
+    def write_adm(self, filename='adm'):
         # Writing to file
         with open(f"{filename}.ad", "w") as file:
             # Writing data to a file
@@ -69,7 +69,7 @@ class Farm:
                            f"{turbine.tilt} "
                            f"{turbine.diam} "
                            f"{turbine.c_t} "
-                           f"{turbine.alpha} \n") """
+                           f"{turbine.alpha} \n")
 
     def get_layout(self):
         x = np.zeros(self.n_turbines)

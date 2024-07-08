@@ -4,8 +4,7 @@ import subprocess
 import shutil
 import numpy as np
 import f90nml
-from farm import Turbine, Farm
-from smartredis import Client
+from Solver.farm import Turbine, Farm
 
 is_verbose = False
 
@@ -22,9 +21,8 @@ def make_odd(i):
 
 class ADM:
 
-    def __init__(self, client, farm, probes_per_turbine, windspeed=10, instance=None, device='cpu', nprocs=8, nenvs=1):
+    def __init__(self, farm, probes_per_turbine, windspeed=10, instance=None, device='cpu', nprocs=8, nenvs=1):
         self.device = torch.device(device)
-        self.client = client
         self.nprocs = nprocs
         self.nenvs = nenvs
         self.farm = farm
@@ -93,6 +91,50 @@ class ADM:
             log_file_path = os.path.join(self.precursor_dir, "log.x3d")
             with open(log_file_path, 'a') as log_file:
                 subprocess.run(mpi_command, cwd=self.precursor_dir, stdout=log_file, stderr=log_file)
+
+    def modify_input(self, directory):
+        # base_dir = './Solver/ADM/Base'
+        # shutil.copytree(base_dir, directory, dirs_exist_ok=True)
+        self.add_probes(directory)
+        # set up case for ADM with
+        yaw = np.zeros(self.farm.n_turbines)
+        self.farm.set_yaw(yaw)
+        # Update *.ad file
+        self.farm.write_adm(os.path.join(directory, 'adm'))
+
+        # Update input parameters
+        shutil.move(os.path.join(directory, 'input.i3d'),
+                    os.path.join(directory, 'old_input.i3d'))
+
+        patch_nml = {'BasicParam': {
+            'ifirst': 1,
+            'ilast': self.total_timesteps,
+            'xlx': self.lx,
+            'yly': self.ly,
+            'zlz': self.lz,
+            'nx': self.nx,
+            'ny': self.ny,
+            'nz': self.nz,
+        },
+            'Statistics': {
+                'initstat': self.stat_timesteps,
+            },
+            'InOutParam': {
+                'irestart': 0,
+                'icheckpoint': self.total_timesteps,
+                'ioutput': self.total_timesteps,
+                'ilist': self.total_timesteps // 1000,
+                # 'inflowpath': relative_precursor,
+                'ntimesteps': self.total_timesteps // 100,
+                'ninflows': 100,
+                'nprobes': self.probes_per_turbine * self.farm.n_turbines
+            },
+            'ADMParam': {
+                'Ndiscs': self.farm.n_turbines
+            }
+        }
+        f90nml.patch(os.path.join(directory, 'old_input.i3d'),
+                     patch_nml, os.path.join(directory, 'input.i3d'))
 
     def initialise_flow(self, iterations=100):
         if os.path.isdir(self.initialise_dir):
