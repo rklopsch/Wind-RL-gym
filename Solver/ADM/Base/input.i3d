@@ -46,7 +46,7 @@ inflow_noise=0.1     ! Turbulence intensity (1=100%) !! Inflow condition
 ! Time stepping
 dt = 0.2          ! Time step
 ifirst = 0           ! First iteration
-ilast =  5000      ! Last iteration
+ilast =  1000      ! Last iteration
 
 ! Enable modelling tools
 ilesmod=1            ! if 0 then DNS (=1 before)
@@ -87,7 +87,7 @@ ioutput =  50     ! Frequency for visualization
 ilist =  50         ! Frequency for write to screen 
 nvisu = 1            ! Size for visualisation collection
 ioutflow=0           ! Outflow flag
-ntimesteps=25000     ! Number of planes saved in each file
+ntimesteps=100     ! Number of planes saved in each file
 ninflows=10           ! Number of files storing inflow planes 
 inflowpath='../precursor/out/' ! Directory with the inflow files
 nprobes = 3           ! Number of probes
