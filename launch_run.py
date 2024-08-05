@@ -25,25 +25,27 @@ def launch_database(experiment, port):
     return db
 
 
-def launch_solver(experiment):
+def launch_solver(experiment, instance):
     os.environ['SR_DB_TYPE'] = "Standalone"  # visible in this process + all children
     os.environ['SSDB'] = "127.0.0.1:6783"  # visible in this process + all children
     os.environ['LD_LIBRARY_PATH'] = "/home/amole/Documents/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
     os.environ['PATH'] = os.environ['PATH'] + ":/home/amole/Documents/Incompact3d/build/bin"
     # TODO: probably (definitely) want a better way to set these
 
-    aprun = experiment.create_run_settings(exe="xcompact3d")
+    aprun = experiment.create_run_settings(exe="xcompact3d", run_command="mpirun")
     aprun.set_tasks(1)
-    producer = experiment.create_model("WindFarm", aprun)
+
+    producer = experiment.create_model(f"WindFarm_{instance}", aprun)
     files = ["./Solver/ADM/Base"]
     producer.attach_generator_files(to_copy=files)
-
     experiment.generate(producer, overwrite=True)
+
+    # Configure case
     # Smartsims to_configure flag not working so doing manually with ADM_runner function
     # TODO: use the config to set the variables used here
     farm1 = Farm(126*14, 126*4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2*126])
     farm1.grid()
-    case = ADM(farm1, 25)
+    case = ADM(farm1, 25, instance=instance)
     case.modify_input("./launch_run/WindFarm")
 
     return producer
@@ -72,13 +74,17 @@ if __name__ == '__main__':
     exp = Experiment("launch_run", launcher="local")
 
     total_runtime = 200  # seconds, without including setup of orchestrator etc.
+    n_environments = 2
 
     db_port = 6783
     db = launch_database(exp, db_port)
 
-    solver_app = launch_solver(exp)
-    exp.start(solver_app, block=False, summary=False)
+    # Start Simulations
+    for i in range(n_environments):
+        solver_app = launch_solver(exp, instance=i)
+        exp.start(solver_app, block=False, summary=False)
 
+    # Start RL
     rl_app = launch_ppo(exp)
     exp.start(rl_app, block=False, summary=False)
 

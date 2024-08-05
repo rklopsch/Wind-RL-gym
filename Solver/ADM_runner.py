@@ -130,7 +130,8 @@ class ADM:
                 'nprobes': self.probes_per_turbine * self.farm.n_turbines
             },
             'ADMParam': {
-                'Ndiscs': self.farm.n_turbines
+                'Ndiscs': self.farm.n_turbines,
+                'instance': self.instance
             }
         }
         f90nml.patch(os.path.join(directory, 'old_input.i3d'),
