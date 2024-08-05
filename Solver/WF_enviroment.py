@@ -76,7 +76,9 @@ class TurbEnv(EnvBase):
 
         # Here need to loop over ALL instances, and stack the results into one tensor
         turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # [n_turbs]
-        turbine_obs = self.client.get_tensor(f"{self.instance}_probe_data")  # [n_turbs*probes_per_turbine, obs_per_probe]
+        turbine_obs = np.zeros((self.n_turbs*self.probes_per_turbine, self.obs_per_probe))
+        for i in range(self.total_obs):
+            turbine_obs[i] = self.client.get_tensor(f"{self.instance}_probe_{i}")  # [n_turbs*probes_per_turbine, obs_per_probe]
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine, self.obs_per_probe)
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)  # [n_turbs, probes_per_turbine*obs_per_probe]
 
