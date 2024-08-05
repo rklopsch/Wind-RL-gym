@@ -49,7 +49,7 @@ class ADM:
         if instance is None:
             self.dir = './LES_RUNS'
         else:
-            self.dir = os.path.join('./LES_RUNS', instance)
+            self.dir = f'./LES_RUNS/{instance}'
 
         self.run_dir = os.path.join(self.dir, 'Running')
         self.precursor_dir = os.path.join(self.dir, 'PrecursorABL')
