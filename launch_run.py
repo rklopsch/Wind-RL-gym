@@ -33,8 +33,10 @@ def launch_solver(experiment, instance):
     # TODO: probably (definitely) want a better way to set these
 
     aprun = experiment.create_run_settings(exe="xcompact3d", run_command="mpirun")
-    aprun.set_tasks(1)
-
+    aprun.set_tasks(2)
+    aprun.set_cpus_per_task(1)
+    # aprun.set_nodes(4)
+    # aprun.set_tasks_per_node(25)
     producer = experiment.create_model(f"WindFarm_{instance}", aprun)
     files = ["./Solver/ADM/Base"]
     producer.attach_generator_files(to_copy=files)
