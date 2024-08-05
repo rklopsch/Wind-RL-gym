@@ -82,9 +82,12 @@ if __name__ == '__main__':
     db = launch_database(exp, db_port)
 
     # Start Simulations
-    for i in range(n_environments):
-        solver_app = launch_solver(exp, instance=i)
-        exp.start(solver_app, block=False, summary=False)
+    simulations = []
+    for i in range(1, n_environments+1):
+        simulation = launch_solver(exp, instance=i)
+        simulations.append(simulation)
+        exp.start(simulation, block=False, summary=False)
+
 
     # Start RL
     rl_app = launch_ppo(exp)
@@ -92,5 +95,5 @@ if __name__ == '__main__':
 
     # shutdown the database because we don't need it anymore
     time.sleep(total_runtime)
-    exp.stop(solver_app, rl_app, db)
+    exp.stop(simulations, rl_app, db)
     print(exp.summary())
