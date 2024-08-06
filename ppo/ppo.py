@@ -22,13 +22,13 @@ from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value.advantages import GAE
 from torchrl.record.loggers import generate_exp_name
-from utils_ppo import make_smartsim_env, make_ma_ppo_models, load_model
+from utils_ppo import make_smartsim_env, make_parallel_env, make_ma_ppo_models, load_model
 # from utils.save_model import save_model
 from omegaconf import OmegaConf
 import wandb
 import shutil
 import hydra
-from smartredis import Client
+# from smartredis import Client
 import numpy as np
 
 
@@ -77,18 +77,10 @@ def main(cfg: "DictConfig"):
     test_params["n_procs"]=cfg.env.n_processors_per_env*cfg.env.n_parallel
     test_params["n_envs"]=1
 
-    # Create client
-    client = Client(address=None, cluster=False)
-
-    # Set all relevant flags to False at initialisation
-    for instance in [0]:
-        client.put_tensor(f'{instance}_sim_done', np.array([0]))
-        client.put_tensor(f"{instance}_yaws_done", np.array([0]))
-
     # Create models
     if not cfg.optim.load_from_checkpoint:
         # Create a new model
-        actor, critic = make_ma_ppo_models(client, params)
+        actor, critic = make_ma_ppo_models(params)
     else:
         # Load from specified checkpoint
         _, actor, critic = load_model(
@@ -99,7 +91,7 @@ def main(cfg: "DictConfig"):
     actor, critic = actor.to(device), critic.to(device)
 
     # Create environments
-    train_env = make_smartsim_env(client, params, n_environments, device=device, dummy_update=dummy_update)
+    train_env = make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update)
 
     # Create collector
     collector = SyncDataCollector(

@@ -18,6 +18,7 @@ from torchrl.envs import (
 )
 from torchrl.envs.transforms.transforms import _apply_to_composite
 from torchrl.envs.utils import check_env_specs, step_mdp
+from smartredis import Client
 
 
 class TurbEnv(EnvBase):
@@ -48,15 +49,17 @@ class TurbEnv(EnvBase):
         self.max_speed = params["max_yaw_speed"]  # maximum angular velocity of wind turbine
         self.max_angle = params["max_yaw_angle"]
         self.dt = params["dt"]
+        self.instance = 0 if instance is None else instance+1
 
-        self.client = client
+        # Create client
+        self.client = Client(address=None, cluster=False)
+        self.client.put_tensor(f"{self.instance}_yaws_done", np.array([0]))
+        self.client.put_tensor(f"{self.instance}_sim_done", np.array([0]))
 
         self._make_spec()
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
-
-        self.instance = 0  # Needs to be replaced with a list of instances
 
         self.dummy_update = dummy_update  # If True, perform a dummy update for testing
 
