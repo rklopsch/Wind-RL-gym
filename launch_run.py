@@ -86,8 +86,6 @@ if __name__ == '__main__':
     rl_app = launch_ppo(exp)
     exp.start(rl_app, block=False, summary=False)
 
-    time.sleep(total_runtime)
-
     # Start simulations
     simulations = []
     for i in range(1, n_environments+1):
