@@ -3,18 +3,38 @@ Reinforcement Learning for Wind Farm Control
 
 ## How to install
 
+Smartsim is used to interface the RL code here with wind farm environments simulated using [Xcompact3d](https://www.incompact3d.com/).
 
-### v1: using mpi run to restart the simulation at every agent interaction
-Python requirements are available in requirements.txt
-[XCompact3D](https://github.com/admole/Incompact3d/tree/my_dev) is required to run the wind farm simulations.
 
-Xcompact should be compiled following its instructions and added to a known path with
+### Xcompact3d-SmartRedis Installation
+
+A [modified version Incompact3d](https://github.com/admole/Incompact3d/tree/smartRedis-coupling) is needed for running the windfarm simulations with SmartRedis integration.
+
+On Archer2
 ```bash
-sudo ln -s /path/to/Incompact3D/xcompact3d /usr/bin/xcompact3d
+module swap PrgEnv-cray PrgEnv-gnu
+module load cmake/3.21.3
+cd work/<PROJECTCODE>/<PROJECTCODE>/<USERNAME>
+git clone https://github.com/admole/Incompact3d.git
+git checkout smartRedis-coupling
+cd Incompact3d
+sed -i 's|install/lib|install/lib64|g' cmake/FindSmartRedis.cmake
+export FC=mpif90
+cmake -S . -B build
+cmake --build ./build -j 8
 ```
 
-### v2: using SmartSim to couple xcompact3d and RL code
+### Python Requirements
+
 These instructions will get SmartSim installed together with TorchRL:
+
+0. If on Archer2 load python module and setup venv for packages
+```bash
+module load PrgEnv-gnu
+module load cray-python
+python -m venv --system-site-packages /work/<PROJECTCODE>/<PROJECTCODE>/<USERNAME>/smartsim_venv
+source /work/<PROJECTCODE>/<PROJECTCODE>/<USERNAME>/smartsim_venv/bin/activate
+```
 
 1. Install torchrl with
 ```bash
@@ -32,7 +52,7 @@ pip install tensordict==0.2.0
 pip uninstall torch
 ```
 
-4. Build SmartSim, requesting PyTorch as an ML backend
+4. Build SmartSim, requesting PyTorch as an ML backend (On Archer2 also need to install git-lfs before this step)
 ```bash
 pip install smartsim==0.7.0
 smart build --device cpu --no_tf
@@ -54,27 +74,15 @@ Happy times.
 
 ## Running
 
-### v1
-
-The reinforcement learning can be run with the ppo algorithm from the main directory using
 ```bash
-python3 ./ppo/ppo.py
-```
-This will log the results to the Wind-RL project on weights and biases.
-
-The run configurations can be modified in ./ppo/config_ppo.yaml
-
-For a more verbose output set the enviroment variable
-```bash
-export WINDRL_VERBOSE=true
+SR_LOG_FILE=./log.sr
+SR_LOG_LEVEL=QUIET
+python launch_run.py
 ```
 
+Running on Archer TBA
 
-### v2
-
-Coming soon!
-
-## Algorithm
+## Database Coupling Procedure
 
 ### Python
 
