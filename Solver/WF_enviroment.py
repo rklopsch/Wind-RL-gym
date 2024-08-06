@@ -43,6 +43,7 @@ class TurbEnv(EnvBase):
         self.obs_per_probe = 3
         self.obs_per_turbine = self.probes_per_turbine * self.obs_per_probe
         self.n_turbs = params["n_turbines"]
+        self.total_probes = self.probes_per_turbine * self.n_turbs
         self.total_obs = self.obs_per_turbine * self.n_turbs
         self.max_speed = params["max_yaw_speed"]  # maximum angular velocity of wind turbine
         self.max_angle = params["max_yaw_angle"]
@@ -76,9 +77,9 @@ class TurbEnv(EnvBase):
 
         # Here need to loop over ALL instances, and stack the results into one tensor
         turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # [n_turbs]
-        turbine_obs = np.zeros((self.n_turbs*self.probes_per_turbine, self.obs_per_probe))
-        for i in range(self.total_obs):
-            turbine_obs[i] = self.client.get_tensor(f"{self.instance}_probe_{i}")  # [n_turbs*probes_per_turbine, obs_per_probe]
+        turbine_obs = np.zeros((self.total_probes, self.obs_per_probe))
+        for i in range(self.total_probes):
+            turbine_obs[i] = self.client.get_tensor(f"{self.instance}_probe_{i+1}")  # [n_turbs*probes_per_turbine, obs_per_probe]
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine, self.obs_per_probe)
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)  # [n_turbs, probes_per_turbine*obs_per_probe]
 
