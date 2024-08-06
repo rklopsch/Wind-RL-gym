@@ -96,5 +96,5 @@ if __name__ == '__main__':
     # shutdown the database because we don't need it anymore
     time.sleep(total_runtime)
     everything = simulations + [rl_app, db]
-    exp.stop(everything)
+    exp.stop(*everything)
     print(exp.summary())
