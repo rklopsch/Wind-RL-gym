@@ -75,23 +75,25 @@ def launch_ppo(experiment):
 if __name__ == '__main__':
     exp = Experiment("launch_run", launcher="local")
 
-    total_runtime = 200  # seconds, without including setup of orchestrator etc.
+    total_runtime = 120  # seconds, without including setup of orchestrator etc.
     n_environments = 2
 
+    # Start database
     db_port = 6783
     db = launch_database(exp, db_port)
 
-    # Start Simulations
+    # Start RL
+    rl_app = launch_ppo(exp)
+    exp.start(rl_app, block=False, summary=False)
+
+    time.sleep(total_runtime)
+
+    # Start simulations
     simulations = []
     for i in range(1, n_environments+1):
         simulation = launch_solver(exp, instance=i)
         simulations.append(simulation)
         exp.start(simulation, block=False, summary=False)
-
-
-    # Start RL
-    rl_app = launch_ppo(exp)
-    exp.start(rl_app, block=False, summary=False)
 
     # shutdown the database because we don't need it anymore
     time.sleep(total_runtime)
