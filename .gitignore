@@ -9,3 +9,5 @@ RESULTS
 LES_RUNS
 *.out
 *.err
+input.i3d
+launch_dummy_run
