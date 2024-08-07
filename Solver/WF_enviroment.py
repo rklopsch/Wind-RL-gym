@@ -74,7 +74,6 @@ class TurbEnv(EnvBase):
         # print(f"Set yaws done to True for key {self.instance}_yaws_done")
 
         # Poll whether X3D simulation is done
-        # This is done now for only one but we need to loop over ALL instances here
         while not self.client.get_tensor(f"{self.instance}_sim_done")[0]:
             continue
 

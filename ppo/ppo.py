@@ -22,8 +22,7 @@ from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value.advantages import GAE
 from torchrl.record.loggers import generate_exp_name
-from utils_ppo import make_smartsim_env, make_parallel_env, make_ma_ppo_models, load_model
-# from utils.save_model import save_model
+from utils_ppo import make_smartsim_env, make_parallel_env, make_ma_ppo_models, load_model, save_model
 from omegaconf import OmegaConf
 import wandb
 import shutil
@@ -46,6 +45,7 @@ def main(cfg: "DictConfig"):
     )
 
     # Correct for frame_skip
+    # TO-DO: probably best to remove frameskip?
     frame_skip = cfg.collector.frame_skip
     total_frames = cfg.collector.total_frames // frame_skip
     frames_per_batch = cfg.collector.frames_per_batch // frame_skip
@@ -77,6 +77,8 @@ def main(cfg: "DictConfig"):
     test_params["n_procs"]=cfg.env.n_processors_per_env*cfg.env.n_parallel
     test_params["n_envs"]=1
 
+    print("about to create models")
+
     # Create models
     if not cfg.optim.load_from_checkpoint:
         # Create a new model
@@ -90,8 +92,16 @@ def main(cfg: "DictConfig"):
             dummy_update=True)
     actor, critic = actor.to(device), critic.to(device)
 
+    print("models created")
+
     # Create environments
     train_env = make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update)
+
+    print("train envs vreated")
+
+    train_env.reset()
+
+    print("train env reset")
 
     # Create collector
     collector = SyncDataCollector(
@@ -103,6 +113,8 @@ def main(cfg: "DictConfig"):
         storing_device=device,
         max_frames_per_traj=max_episode_length
     )
+
+    print("created collector")
 
     # Create data buffer
     sampler = SamplerWithoutReplacement()
@@ -164,6 +176,8 @@ def main(cfg: "DictConfig"):
         config=OmegaConf.to_container(cfg, resolve=True),
     )
 
+    print("before main loop")
+
     # Main loop
     collected_frames = 0
     num_network_updates = 0
@@ -187,6 +201,8 @@ def main(cfg: "DictConfig"):
     losses = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
 
     for i, data in enumerate(collector):
+
+        print(i, "\n")
 
         log_info = {}
         sampling_time = time.time() - sampling_start
@@ -299,15 +315,15 @@ def main(cfg: "DictConfig"):
             }
         )
 
-        """
-        # Deactivate all saving and checkpointing for now, since this uses functionality from torchrl > 0.2.1
         if i % cfg.logger.checkpoint_interval == 0 or i == total_frames // frames_per_batch:
-            output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
-            full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
-            logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
+            # output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
+            if not os.path.exists('checkpoints'):
+                os.mkdir('checkpoints')
+            output_dir = os.getcwd() + '/checkpoints/'
+            # full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
+            # logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
             save_model(train_env, actor, critic, output_dir, i)
             logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{i}.pkl and {output_dir}critic_{i}.pkl")
-        """
             
         wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()

@@ -51,11 +51,9 @@ def obs_normalisation():
                                0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65])}
 
 
-def add_env_transforms(env, obs_norm_params=None):
-    # Load observation normalisation parameters from file
-    if not obs_norm_params:
-        obs_norm_params = obs_normalisation()
-    assert obs_norm_params is not None
+def transforms():
+    # Load observation normalisation parameters
+    obs_norm_params = obs_normalisation()
 
     transform_list = [
         InitTracker(),
@@ -69,22 +67,23 @@ def add_env_transforms(env, obs_norm_params=None):
         # TODO: add scaling back in (think we will want to do it in a better way than this if n_turbs or n_obs changes
     ]
     transforms = Compose(*transform_list)
-    return TransformedEnv(env, transforms)
+    return transforms
 
 
 def make_env(params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True):
     from WF_enviroment import TurbEnv
     env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
     if add_transforms:
-        env = add_env_transforms(env)
+        env = TransformedEnv(env, transforms())
     return env
 
 
+# TO-DO: delete this
 def make_smartsim_env(client, params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True):
     from WF_enviroment import TurbEnv
     env = TurbEnv(client, params, save=save, instance=0, device=device, dummy_update=dummy_update)
     if add_transforms:
-        env = add_env_transforms(env)
+        env = TransformedEnv(env, transforms())
     return env
 
 
@@ -282,7 +281,7 @@ def load_model(env_params, filepath, id, dummy_update=False):
     )
 
     # Rebuild the Transforms, but replacing the VecNorm with an ObservationNorm
-    env = add_env_transforms(env, obs_norm_params=transforms_params)
+    env = TransformedEnv(env, transforms())
 
     # Instantiating the model with random params
     actor, critic = make_ma_ppo_models(env_params)
@@ -292,6 +291,27 @@ def load_model(env_params, filepath, id, dummy_update=False):
     critic.load_state_dict(critic_params)
 
     return env, actor, critic
+
+
+def save_model(env, actor, critic, filepath, id):
+    # Read out loc and scale used in ObservationNorm, if used
+    transform_list = transforms()
+    obs_norm_transform = next((t for t in transform_list if isinstance(t, ObservationNorm)), None)
+    if obs_norm_transform:
+        norm_dict = {
+            'loc': obs_norm_transform.loc,
+            'scale': obs_norm_transform.scale,
+        }
+        # Save env transforms
+        with open(filepath + 'env_transforms' + f"_{id}" + '.pkl', 'wb') as file:
+            pickle.dump(norm_dict, file)
+    # Save model
+    with open(filepath + 'actor' + f"_{id}" + '.pkl', 'wb') as file:
+        torch.save(actor.state_dict(), file)
+    with open(filepath + 'critic' + f"_{id}" + '.pkl', 'wb') as file:
+        torch.save(critic.state_dict(), file)
+
+    return True
 
 
 # ====================================================================

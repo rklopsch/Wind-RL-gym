@@ -42,7 +42,7 @@ def launch_ppo(experiment):
     # create directories for the output files and copy
     # scripts to execution location inside newly created dir
     # only necessary if its not an executable (python is executable here) 
-    producer.attach_generator_files(to_copy=["./ppo/ppo.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml", "./Solver/WF_enviroment.py", "./Solver/ADM_runner.py", "./Solver/farm.py"])
+    producer.attach_generator_files(to_copy=["./ppo/ppo.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml", "./Solver/WF_enviroment.py", "./Solver/ADM_runner.py", "./Solver/farm.py", "./utils/save_model.py"])
 
     experiment.generate(producer, overwrite=True)
     return producer
@@ -51,7 +51,7 @@ def launch_ppo(experiment):
 if __name__ == '__main__':
     exp = Experiment("launch_dummy_run", launcher="local")
 
-    total_runtime = 60  # seconds, without including setup of orchestrator etc.
+    total_runtime = 120  # seconds, without including setup of orchestrator etc.
 
     db_port = 6783
     db = launch_database(exp, db_port)
