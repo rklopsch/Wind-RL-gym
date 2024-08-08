@@ -2,7 +2,6 @@ from smartredis import Client
 import numpy as np
 import time
 from hydra import initialize, compose
-from omegaconf import OmegaConf
 
 
 # Load the PPO config file to configure the dummy solver correctly

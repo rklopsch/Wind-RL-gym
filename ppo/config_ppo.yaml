@@ -26,7 +26,6 @@ logger:
   test_interval: 5_000
   num_test_episodes: 1
   test_episode_length: 1_000
-  checkpoint_interval: 10
   project_name: Wind-PPO-testing
   team_name: why_are_all_the_good_names_taken_aaa
   logging_stream: stdout  # stdout to print to console or empty (None) to print to standard log file
@@ -36,9 +35,13 @@ optim:
   lr: 1e-4
   weight_decay: 0.0
   anneal_lr: True
+
+# Settings for checkpointing
+checkpoint:
+  checkpoint_interval: 10
   load_from_checkpoint: False
-  model_checkpoint_path:   # Path to checkpoint, RELATIVE to ppo/ppo.py
-  model_checkpoint_id:   # ID of checkpoint
+  model_checkpoint_path: utils/checkpoint_test   # Path to checkpoint, RELATIVE to Wind-RL/
+  model_checkpoint_id: 2000  # ID of checkpoint
 
 # loss
 loss:

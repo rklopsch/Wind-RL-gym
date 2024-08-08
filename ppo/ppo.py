@@ -1,12 +1,3 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-#
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
-
-"""
-This script reproduces the Proximal Policy Optimization (PPO) Algorithm
-results from Schulman et al. 2017 for the on MuJoCo Environments.
-"""
 import os
 import sys
 sys.path.append(os.getcwd())
@@ -27,8 +18,8 @@ from omegaconf import OmegaConf
 import wandb
 import shutil
 import hydra
-# from smartredis import Client
 import numpy as np
+import shutil
 
 
 @hydra.main(config_path="./", config_name="config_ppo", version_base="1.2")
@@ -52,7 +43,6 @@ def main(cfg: "DictConfig"):
     max_episode_length = cfg.collector.max_episode_length // frame_skip
     mini_batch_size = cfg.loss.mini_batch_size // frame_skip
     n_environments = cfg.env.n_parallel
-
     dummy_update = cfg.env.dummy_update
 
     if not dummy_update:
@@ -73,21 +63,25 @@ def main(cfg: "DictConfig"):
         "run_steps": cfg.collector.max_episode_length * cfg.env.steps_per_frame,
     }
 
-    test_params = copy.deepcopy(params)
-    test_params["n_procs"]=cfg.env.n_processors_per_env*cfg.env.n_parallel
-    test_params["n_envs"]=1
-
     # Create models
-    if not cfg.optim.load_from_checkpoint:
+    if not cfg.checkpoint.load_from_checkpoint:
         # Create a new model
         actor, critic = make_ma_ppo_models(params)
     else:
         # Load from specified checkpoint
-        _, actor, critic = load_model(
-            env_params=None,
-            filepath=cfg.optim.model_checkpoint_path,
-            id=cfg.optim.model_checkpoint_id,
-            dummy_update=True)
+        # Copy the loaded models into the ppo/checkpoints directory
+        if not os.path.exists('checkpoints'):
+            os.mkdir('checkpoints')
+        for arch in ['actor', 'critic']:
+            filename = f"{arch}_{cfg.checkpoint.model_checkpoint_id}.pkl"
+            if os.path.exists(filename):
+                shutil.move(filename, "checkpoints")
+        # Load actor and critic
+        actor, critic = load_model(
+            env_params=params,
+            id=cfg.checkpoint.model_checkpoint_id,
+            dummy_update=dummy_update)
+        logging.info(f"Loaded models. Starting training from frame {cfg.checkpoint.model_checkpoint_id}.")
     actor, critic = actor.to(device), critic.to(device)
 
     # Create environments
@@ -165,7 +159,7 @@ def main(cfg: "DictConfig"):
     )
 
     # Main loop
-    collected_frames = 0
+    collected_frames = 0 if not cfg.checkpoint.load_from_checkpoint else cfg.checkpoint.model_checkpoint_id
     num_network_updates = 0
     start_time = time.time()
     #pbar = tqdm.tqdm(total=total_frames)
@@ -298,15 +292,15 @@ def main(cfg: "DictConfig"):
             }
         )
 
-        if i % cfg.logger.checkpoint_interval == 0 or i == total_frames // frames_per_batch:
+        if i % cfg.checkpoint.checkpoint_interval == 0 or i >= total_frames // frames_per_batch:
             # output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
             if not os.path.exists('checkpoints'):
                 os.mkdir('checkpoints')
             output_dir = os.getcwd() + '/checkpoints/'
             # full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
             # logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
-            save_model(train_env, actor, critic, output_dir, i)
-            logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{i}.pkl and {output_dir}critic_{i}.pkl")
+            save_model(actor, critic, output_dir, collected_frames)
+            logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{collected_frames}.pkl and {output_dir}critic_{collected_frames}.pkl")
             
         wandb.log(data=log_info, step=collected_frames)
         collector.update_policy_weights_()

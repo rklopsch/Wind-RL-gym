@@ -19,6 +19,7 @@ from torchrl.envs import (
 from torchrl.envs.transforms.transforms import _apply_to_composite
 from torchrl.envs.utils import check_env_specs, step_mdp
 from smartredis import Client
+import logging
 
 
 class TurbEnv(EnvBase):
@@ -85,7 +86,9 @@ class TurbEnv(EnvBase):
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine, self.obs_per_probe)
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)  # [n_turbs, probes_per_turbine*obs_per_probe]
 
-        # Here: Stack the outputs from all the parallel envs into one
+        # TO-DO: add normalisation for probes
+        # Each probe contains (U, V, W) = (u_x, u_y, u_z)
+        # The range is typically 0 < U < 12, -4 < V,W < 4.
 
         # Process the outputs from the solver
         turbine_powers /= 1e06
@@ -93,7 +96,6 @@ class TurbEnv(EnvBase):
         farm_power = np.broadcast_to(farm_power, (self.n_turbs,))  # repeat farm power for all turbines
         # farm_power = turbine_powers.mean(axis=-1)  # Compute mean over iterations many time steps
         # turbine_obs = turbine_obs.mean(axis=-1)  # Compute mean over iterations many time steps
-        # Missing turbine velocities here!! Stack the velocities, individual turbine power and yaw before the turbine_obs
 
         # Convert to Torch tensors
         power = torch.tensor(farm_power, dtype=torch.float32).to(self.device)
@@ -170,7 +172,7 @@ class TurbEnv(EnvBase):
         return out
 
     def _reset(self, tensordict):
-        print(f"Resetting now")
+        logging.info(f"Resetting now")
 
         for _ in range(150):
             _, _ = self._communicate(new_alpha=torch.zeros([self.n_turbs]))
