@@ -3,7 +3,7 @@ from smartsim import Experiment
 import time
 import os
 from smartredis import Client
-from Solver.ADM_runner import ADMSimulation
+from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
 
 
@@ -43,7 +43,7 @@ def launch_solver(experiment, instance):
     experiment.generate(producer, overwrite=True)
 
     # Configure case
-    # Smartsims to_configure flag not working so doing manually with ADM_runner function
+    # Smartsims to_configure flag not working so doing manually with ADM_setup function
     # TODO: use the config to set the variables used here
     farm1 = Farm(126*14, 126*4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2*126])
     farm1.grid()
@@ -65,7 +65,7 @@ def launch_ppo(experiment):
                                              "./ppo/utils_ppo.py",
                                              "./ppo/config_ppo.yaml",
                                              "./Solver/WF_enviroment.py",
-                                             "./Solver/ADM_runner.py",
+                                             "./Solver/ADM_setup.py",
                                              "./Solver/farm.py"])
 
     experiment.generate(producer, overwrite=True)
