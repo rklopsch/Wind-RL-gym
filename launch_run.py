@@ -3,7 +3,7 @@ from smartsim import Experiment
 import time
 import os
 from smartredis import Client
-from Solver.ADM_runner import ADM
+from Solver.ADM_runner import ADMSimulation
 from Solver.farm import Farm, Turbine
 
 
@@ -47,7 +47,7 @@ def launch_solver(experiment, instance):
     # TODO: use the config to set the variables used here
     farm1 = Farm(126*14, 126*4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2*126])
     farm1.grid()
-    case = ADM(farm1, 25, instance=instance)
+    case = ADMSimulation(farm1, 23000, 25, instance=instance)
     case.modify_input(f"./launch_run/WindFarm_{instance}")
 
     return producer
