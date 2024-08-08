@@ -33,9 +33,8 @@ import numpy as np
 
 @hydra.main(config_path="./", config_name="config_ppo", version_base="1.2")
 def main(cfg: "DictConfig"):
-    device = "cpu" if not torch.cuda.device_count() else "cuda"
-    print(f'Running on {device}')
-    print(f'cuda version:{torch.version.cuda}')
+    device = "cpu"  # Run on CPU only
+    print(f'Running on device: {device}.')
 
     logging_stream = sys.stdout if cfg.logger.logging_stream == 'stdout' else None
     logging.basicConfig(
@@ -46,6 +45,7 @@ def main(cfg: "DictConfig"):
 
     # Correct for frame_skip
     # TO-DO: probably best to remove frameskip?
+    # Max: yes agreed, will do.
     frame_skip = cfg.collector.frame_skip
     total_frames = cfg.collector.total_frames // frame_skip
     frames_per_batch = cfg.collector.frames_per_batch // frame_skip
@@ -77,8 +77,6 @@ def main(cfg: "DictConfig"):
     test_params["n_procs"]=cfg.env.n_processors_per_env*cfg.env.n_parallel
     test_params["n_envs"]=1
 
-    print("about to create models")
-
     # Create models
     if not cfg.optim.load_from_checkpoint:
         # Create a new model
@@ -92,16 +90,8 @@ def main(cfg: "DictConfig"):
             dummy_update=True)
     actor, critic = actor.to(device), critic.to(device)
 
-    print("models created")
-
     # Create environments
     train_env = make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update)
-
-    print("train envs vreated")
-
-    train_env.reset()
-
-    print("train env reset")
 
     # Create collector
     collector = SyncDataCollector(
@@ -113,8 +103,6 @@ def main(cfg: "DictConfig"):
         storing_device=device,
         max_frames_per_traj=max_episode_length
     )
-
-    print("created collector")
 
     # Create data buffer
     sampler = SamplerWithoutReplacement()
@@ -176,8 +164,6 @@ def main(cfg: "DictConfig"):
         config=OmegaConf.to_container(cfg, resolve=True),
     )
 
-    print("before main loop")
-
     # Main loop
     collected_frames = 0
     num_network_updates = 0
@@ -201,9 +187,6 @@ def main(cfg: "DictConfig"):
     losses = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
 
     for i, data in enumerate(collector):
-
-        print(i, "\n")
-
         log_info = {}
         sampling_time = time.time() - sampling_start
         frames_in_batch = data.numel()
