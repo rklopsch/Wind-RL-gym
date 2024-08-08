@@ -1,7 +1,17 @@
 from smartredis import Client
 import numpy as np
 import time
+from hydra import initialize, compose
+from omegaconf import OmegaConf
 
+
+# Load the PPO config file to configure the dummy solver correctly
+initialize(config_path="../ppo/")
+cfg = compose(config_name="config_ppo.yaml")
+
+n_turbines = cfg.env.turbines
+total_probes = cfg.env.turbines * cfg.env.probes_per_turbine
+n_envs = cfg.env.n_parallel
 
 def dummy_solve(yaws):
     pows = np.ones(3)
@@ -9,7 +19,7 @@ def dummy_solve(yaws):
     return pows, obs 
 
 client = Client(address=None, cluster=False)
-instances = [1,2]
+instances = [i+1 for i in range(n_envs)]
 
 while True:
     # only for testing this file on its own
@@ -30,22 +40,11 @@ while True:
 
     # print(f"Yaws are {yaws}")
     
-    # Do the numerical magic
-    pows_list = []
-    obs_list = []
-    for _ in range(50):
-        pows, obs = dummy_solve(yaws)
-        pows_list.append(pows)
-        obs_list.append(obs)
-
-    pows = np.stack(pows_list, axis=-1)
-    obs = np.stack(obs_list, axis=-1)
-    
     # Store the new outputs of the simulation on the database
     for i in instances:
-        client.put_tensor(f'{i}_turbine_powers', pows)
-        for j in range(75):
-            client.put_tensor(f"{i}_probe_{j+1}", np.ones(3))
+        client.put_tensor(f'{i}_turbine_powers', np.random.randn(n_turbines))
+        for j in range(total_probes):
+            client.put_tensor(f"{i}_probe_{j+1}", np.random.randn(3))
 
     # Reset the yaw done to False
     # We might have to have a flag here that checks if ALL the solvers have
