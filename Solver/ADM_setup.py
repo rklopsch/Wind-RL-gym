@@ -1,22 +1,49 @@
 import torch
 import os
-import subprocess
 import shutil
 import numpy as np
 import f90nml
 from Solver.farm import Turbine, Farm
-
-is_verbose = False
-
-
-def make_even(i):
-    i += i % 2
-    return int(i)
+from itertools import combinations_with_replacement
+from math import prod
 
 
-def make_odd(i):
-    i -= i % 2 - 1
-    return int(i)
+def next_prime_product(start):
+    primes = [2, 3, 5, 7]  # Use small primes
+
+    current = start
+    while True:
+        # Iterate over increasing lengths of combinations
+        for combination_length in range(1, 14):
+            for comb in combinations_with_replacement(primes, combination_length):
+                if prod(comb) == current:
+                    print(comb)
+                    return current
+        current += 1
+
+
+def find_grid_dimensions(lx, ly, lz, delta):
+    # Estimate maximum nx, ny, nz values
+    min_nx = int(lx // delta)
+    min_ny = int(ly // delta)
+    min_nz = int(lz // delta)
+
+    # Generate all combinations of products of primes
+    nx = next_prime_product(min_nx)
+    ny = next_prime_product(min_ny)
+    nz = next_prime_product(min_nz)
+
+    return nx, ny, nz
+
+
+def test_grid_dimensions():
+    # Example usage for find_grid_dimensions()
+    lx, ly, lz = 10 * 7 * 126 + 4 * 126., 500., 126 * 7 * 10.
+    delta = 2.
+    nx, ny, nz = find_grid_dimensions(lx, ly, lz, delta)
+    print(f"Optimal nx, ny, nz: {lx // delta}, {ly // delta}, {lz // delta}")
+    print(f"Found prime combinations nx, ny, nz: {nx}, {ny}, {nz}")
+    print(f"With dx, dy, dz: {lx / nx}, {ly / ny}, {lz / nz}")
 
 
 class ADMSimulation:
@@ -28,17 +55,17 @@ class ADMSimulation:
         self.probes_per_turbine = probes_per_turbine
         self.diameter = farm.turbines[0].diam
         self.gridsize = self.diameter/10.
-        self.lx = farm.lx + farm.offset[0] + 7*self.diameter
-        self.ly = 500
-        self.lz = farm.lz + farm.offset[1] + farm.offset[1]
-        self.nx = make_odd(self.lx // self.gridsize)
-        self.ny = make_odd(self.ly // self.gridsize)
-        self.nz = make_even(self.lz // self.gridsize)
         self.dt = 0.2 * self.gridsize / self.windspeed
         self.total_timesteps = timesteps
         self.instance = instance
 
     def setup_precursor(self, directory):
+
+        ly = 500
+        lx = ly*4
+        lz = self.farm.lz + self.farm.offset[1] + self.farm.offset[1]
+        nx, ny, nz = find_grid_dimensions(lx, ly, lz, self.gridsize)
+        ny += 1
 
         # Update start and end time
         shutil.move(os.path.join(directory, 'input.i3d'),
@@ -46,12 +73,12 @@ class ADMSimulation:
         patch_nml = {'BasicParam': {
                         'ifirst': 1,
                         'ilast': self.total_timesteps,
-                        'xlx': self.ly*4,
-                        'yly': self.ly,
-                        'zlz': self.lz,
-                        'nx': self.ny*4,
-                        'ny': self.ny,
-                        'nz': self.nz,
+                        'xlx': lx,
+                        'yly': ly,
+                        'zlz': lz,
+                        'nx': nx,
+                        'ny': ny,
+                        'nz': nz,
                     },
                      'InOutParam': {
                         'ntimesteps': self.total_timesteps//100,
@@ -62,6 +89,14 @@ class ADMSimulation:
                      patch_nml, os.path.join(directory, 'input.i3d'))
 
     def setup_case(self, directory):
+
+        lx = self.farm.lx + self.farm.offset[0] + 7*self.diameter
+        ly = 500
+        lz = self.farm.lz + self.farm.offset[1] + self.farm.offset[1]
+        nx, ny, nz = find_grid_dimensions(lx, ly, lz, self.gridsize)
+        nx += 1
+        ny += 1
+
         self.add_probes(directory)
         # Set-up ADM turbine parameters
         yaw = np.zeros(self.farm.n_turbines)
@@ -75,15 +110,12 @@ class ADMSimulation:
         patch_nml = {'BasicParam': {
             'ifirst': 1,
             'ilast': self.total_timesteps,
-            'xlx': self.lx,
-            'yly': self.ly,
-            'zlz': self.lz,
-            'nx': self.nx,
-            'ny': self.ny,
-            'nz': self.nz,
-        },
-            'Statistics': {
-                'initstat': self.stat_timesteps,
+            'xlx': lx,
+            'yly': ly,
+            'zlz': lz,
+            'nx': nx,
+            'ny': ny,
+            'nz': nz,
             },
             'InOutParam': {
                 'irestart': 0,
@@ -128,10 +160,3 @@ class ADMSimulation:
         patch_nml = {'ProbesParam': probe_dictionary}
         f90nml.patch(os.path.join(directory, 'old_input.i3d'),
                      patch_nml, os.path.join(directory, 'input.i3d'))
-
-
-if __name__ == '__main__':
-
-    farm1 = Farm(126*14, 126*4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2*126])
-    farm1.grid()
-    case = ADM(farm1, 25)
