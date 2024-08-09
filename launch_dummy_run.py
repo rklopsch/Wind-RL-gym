@@ -41,7 +41,7 @@ def launch_ppo(experiment, load_params):
 
     # Copy relevant files
     file_list = ["./ppo/ppo.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml"]  # PPO files
-    file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_runner.py", "./Solver/farm.py"]  # Env and simulator
+    file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator
     if load_params['load_checkpoint']:
         file_list += [f"{load_params['checkpoint_path']}/actor_{load_params['checkpoint_id']}.pkl"]
         file_list += [f"{load_params['checkpoint_path']}/critic_{load_params['checkpoint_id']}.pkl"]
@@ -67,7 +67,7 @@ if __name__ == '__main__':
 
     total_runtime = 120  # seconds, without including setup of orchestrator etc.
 
-    db_port = 6783
+    db_port = 6782
     db = launch_database(exp, db_port)
 
     solver_app = launch_solver(exp)

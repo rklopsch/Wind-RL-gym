@@ -5,7 +5,7 @@
 
 import os
 print(os.getcwd())
-
+import hydra
 import torch.nn
 import torch.optim
 import pickle
@@ -362,3 +362,20 @@ def eval_model(actor, test_env, num_turbines, num_episodes=3, episode_length=100
 
     # Return matching the structure: mean/std for rewards, lists for alpha means/stds
     return rewards_mean, rewards_stdv, alpha_means_final, alpha_stds_final
+
+
+# ====================================================================
+# Logging utils
+# --------------------------------------------------------------------
+
+
+def log_metrics(logs, metrics):
+    for metric_name, metric_value in metrics.items():
+        if metric_name in logs.keys():
+            logs[metric_name].append(metric_value)
+        else:
+            logs[metric_name] = [metric_value]
+    # Save logs to disk
+    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
+    with open(output_dir + "logs.pkl", "wb") as f:
+        pickle.dump(logs, f)

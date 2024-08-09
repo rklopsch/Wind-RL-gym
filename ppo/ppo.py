@@ -13,9 +13,7 @@ from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value.advantages import GAE
 from torchrl.record.loggers import generate_exp_name
-from utils_ppo import make_smartsim_env, make_parallel_env, make_ma_ppo_models, load_model, save_model
-from omegaconf import OmegaConf
-import wandb
+from utils_ppo import make_parallel_env, make_ma_ppo_models, load_model, save_model, log_metrics
 import shutil
 import hydra
 import numpy as np
@@ -25,7 +23,7 @@ import shutil
 @hydra.main(config_path="./", config_name="config_ppo", version_base="1.2")
 def main(cfg: "DictConfig"):
     device = "cpu"  # Run on CPU only
-    print(f'Running on device: {device}.')
+    logging.info(f'Running on device: {device}.')
 
     logging_stream = sys.stdout if cfg.logger.logging_stream == 'stdout' else None
     logging.basicConfig(
@@ -146,18 +144,6 @@ def main(cfg: "DictConfig"):
     actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr, eps=1e-5)
     critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr, eps=1e-5)
 
-    # Create logger
-    exp_name = generate_exp_name("PPO_", cfg.env.env_name)
-    if cfg.logger.project_name is None:
-        raise ValueError("WandB project name must be specified in config.")
-    wandb.init(
-        mode=str(cfg.logger.mode),
-        project=str(cfg.logger.project_name),
-        entity=str(cfg.logger.team_name),
-        name=exp_name,
-        config=OmegaConf.to_container(cfg, resolve=True),
-    )
-
     # Main loop
     collected_frames = 0 if not cfg.checkpoint.load_from_checkpoint else cfg.checkpoint.model_checkpoint_id
     num_network_updates = 0
@@ -179,6 +165,9 @@ def main(cfg: "DictConfig"):
     cfg_loss_anneal_clip_eps = cfg.loss.anneal_clip_epsilon
     cfg_loss_clip_epsilon = cfg.loss.clip_epsilon
     losses = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
+
+    # Set up empty dict for logging
+    logs = {}
 
     for i, data in enumerate(collector):
         log_info = {}
@@ -289,6 +278,7 @@ def main(cfg: "DictConfig"):
                 "train/clip_epsilon": alpha * cfg_loss_clip_epsilon
                 if cfg_loss_anneal_clip_eps
                 else cfg_loss_clip_epsilon,
+                "step": collected_frames,
             }
         )
 
@@ -302,14 +292,13 @@ def main(cfg: "DictConfig"):
             save_model(actor, critic, output_dir, collected_frames)
             logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{collected_frames}.pkl and {output_dir}critic_{collected_frames}.pkl")
             
-        wandb.log(data=log_info, step=collected_frames)
+        log_metrics(logs, log_info)
         collector.update_policy_weights_()
         sampling_start = time.time()
 
-    wandb.finish()
     end_time = time.time()
     execution_time = end_time - start_time
-    print(f"Training took {execution_time:.2f} seconds to finish")
+    logging.info(f"Training took {execution_time:.2f} seconds to finish")
 
 
 if __name__ == "__main__":
