@@ -32,14 +32,10 @@ def main(cfg: "DictConfig"):
         stream=logging_stream,
     )
 
-    # Correct for frame_skip
-    # TO-DO: probably best to remove frameskip?
-    # Max: yes agreed, will do.
-    frame_skip = cfg.collector.frame_skip
-    total_frames = cfg.collector.total_frames // frame_skip
-    frames_per_batch = cfg.collector.frames_per_batch // frame_skip
-    max_episode_length = cfg.collector.max_episode_length // frame_skip
-    mini_batch_size = cfg.loss.mini_batch_size // frame_skip
+    total_frames = cfg.collector.total_frames
+    frames_per_batch = cfg.collector.frames_per_batch
+    max_episode_length = cfg.collector.max_episode_length
+    mini_batch_size = cfg.loss.mini_batch_size
     n_environments = cfg.env.n_parallel
     dummy_update = cfg.env.dummy_update
 
@@ -173,7 +169,7 @@ def main(cfg: "DictConfig"):
         log_info = {}
         sampling_time = time.time() - sampling_start
         frames_in_batch = data.numel()
-        collected_frames += frames_in_batch * frame_skip
+        collected_frames += frames_in_batch
         #pbar.update(data.numel())
         logging.info(f"Training step {collected_frames}/{total_frames}.")
 

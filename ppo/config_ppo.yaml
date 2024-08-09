@@ -14,7 +14,6 @@ env:
 
 # collector
 collector:
-  frame_skip: 1  # Env takes 50 time steps per update
   frames_per_batch: 200 # this is the actual number of frames we see in a batch
   max_episode_length: 1_000  # Timesteps (disregarding frame skip)
   total_frames: 50_000  # Timesteps (disregarding frame skip)

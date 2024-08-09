@@ -11,3 +11,4 @@ LES_RUNS
 *.err
 input.i3d
 launch_dummy_run
+launch_run
