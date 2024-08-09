@@ -5,6 +5,7 @@ import os
 from smartredis import Client
 from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
+from hydra import initialize, compose
 
 
 def launch_database(experiment, port):
@@ -53,7 +54,7 @@ def launch_solver(experiment, instance):
     return producer
 
 
-def launch_ppo(experiment):
+def launch_ppo(experiment, load_params):
     aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py")
     aprun.set_tasks(1)
     producer = experiment.create_model("ppo", aprun)
@@ -61,19 +62,30 @@ def launch_ppo(experiment):
     # create directories for the output files and copy
     # scripts to execution location inside newly created dir
     # only necessary if its not an executable (python is executable here) 
-    producer.attach_generator_files(to_copy=["./ppo/ppo.py",
-                                             "./ppo/utils_ppo.py",
-                                             "./ppo/config_ppo.yaml",
-                                             "./Solver/WF_enviroment.py",
-                                             "./Solver/ADM_setup.py",
-                                             "./Solver/farm.py"])
+    file_list = ["./ppo/ppo.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml"]  # PPO files
+    file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator files
+    if load_params['load_checkpoint']:  # copy in checkpointed models if desired
+        file_list += [f"{load_params['checkpoint_path']}/actor_{load_params['checkpoint_id']}.pkl"]
+        file_list += [f"{load_params['checkpoint_path']}/critic_{load_params['checkpoint_id']}.pkl"]
+    producer.attach_generator_files(to_copy=file_list)
 
     experiment.generate(producer, overwrite=True)
     return producer
 
 
 if __name__ == '__main__':
-    exp = Experiment("launch_run", launcher="local")
+    # Read PPO config
+    initialize(config_path="./ppo/", version_base="1.2")
+    cfg = compose(config_name="config_ppo.yaml")
+
+    # Load a checkpointed model?
+    load_params = {
+        'load_checkpoint': bool(cfg.checkpoint.load_from_checkpoint),
+        'checkpoint_id': cfg.checkpoint.model_checkpoint_id,
+        'checkpoint_path': cfg.checkpoint.model_checkpoint_path,
+    }
+
+    exp = Experiment("launch_run", launcher="auto")
 
     total_runtime = 120  # seconds, without including setup of orchestrator etc.
     n_environments = 2
@@ -83,7 +95,7 @@ if __name__ == '__main__':
     db = launch_database(exp, db_port)
 
     # Start RL
-    rl_app = launch_ppo(exp)
+    rl_app = launch_ppo(exp, load_params)
     exp.start(rl_app, block=False, summary=False)
 
     # Start simulations
@@ -96,5 +108,5 @@ if __name__ == '__main__':
     # shutdown the database because we don't need it anymore
     time.sleep(total_runtime)
     everything = simulations + [rl_app, db]
-    exp.stop(*everything)
+    exp.stop(*everything)  # lol i love the "stop everything" command
     print(exp.summary())
