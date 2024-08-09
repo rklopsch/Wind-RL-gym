@@ -7,6 +7,7 @@ env:
   turbines: 3
   probes_per_turbine: 25
   turbine_diameter: 126
+  turbine_height: 90
   turbine_spacing: 7
   max_yaw_speed: 0.25
   max_yaw_angle: 40

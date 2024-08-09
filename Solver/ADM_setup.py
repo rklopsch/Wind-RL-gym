@@ -9,7 +9,7 @@ from math import prod
 
 
 def next_prime_product(start):
-    primes = [2, 3, 5, 7]  # Use small primes
+    primes = [2, 3, 5]  # Use small primes
 
     current = start
     while True:
@@ -55,14 +55,15 @@ class ADMSimulation:
         self.diameter = farm.turbines[0].diam
         self.gridsize = self.diameter/10.
         self.dt = 0.2 * self.gridsize / self.windspeed
+        # TODO: probably want to set dt in sims
         self.total_timesteps = timesteps
         self.instance = instance
 
     def setup_precursor(self, directory):
 
         ly = 500
-        lx = ly*4
         lz = self.farm.lz + self.farm.offset[1] + self.farm.offset[1]
+        lx = lz*2
         nx, ny, nz = find_grid_dimensions(lx, ly, lz, self.gridsize)
         ny += 1
 

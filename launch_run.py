@@ -26,7 +26,7 @@ def launch_database(experiment, port):
     return db
 
 
-def launch_solver(experiment, instance):
+def launch_solver(experiment, instance, cfg):
     os.environ['SR_DB_TYPE'] = "Standalone"  # visible in this process + all children
     os.environ['SSDB'] = "127.0.0.1:6783"  # visible in this process + all children
     os.environ['LD_LIBRARY_PATH'] = "/home/amole/Documents/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
@@ -45,11 +45,15 @@ def launch_solver(experiment, instance):
 
     # Configure case
     # Smartsims to_configure flag not working so doing manually with ADM_setup function
-    # TODO: use the config to set the variables used here
-    farm1 = Farm(126*14, 126*4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2*126])
+    farm1 = Farm(cfg.env.turbine_diameter * cfg.env.turbine_spacing * (cfg.env.turbines-1),
+                 cfg.env.turbine_diameter * 1 * 1,
+                 cfg.env.turbines,
+                 Turbine(cfg.env.turbine_diameter, cfg.env.turbine_height, yaw=0),
+                 offset=[(cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter, (cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter])
     farm1.grid()
     case = ADMSimulation(farm1, 23000, 25, instance=instance)
     case.setup_case(f"./launch_run/WindFarm_{instance}")
+    case.setup_precursor(f"./launch_run/WindFarm_{instance}/precursor_Base")
 
     return producer
 
