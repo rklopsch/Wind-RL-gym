@@ -42,8 +42,8 @@ iin = 1              ! Inflow conditions (1: classic, 2: turbinit, 3:turbulence 
 re  = 66667.         ! nu=1/re (Kinematic Viscosity)
 u1  = 8.            ! u1 (max velocity) (for inflow condition)
 u2  = 8.            ! u2 (min velocity) (for inflow condition)
-init_noise = 0.5     ! Turbulence intensity (1=100%) !! Initial condition
-inflow_noise=0.1     ! Turbulence intensity (1=100%) !! Inflow condition
+init_noise = 0.1     ! Turbulence intensity (1=100%) !! Initial condition
+inflow_noise=0.0     ! Turbulence intensity (1=100%) !! Inflow condition
 
 ! Time stepping
 dt = 0.2          ! Time step
@@ -125,10 +125,10 @@ iconserv = 1         ! Formulation SGS divergence (0: non conservative, 1: conse
 &ABL
 !================
 
-dsampling=1.5        ! Sampling velocity for the wall model at delta=dsampling*dy
+dsampling=2.2        ! Sampling velocity for the wall model at delta=dsampling*dy
 z_zero=0.05       ! Roughness length
 k_roughness=0.4      ! von Karman constant (usually taken to be equal to 0.4)
-ustar=0.354           ! friction velocity
+ustar=0.442           ! friction velocity
 dBL=504             ! Boundary layer height
 iPressureGradient=1  ! 0: Geostrophic Vel 1: PG forcing
 UG=0,0,0
