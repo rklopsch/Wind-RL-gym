@@ -66,6 +66,8 @@ class TurbEnv(EnvBase):
 
     @staticmethod
     def _normalise_probe_data(arr):
+        # Each probe contains (U, V, W) = (u_x, u_y, u_z)
+        # The range is typically 0 < U < 12, -4 < V,W < 4.
         loc = np.array([6., 0., 0.])
         scale = np.array([6., 4., 4.])
         return (arr-loc)/scale
@@ -92,10 +94,6 @@ class TurbEnv(EnvBase):
             turbine_obs[i] = self._normalise_probe_data(probe)  # [n_turbs*probes_per_turbine, obs_per_probe]
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine, self.obs_per_probe)
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)  # [n_turbs, probes_per_turbine*obs_per_probe]
-
-        # TO-DO: add normalisation for probes
-        # Each probe contains (U, V, W) = (u_x, u_y, u_z)
-        # The range is typically 0 < U < 12, -4 < V,W < 4.
 
         # Process the outputs from the solver
         turbine_powers /= 1e06
