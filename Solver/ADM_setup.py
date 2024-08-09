@@ -17,7 +17,6 @@ def next_prime_product(start):
         for combination_length in range(1, 14):
             for comb in combinations_with_replacement(primes, combination_length):
                 if prod(comb) == current:
-                    print(comb)
                     return current
         current += 1
 
