@@ -47,7 +47,7 @@ def test_grid_dimensions():
 
 class ADMSimulation:
 
-    def __init__(self, farm, timesteps, probes_per_turbine=25, windspeed=10, instance=0):
+    def __init__(self, farm, timesteps, control_freq, probes_per_turbine=25, windspeed=10, instance=0):
         self.farm = farm
         self.n_turbines = self.farm.n_turbines
         self.windspeed = windspeed
@@ -57,6 +57,7 @@ class ADMSimulation:
         self.dt = 0.2 * self.gridsize / self.windspeed
         # TODO: probably want to set dt in sims
         self.total_timesteps = timesteps
+        self.control_freq = control_freq
         self.instance = instance
 
     def setup_precursor(self, directory):
@@ -129,7 +130,9 @@ class ADMSimulation:
             },
             'ADMParam': {
                 'Ndiscs': self.farm.n_turbines,
-                'instance': self.instance
+                'instance': self.instance,
+                'iturboutput': self.control_freq,
+                'icontrolfreq': self.control_freq
             }
         }
         f90nml.patch(os.path.join(directory, 'old_input.i3d'),
