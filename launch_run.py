@@ -49,7 +49,7 @@ def launch_solver(experiment, instance):
     farm1 = Farm(126*14, 126*4, 3, Turbine(126, 90, yaw=0), offset=[2 * 126, 2*126])
     farm1.grid()
     case = ADMSimulation(farm1, 23000, 25, instance=instance)
-    case.modify_input(f"./launch_run/WindFarm_{instance}")
+    case.setup_case(f"./launch_run/WindFarm_{instance}")
 
     return producer
 
