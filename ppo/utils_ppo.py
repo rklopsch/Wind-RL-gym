@@ -36,35 +36,13 @@ import numpy as np
 # ====================================================================
 # Environment utils
 # --------------------------------------------------------------------
-def obs_normalisation():
-    # The first three inputs are: turbine velocity, turbine power and turbine yaw.
-    # Then the inputs are the u_x and u_z velocities behind the turbine at the sample points
-    return {'loc': np.array([4.5, 0., 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.,
-                             5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75,
-                             0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.,
-                             5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75,
-                             0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.]),
-            'scale': np.array([1.0, 1.0, 40., 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65,
-                               0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65,
-                               0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65,
-                               0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65,
-                               0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65])}
 
 
 def transforms():
-    # Load observation normalisation parameters
-    obs_norm_params = obs_normalisation()
-
     transform_list = [
         InitTracker(),
         RewardSum(),
         FiniteTensorDictCheck(),
-        # ObservationNorm(
-        #     loc=obs_norm_params['loc'],
-        #     scale=obs_norm_params['scale'],
-        #     in_keys=[('agents', 'observation')]
-        # )
-        # TODO: add scaling back in (think we will want to do it in a better way than this if n_turbs or n_obs changes
     ]
     transforms = Compose(*transform_list)
     return transforms

@@ -64,6 +64,12 @@ class TurbEnv(EnvBase):
 
         self.dummy_update = dummy_update  # If True, perform a dummy update for testing
 
+    @staticmethod
+    def _normalise_probe_data(arr):
+        loc = np.array([6., 0., 0.])
+        scale = np.array([6., 4., 4.])
+        return (arr-loc)/scale
+
     def _communicate(self, new_alpha):
         ######### Communication with SmartRedis server ###########
         # Send yaws to X3D
@@ -82,7 +88,8 @@ class TurbEnv(EnvBase):
         turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # [n_turbs]
         turbine_obs = np.zeros((self.total_probes, self.obs_per_probe))
         for i in range(self.total_probes):
-            turbine_obs[i] = self.client.get_tensor(f"{self.instance}_probe_{i+1}")  # [n_turbs*probes_per_turbine, obs_per_probe]
+            probe = self.client.get_tensor(f"{self.instance}_probe_{i+1}")
+            turbine_obs[i] = self._normalise_probe_data(probe)  # [n_turbs*probes_per_turbine, obs_per_probe]
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine, self.obs_per_probe)
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)  # [n_turbs, probes_per_turbine*obs_per_probe]
 
