@@ -46,3 +46,10 @@ loss:
   critic_coef: 0.25
   entropy_coef: 0.0
   loss_critic_type: l2
+
+# Configure hydra
+hydra:
+  run:
+    dir: outputs
+  output_subdir: hydra_logs
+  

@@ -205,8 +205,15 @@ def main(cfg: "DictConfig"):
         if len(episode_length) > 0:
             log_info.update(
                 {
-                    "train/reward": episode_rewards.mean().item(),
+                    "train/episode_reward": episode_rewards.mean().item(),
                     "train/episode_length": episode_length.sum().item() / len(episode_length),
+                }
+            )
+        else:  # if no end of an episode is contained in the batch, fill the logs with NaN
+            log_info.update(
+                {
+                    "train/episode_reward": np.nan,
+                    "train/episode_length": np.nan,
                 }
             )
 
