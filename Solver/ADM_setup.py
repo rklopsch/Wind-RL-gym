@@ -142,7 +142,7 @@ class ADMSimulation:
         probes_per_turbine = self.probes_per_turbine
         probe_spacing = self.farm.turbines[0].diam/2
         nrows = probes_per_turbine // 5
-        x, z = np.meshgrid(np.arange(probe_spacing, (nrows+1)*probe_spacing, probe_spacing),
+        x, z = np.meshgrid(np.arange(-probe_spacing, (nrows+1)*probe_spacing, probe_spacing),
                            np.arange(-2*probe_spacing, 2*probe_spacing+1, probe_spacing))
         y = np.ones(probes_per_turbine) * self.farm.turbines[0].hub_height
 

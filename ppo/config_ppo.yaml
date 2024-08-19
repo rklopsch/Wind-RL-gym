@@ -5,7 +5,7 @@ env:
   dummy_update: False
   env_name: WindFarm
   turbines: 3
-  probes_per_turbine: 25
+  probes_per_turbine: 60
   turbine_diameter: 126
   turbine_height: 90
   turbine_spacing: 7
