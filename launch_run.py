@@ -103,7 +103,7 @@ if __name__ == '__main__':
     # Start simulations
     simulations = []
     for i in range(1, n_environments+1):
-        simulation = launch_solver(exp, instance=i)
+        simulation = launch_solver(exp, instance=i, cfg=cfg)
         simulations.append(simulation)
         exp.start(simulation, block=False, summary=False)
 
