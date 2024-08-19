@@ -50,6 +50,7 @@ class TurbEnv(EnvBase):
         self.max_speed = params["max_yaw_speed"]  # maximum angular velocity of wind turbine
         self.max_angle = params["max_yaw_angle"]
         self.dt = params["dt"]
+        self.reset_frames = params["reset_frames"]
         self.instance = 0 if instance is None else instance+1
 
         # Create client
@@ -179,7 +180,7 @@ class TurbEnv(EnvBase):
     def _reset(self, tensordict):
         logging.info(f"Resetting now")
 
-        for _ in range(150):
+        for _ in range(self.reset_frames):
             _, _ = self._communicate(new_alpha=torch.zeros([self.n_turbs]))
         # Make sure the flags for yaws_done and sim_done are both set to False at the end of reset
         self.client.put_tensor(f"{self.instance}_yaws_done", np.array([0]))
@@ -318,6 +319,7 @@ class TurbEnv(EnvBase):
             "max_yaw_speed": 0.25,
             "max_yaw_angle": 40,
             "dt": 10,
+            "reset_frames": 150,
             "run_steps": 10,
         }
         return params
