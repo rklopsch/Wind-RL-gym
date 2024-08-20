@@ -48,11 +48,13 @@ def transforms():
     return transforms
 
 
-def make_env(params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True):
+def make_env(params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True, eval_only=False):
     from WF_enviroment import TurbEnv
     env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
     if add_transforms:
         env = TransformedEnv(env, transforms())
+    if eval_only:
+        env.eval()
     return env
 
 
@@ -65,18 +67,8 @@ def make_smartsim_env(client, params, instance=None, save=False, device="cpu", d
     return env
 
 
-def make_parallel_env(params, num_envs, device="cpu", dummy_update=False):
-    """
-    # Different way of creating parallel envs, this way the VecNorm is synchronised
-    # However idk how to figure out the instance parameter here...
-    env_creator = EnvCreator(lambda: make_env(params, device=device, dummy_update=dummy_update))
-    env = ParallelEnv(num_envs, env_creator)
-    env_creator.state_dict()["transforms.3._extra_state"]["td"]["agents_observation_count"].fill_(0.0)
-    env_creator.state_dict()["transforms.3._extra_state"]["td"]["agents_observation_ssq"].fill_(0.0)
-    env_creator.state_dict()["transforms.3._extra_state"]["td"]["agents_observation_sum"].fill_(0.0)
-    # return env
-    """
-    function_list = [lambda i=i: make_env(params, instance=i, device=device, dummy_update=dummy_update) for i in
+def make_parallel_env(params, num_envs, device="cpu", dummy_update=False, eval_only=False):
+    function_list = [lambda i=i: make_env(params, instance=i, device=device, dummy_update=dummy_update, eval_only=eval_only) for i in
                      range(num_envs)]
     env = ParallelEnv(num_envs, function_list, )
     # serial_for_single=True)
