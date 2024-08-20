@@ -12,3 +12,4 @@ LES_RUNS
 input.i3d
 launch_dummy_run
 launch_run
+eval_dummy_run

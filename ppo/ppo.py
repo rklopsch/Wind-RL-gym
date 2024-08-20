@@ -75,6 +75,7 @@ def main(cfg: "DictConfig"):
         actor, critic = load_model(
             env_params=params,
             id=cfg.checkpoint.model_checkpoint_id,
+            path_to_model='checkpoints',
             dummy_update=dummy_update)
         logging.info(f"Loaded models. Starting training from frame {cfg.checkpoint.model_checkpoint_id}.")
     actor, critic = actor.to(device), critic.to(device)

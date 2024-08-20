@@ -2,20 +2,29 @@ from smartredis import Client
 import numpy as np
 import time
 from hydra import initialize, compose
+import os
+
+
+# Check if we are running in training or eval mode
+# If in training mode, there will be a "ppo" directory
+# If in eval mode, there will be a "eval" directory (and no "ppo" directory)
+if os.path.isdir('../eval'):
+    config_dir = '../eval'
+    training = False
+elif os.path.isdir('../ppo'):
+    config_dir = '../ppo'
+    training = True
+else:
+    raise RuntimeError(f"Did not find either ppo or eval directory.")
 
 
 # Load the PPO config file to configure the dummy solver correctly
-initialize(config_path="../ppo/")
+initialize(config_path=config_dir, version_base="1.2")
 cfg = compose(config_name="config_ppo.yaml")
 
 n_turbines = cfg.env.turbines
 total_probes = cfg.env.turbines * cfg.env.probes_per_turbine
-n_envs = cfg.env.n_parallel
-
-def dummy_solve(yaws):
-    pows = np.ones(3)
-    obs = np.zeros([3, 53])
-    return pows, obs 
+n_envs = cfg.env.n_parallel if training else cfg.eval.n_parallel  # use correct env number
 
 client = Client(address=None, cluster=False)
 instances = [i+1 for i in range(n_envs)]

@@ -224,20 +224,23 @@ def make_ma_ppo_models(params):
     return actor, critic
 
 
-def load_model(env_params, id, dummy_update=False):
+def load_model(env_params, path_to_model, id, dummy_update=False):
     try:
         """
         # Load env transforms
         with open('checkpoints/env_transforms' + f"_{id}" + '.pkl', 'rb') as file:
             transforms_params = pickle.load(file)
         """
+        # Filenames
+        actor_path = path_to_model + '/actor' + f"_{id}" + '.pkl'
+        critic_path = path_to_model + '/critic' + f"_{id}" + '.pkl'
         # Load model parameters
-        with open('checkpoints/actor' + f"_{id}" + '.pkl', 'rb') as file:
+        with open(actor_path, 'rb') as file:
             actor_params = torch.load(file)
-        with open('checkpoints/critic' + f"_{id}" + '.pkl', 'rb') as file:
+        with open(critic_path, 'rb') as file:
             critic_params = torch.load(file)
     except FileNotFoundError:
-        print(f"File checkpoints/env_transforms_{id}.pkl or checkpoints/actor_{id}.pkl or checkpoints/critic_{id}.pkl has not been found.")
+        print(f"File {actor_path} or {critic_path} has not been found.")
         return False
 
     device = "cpu" if not torch.cuda.device_count() else "cuda"
