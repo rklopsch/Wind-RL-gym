@@ -59,6 +59,7 @@ def main(cfg: "DictConfig"):
     }
 
     # Create models
+    logging.info('Creating models')
     if not cfg.checkpoint.load_from_checkpoint:
         # Create a new model
         actor, critic = make_ma_ppo_models(params)
@@ -81,9 +82,11 @@ def main(cfg: "DictConfig"):
     actor, critic = actor.to(device), critic.to(device)
 
     # Create environments
+    logging.info(f'Creating {n_environments} parallel environments')
     train_env = make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update)
 
     # Create collector
+    logging.info(f'Creating data collector')
     collector = SyncDataCollector(
         train_env,
         policy=actor,
@@ -95,6 +98,7 @@ def main(cfg: "DictConfig"):
     )
 
     # Create data buffer
+    logging.info(f'Creating data buffer')
     sampler = SamplerWithoutReplacement()
     data_buffer = TensorDictReplayBuffer(
         storage=LazyMemmapStorage(frames_per_batch),
@@ -167,6 +171,7 @@ def main(cfg: "DictConfig"):
     # Set up empty dict for logging
     logs = {}
 
+    logging.info(f'Starting main loop')
     for i, data in enumerate(collector):
         log_info = {}
         sampling_time = time.time() - sampling_start
