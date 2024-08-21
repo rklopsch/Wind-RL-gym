@@ -44,6 +44,7 @@ def main(cfg: "DictConfig"):
         results_dir = os.path.join(hydra_dir, 'RESULTS')
         os.makedirs(results_dir, exist_ok=True)
 
+    # TO-DO: pass only the cfg into all functions...    
     params = {
         "n_turbines": cfg.env.turbines,
         "n_procs": cfg.env.n_processors_per_env,
@@ -61,7 +62,7 @@ def main(cfg: "DictConfig"):
     # Create models
     if not cfg.checkpoint.load_from_checkpoint:
         # Create a new model
-        actor, critic = make_ma_ppo_models(params)
+        actor, critic = make_ma_ppo_models(cfg, params)
     else:
         # Load from specified checkpoint
         # Copy the loaded models into the ppo/checkpoints directory
@@ -73,6 +74,7 @@ def main(cfg: "DictConfig"):
                 shutil.move(filename, "checkpoints")
         # Load actor and critic
         actor, critic = load_model(
+            cfg=cfg,
             env_params=params,
             id=cfg.checkpoint.model_checkpoint_id,
             path_to_model='checkpoints',
@@ -81,7 +83,7 @@ def main(cfg: "DictConfig"):
     actor, critic = actor.to(device), critic.to(device)
 
     # Create environments
-    train_env = make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update)
+    train_env = make_parallel_env(cfg, params, n_environments, device=device, dummy_update=dummy_update)
 
     # Create collector
     collector = SyncDataCollector(
@@ -174,6 +176,8 @@ def main(cfg: "DictConfig"):
         collected_frames += frames_in_batch
         #pbar.update(data.numel())
         logging.info(f"Training step {collected_frames}/{total_frames}.")
+
+        print("Collected data", data)
 
         data.set(
             ("next", "agents", "done"),
@@ -290,7 +294,7 @@ def main(cfg: "DictConfig"):
             output_dir = os.getcwd() + '/checkpoints/'
             # full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
             # logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
-            save_model(actor, critic, output_dir, collected_frames)
+            save_model(cfg, actor, critic, output_dir, collected_frames)
             logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{collected_frames}.pkl and {output_dir}critic_{collected_frames}.pkl")
             
         log_metrics(logs, log_info)

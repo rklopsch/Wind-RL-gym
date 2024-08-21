@@ -75,6 +75,8 @@ if __name__ == '__main__':
     rl_app = launch_eval(exp, load_params)
     exp.start(rl_app, block=False, summary=False)
 
+    # TO-DO: can we remove the RUNTIME parameter everywhere? it's rly inconvenient...
+
     # shutdown the database because we don't need it anymore
     time.sleep(total_runtime)
     exp.stop(db)

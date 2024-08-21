@@ -14,6 +14,37 @@ import numpy as np
 import shutil
 
 
+def adjust_tensor_shapes(data, env):
+    """
+    Adjust the shapes of tensors for multiagent tensordict.
+    """
+    data.set(
+        ("next", "agents", "done"),
+        data.get(("next", "done"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", env.reward_key))),
+    )
+    data.set(
+        ("next", "agents", "terminated"),
+        data.get(("next", "terminated"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", env.reward_key))),
+    )
+    data.set(
+        ("next", "done"),
+        data.get(("next", "done"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", env.reward_key))),
+    )
+    data.set(
+        ("next", "terminated"),
+        data.get(("next", "terminated"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", env.reward_key))),
+    )
+    return data
+
+
 @hydra.main(config_path="./", config_name="config_ppo", version_base="1.2")
 def main(cfg: "DictConfig"):
     device = "cpu"  # Run on CPU only
@@ -61,6 +92,7 @@ def main(cfg: "DictConfig"):
             shutil.move(filename, "models")
     # Load actor and critic
     actor, critic = load_model(
+        cfg=cfg,
         env_params=params,
         id=cfg.eval.model_id,
         path_to_model='models',
@@ -70,6 +102,7 @@ def main(cfg: "DictConfig"):
 
     # Create environments
     eval_env = make_parallel_env(
+        cfg,
         params,
         n_environments,
         device=device,
@@ -86,15 +119,30 @@ def main(cfg: "DictConfig"):
 
     # Timing
     start_time = time.time()
+    logs = {}
 
     with set_exploration_type(ExplorationType.MEAN), torch.no_grad():
-        rollout_td = eval_env.rollout(
+        data = eval_env.rollout(
             max_steps=max_episode_length,
             policy=actor,
             auto_reset=True,
         )
-        print(rollout_td)
-        # TO-DO: implement all the logging we wanna do here!
+        data = adjust_tensor_shapes(data, eval_env)
+
+        # Get rewards and episode lengths
+        episode_rewards = data["next", "agents", "episode_reward"][data["next", "done"]]
+        reward_shape = data.get_item_shape(("next", eval_env.reward_key))
+        episode_rewards = episode_rewards.view(reward_shape[-2], reward_shape[0]).mean(dim=0)
+        episode_length = data["next", "step_count"][data["next", "done"].all(-2)]
+        print("legnth", episode_length)
+        if not len(episode_length) > 0:
+            raise RuntimeWarning("The eval tensordict does not contain a finished episode.")
+        
+        print(data)
+        
+        for i in range(n_environments):
+            logs[f"episode_reward_{i+1}"] = episode_rewards[i].item()
+            logs[f"episode_length_{i+1}"] = episode_length[i].item()
 
     # End timing
     end_time = time.time()
