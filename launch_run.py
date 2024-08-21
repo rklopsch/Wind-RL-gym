@@ -2,6 +2,7 @@ import numpy as np
 from smartsim import Experiment
 import time
 import os
+import math
 from smartredis import Client
 from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
@@ -51,7 +52,11 @@ def launch_solver(experiment, instance, cfg):
                  Turbine(cfg.env.turbine_diameter, cfg.env.turbine_height, yaw=0),
                  offset=[(cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter, (cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter])
     farm1.grid()
-    case = ADMSimulation(farm1, timesteps=cfg.env.steps_per_frame*cfg.collector.total_frames*(1+cfg.env.reset_frames // cfg.collector.max_episode_length),
+    simulation_steps = (cfg.env.steps_per_frame
+                        *((cfg.collector.total_frames//cfg.collector.frames_per_batch)+1)
+                        *((cfg.collector.frames_per_batch//cfg.env.n_parallel)+1)
+                        *(1 + (cfg.env.reset_frames / cfg.collector.max_episode_length)))  # This is horrible
+    case = ADMSimulation(farm1, timesteps=math.ceil(simulation_steps),
                          control_freq=cfg.env.steps_per_frame,
                          probes_per_turbine=cfg.env.probes_per_turbine,
                          instance=instance)
