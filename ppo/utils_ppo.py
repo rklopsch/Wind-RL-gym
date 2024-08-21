@@ -58,15 +58,6 @@ def make_env(params, instance=None, save=False, device="cpu", dummy_update=False
     return env
 
 
-# TO-DO: delete this
-def make_smartsim_env(client, params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True):
-    from WF_enviroment import TurbEnv
-    env = TurbEnv(client, params, save=save, instance=0, device=device, dummy_update=dummy_update)
-    if add_transforms:
-        env = TransformedEnv(env, transforms())
-    return env
-
-
 def make_parallel_env(params, num_envs, device="cpu", dummy_update=False, eval_only=False):
     function_list = [lambda i=i: make_env(params, instance=i, device=device, dummy_update=dummy_update, eval_only=eval_only) for i in
                      range(num_envs)]

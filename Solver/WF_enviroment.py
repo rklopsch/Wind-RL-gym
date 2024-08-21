@@ -27,16 +27,12 @@ class TurbEnv(EnvBase):
     batch_locked = False
 
     def __init__(self,
-                 client,
                  params=None,
                  seed=None,
                  save=False,
                  instance=None,
                  device="cpu",
                  dummy_update=False):
-
-        if not params:
-            params = self.gen_params()
 
         super().__init__(device=device, batch_size=[])
 
@@ -307,38 +303,4 @@ class TurbEnv(EnvBase):
         rng = torch.Generator(device=self.device)
         rng.manual_seed(seed)
         self.rng = rng
-
-    @staticmethod
-    def gen_params() -> TensorDictBase:
-        """Returns a dict containing the physical parameters such as speed and angle limits."""
-        params = {
-            "n_turbines": 3,
-            "probes_per_turbine": 25,
-            "turbine_diameter": 126,
-            "turbine_spacing": 7,
-            "max_yaw_speed": 0.25,
-            "max_yaw_angle": 40,
-            "dt": 10,
-            "reset_frames": 150,
-            "run_steps": 10,
-        }
-        return params
-
-
-if __name__ == '__main__':
-
-    test_env = TurbEnv(save=True, dummy_update=True)
-
-    check_env_specs(test_env)
-
-    print("action_keys:", test_env.action_keys)
-    print("reward_keys:", test_env.reward_keys)
-    print("observation_keys:", test_env.observation_spec)
-    print("done_keys:", test_env.done_keys)
-    rollout = test_env.rollout(max_steps=3)
-    print(f"alpha = {rollout[('agents', 'alpha')][:, 1].mean()}")
-    # print(f"Reward = {rollout['next', 'episode_reward'][rollout['next', 'done']][:, 1].mean()}")
-
-    print("\nTesting environment rollout...")
-    print(rollout)
 
