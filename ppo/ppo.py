@@ -182,8 +182,6 @@ def main(cfg: "DictConfig"):
         #pbar.update(data.numel())
         logging.info(f"Training step {collected_frames}/{total_frames}.")
 
-        print("Collected data", data)
-
         data.set(
             ("next", "agents", "done"),
             data.get(("next", "done"))

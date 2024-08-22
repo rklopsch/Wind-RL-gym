@@ -56,7 +56,7 @@ eval:
   episode_length: 1_000
   n_parallel: 5  # Number of eval envs to be run in parallel
   model_path: utils/checkpoint_test  # Path to stored model, relative to Wind-RL/
-  model_id: 2000  # ID of model to be evaluated
+  model_id: 4200  # ID of model to be evaluated
 
 # Configure hydra
 hydra:
