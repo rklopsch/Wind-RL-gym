@@ -44,6 +44,7 @@ def main(cfg: "DictConfig"):
         results_dir = os.path.join(hydra_dir, 'RESULTS')
         os.makedirs(results_dir, exist_ok=True)
 
+    # TO-DO: pass only the cfg into all functions...    
     params = {
         "n_turbines": cfg.env.turbines,
         "n_procs": cfg.env.n_processors_per_env,
@@ -180,6 +181,8 @@ def main(cfg: "DictConfig"):
         collected_frames += frames_in_batch
         #pbar.update(data.numel())
         logging.info(f"Training step {collected_frames}/{total_frames}.")
+
+        print("Collected data", data)
 
         data.set(
             ("next", "agents", "done"),

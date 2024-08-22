@@ -76,6 +76,7 @@ class TurbEnv(EnvBase):
         # Set i_yaws_done flag to True (one)
         self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1)) # setting one as True
 
+        logging.info("HELLOHELLOLOLOLO \n\n\n")
         # print(f"Set yaws to {new_alpha} for key {self.instance}_yaws")
         # print(f"Set yaws done to True for key {self.instance}_yaws_done")
 

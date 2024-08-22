@@ -3,6 +3,7 @@ import numpy as np
 import time
 from hydra import initialize, compose
 import os
+import logging
 
 
 # Check if we are running in training or eval mode
@@ -11,12 +12,13 @@ import os
 if os.path.isdir('../eval'):
     config_dir = '../eval'
     training = False
+    logging.info('Running dummy solver in evaluation mode.')
 elif os.path.isdir('../ppo'):
     config_dir = '../ppo'
     training = True
+    logging.info('Running dummy solver in training mode.')
 else:
     raise RuntimeError(f"Did not find either ppo or eval directory.")
-
 
 # Load the PPO config file to configure the dummy solver correctly
 initialize(config_path=config_dir, version_base="1.2")
@@ -50,7 +52,7 @@ while True:
     
     # Store the new outputs of the simulation on the database
     for i in instances:
-        client.put_tensor(f'{i}_turbine_powers', np.random.randn(n_turbines))
+        client.put_tensor(f'{i}_turbine_powers', 1e6 * np.random.randn(n_turbines))
         for j in range(total_probes):
             client.put_tensor(f"{i}_probe_{j+1}", np.random.randn(3))
 
