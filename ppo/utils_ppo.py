@@ -16,6 +16,7 @@ from torchrl.data import CompositeSpec
 from torchrl.envs import (
     ClipTransform,
     DoubleToFloat,
+    CatFrames,
     ExplorationType,
     RewardSum,
     StepCounter,
@@ -38,28 +39,29 @@ import numpy as np
 # --------------------------------------------------------------------
 
 
-def transforms():
+def transforms(cfg):
     transform_list = [
         InitTracker(),
         RewardSum(),
         FiniteTensorDictCheck(),
+        CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[("agents", "observation")]),
     ]
     transforms = Compose(*transform_list)
     return transforms
 
 
-def make_env(params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True, eval_only=False):
+def make_env(cfg, params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True, eval_only=False):
     from WF_enviroment import TurbEnv
     env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
     if add_transforms:
-        env = TransformedEnv(env, transforms())
+        env = TransformedEnv(env, transforms(cfg))
     if eval_only:
         env.eval()
     return env
 
 
-def make_parallel_env(params, num_envs, device="cpu", dummy_update=False, eval_only=False):
-    function_list = [lambda i=i: make_env(params, instance=i, device=device, dummy_update=dummy_update, eval_only=eval_only) for i in
+def make_parallel_env(cfg, params, num_envs, device="cpu", dummy_update=False, eval_only=False):
+    function_list = [lambda i=i: make_env(cfg, params, instance=i, device=device, dummy_update=dummy_update, eval_only=eval_only) for i in
                      range(num_envs)]
     env = ParallelEnv(num_envs, function_list, )
     # serial_for_single=True)
@@ -209,13 +211,13 @@ def make_ma_ppo_models_state(proof_environment):
     return policy, value_module
 
 
-def make_ma_ppo_models(params):
-    proof_environment = make_env(params, device="cpu", dummy_update=True)
+def make_ma_ppo_models(cfg, params):
+    proof_environment = make_env(cfg, params, device="cpu", dummy_update=True)
     actor, critic = make_ma_ppo_models_state(proof_environment)
     return actor, critic
 
 
-def load_model(env_params, path_to_model, id, dummy_update=False):
+def load_model(cfg, env_params, path_to_model, id, dummy_update=False):
     try:
         """
         # Load env transforms
@@ -252,7 +254,7 @@ def load_model(env_params, path_to_model, id, dummy_update=False):
     """
 
     # Instantiating the model with random params
-    actor, critic = make_ma_ppo_models(env_params)
+    actor, critic = make_ma_ppo_models(cfg, env_params)
     actor, critic = actor.to(device), critic.to(device)
     # Inserting the loaded parameters
     actor.load_state_dict(actor_params)
@@ -261,9 +263,9 @@ def load_model(env_params, path_to_model, id, dummy_update=False):
     return actor, critic
 
 
-def save_model(actor, critic, filepath, id):
+def save_model(cfg, actor, critic, filepath, id):
     # Read out loc and scale used in ObservationNorm, if used
-    transform_list = transforms()
+    transform_list = transforms(cfg)
     obs_norm_transform = next((t for t in transform_list if isinstance(t, ObservationNorm)), None)
     if obs_norm_transform:
         norm_dict = {

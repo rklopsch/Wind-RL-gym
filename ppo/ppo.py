@@ -62,7 +62,7 @@ def main(cfg: "DictConfig"):
     logging.info('Creating models')
     if not cfg.checkpoint.load_from_checkpoint:
         # Create a new model
-        actor, critic = make_ma_ppo_models(params)
+        actor, critic = make_ma_ppo_models(cfg, params)
     else:
         # Load from specified checkpoint
         # Copy the loaded models into the ppo/checkpoints directory
@@ -74,6 +74,7 @@ def main(cfg: "DictConfig"):
                 shutil.move(filename, "checkpoints")
         # Load actor and critic
         actor, critic = load_model(
+            cfg=cfg,
             env_params=params,
             id=cfg.checkpoint.model_checkpoint_id,
             path_to_model='checkpoints',
@@ -83,7 +84,7 @@ def main(cfg: "DictConfig"):
 
     # Create environments
     logging.info(f'Creating {n_environments} parallel environments')
-    train_env = make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update)
+    train_env = make_parallel_env(cfg, params, n_environments, device=device, dummy_update=dummy_update)
 
     # Create collector
     logging.info(f'Creating data collector')
@@ -295,7 +296,7 @@ def main(cfg: "DictConfig"):
             output_dir = os.getcwd() + '/checkpoints/'
             # full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
             # logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
-            save_model(actor, critic, output_dir, collected_frames)
+            save_model(cfg, actor, critic, output_dir, collected_frames)
             logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{collected_frames}.pkl and {output_dir}critic_{collected_frames}.pkl")
             
         log_metrics(logs, log_info)
