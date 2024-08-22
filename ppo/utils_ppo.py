@@ -16,6 +16,7 @@ from torchrl.data import CompositeSpec
 from torchrl.envs import (
     ClipTransform,
     DoubleToFloat,
+    CatFrames,
     ExplorationType,
     RewardSum,
     StepCounter,
@@ -43,6 +44,7 @@ def transforms(cfg, eval_only=False):
         InitTracker(),
         RewardSum(),
         FiniteTensorDictCheck(),
+        CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[("agents", "observation")]),
     ]
     if eval_only:
         transform_list.append(StepCounter(cfg.eval.episode_length))
@@ -57,15 +59,6 @@ def make_env(cfg, params, instance=None, save=False, device="cpu", dummy_update=
         env = TransformedEnv(env, transforms(cfg, eval_only))
     if eval_only:
         env.eval()
-    return env
-
-
-# TO-DO: delete this
-def make_smartsim_env(client, params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True):
-    from WF_enviroment import TurbEnv
-    env = TurbEnv(client, params, save=save, instance=0, device=device, dummy_update=dummy_update)
-    if add_transforms:
-        env = TransformedEnv(env, transforms())
     return env
 
 
