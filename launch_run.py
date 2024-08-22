@@ -11,7 +11,7 @@ from hydra import initialize, compose
 
 
 def launch_database(experiment, port):
-    db = experiment.create_database(port=port, db_nodes=1, interface='lo')
+    db = experiment.create_database(port=port, db_nodes=1, interface=['hsn0', 'hsn1'])
 
     # generate directories for output files
     # pass in objects to make dirs for
@@ -32,15 +32,15 @@ def launch_database(experiment, port):
 
 
 def launch_solver(experiment, instance, cfg):
-    os.environ['LD_LIBRARY_PATH'] = "/home/amole/Documents/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
-    os.environ['PATH'] = os.environ['PATH'] + ":/home/amole/Documents/Incompact3d/build/bin"
+    os.environ['LD_LIBRARY_PATH'] = "/work/e01/e01/amole/Incompact3d-smartredis/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
+    os.environ['PATH'] = os.environ['PATH'] + ":/work/e01/e01/amole/Incompact3d-smartredis/Incompact3d/build/bin"
     # TODO: probably (definitely) want a better way to set these
 
-    aprun = experiment.create_run_settings(exe="xcompact3d", run_command="mpirun")
-    aprun.set_tasks(2)
+    aprun = experiment.create_run_settings(exe="xcompact3d", run_command="srun")
+    aprun.set_tasks(128)
     aprun.set_cpus_per_task(1)
-    # aprun.set_nodes(4)
-    # aprun.set_tasks_per_node(25)
+    aprun.set_nodes(1)
+    aprun.set_tasks_per_node(128)
     producer = experiment.create_model(f"WindFarm_{instance}", aprun)
     files = ["./Solver/ADM/Base"]
     producer.attach_generator_files(to_copy=files)
@@ -71,6 +71,7 @@ def launch_solver(experiment, instance, cfg):
 def launch_ppo(experiment, cfg):
     aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py")
     aprun.set_tasks(1)
+    aprun.set_nodes(1)
     producer = experiment.create_model("ppo", aprun)
 
     # create directories for the output files and copy
@@ -122,7 +123,6 @@ if __name__ == '__main__':
     while True:
         statuses = exp.get_status(*everything)
         ended = [(s == SmartSimStatus.STATUS_COMPLETED or s == SmartSimStatus.STATUS_FAILED) for s in statuses]
-        print(ended)
         if any(ended):
             print('Something finished/crashed so stopping everything')
             break
