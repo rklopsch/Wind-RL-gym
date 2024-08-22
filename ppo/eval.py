@@ -12,6 +12,7 @@ import shutil
 import hydra
 import numpy as np
 import shutil
+import pickle
 
 
 def adjust_tensor_shapes(data, env):
@@ -134,20 +135,28 @@ def main(cfg: "DictConfig"):
         reward_shape = data.get_item_shape(("next", eval_env.reward_key))
         episode_rewards = episode_rewards.view(reward_shape[-2], reward_shape[0]).mean(dim=0)
         episode_length = data["next", "step_count"][data["next", "done"].all(-2)]
-        print("legnth", episode_length)
+        rewards = data["next", "agents", "reward"].squeeze().mean(dim=-1)
+        alpha = data["agents", "alpha"].squeeze()
+        actions = data["agents", "action"].squeeze()
         if not len(episode_length) > 0:
             raise RuntimeWarning("The eval tensordict does not contain a finished episode.")
-        
-        print(data)
         
         for i in range(n_environments):
             logs[f"episode_reward_{i+1}"] = episode_rewards[i].item()
             logs[f"episode_length_{i+1}"] = episode_length[i].item()
+            logs[f"rewards_{i+1}"] = rewards[i].detach().cpu().numpy()
+            logs[f"alphas_{i+1}"] = alpha[i].detach().cpu().numpy()
+            logs[f"actions_{i+1}"] = actions[i].detach().cpu().numpy()
 
     # End timing
     end_time = time.time()
     execution_time = end_time - start_time
     logging.info(f"Evaluation took {execution_time:.2f} seconds to finish")
+
+    # Save logs to disk
+    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
+    with open(output_dir + "eval_logs.pkl", "wb") as f:
+        pickle.dump(logs, f)
 
 
 if __name__ == "__main__":
