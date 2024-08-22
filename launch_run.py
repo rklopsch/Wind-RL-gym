@@ -24,12 +24,13 @@ def launch_database(experiment, port):
     print(f"Status of all database nodes: {statuses}.")
     print(f"Database started on {db.get_address()}.")
 
+    os.environ['SR_DB_TYPE'] = "Standalone"  # visible in this process + all children
+    os.environ['SSDB'] = db.get_address()[0]  # visible in this process + all children
+
     return db
 
 
 def launch_solver(experiment, instance, cfg):
-    os.environ['SR_DB_TYPE'] = "Standalone"  # visible in this process + all children
-    os.environ['SSDB'] = "127.0.0.1:6783"  # visible in this process + all children
     os.environ['LD_LIBRARY_PATH'] = "/home/amole/Documents/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
     os.environ['PATH'] = os.environ['PATH'] + ":/home/amole/Documents/Incompact3d/build/bin"
     # TODO: probably (definitely) want a better way to set these
