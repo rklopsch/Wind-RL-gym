@@ -1,5 +1,6 @@
 import numpy as np
 from smartsim import Experiment
+from smartsim.status import SmartSimStatus
 import time
 import os
 import math
@@ -95,8 +96,7 @@ if __name__ == '__main__':
     exp = Experiment("training_ppo", launcher="auto")
 
     # Runtime parameters
-    total_runtime = 120  # seconds, without including setup of orchestrator etc.
-    n_environments = 2
+    n_environments = cfg.env.n_parallel
 
     # Start database
     db_port = 6783
@@ -106,6 +106,9 @@ if __name__ == '__main__':
     rl_app = launch_ppo(exp, cfg)
     exp.start(rl_app, block=False, summary=False)
 
+    # Allow time for RL to launch before sims
+    time.sleep(30)
+
     # Start simulations
     simulations = []
     for i in range(1, n_environments+1):
@@ -114,7 +117,16 @@ if __name__ == '__main__':
         exp.start(simulation, block=False, summary=False)
 
     # shutdown the database because we don't need it anymore
-    time.sleep(total_runtime)
     everything = simulations + [rl_app, db]
+
+    while True:
+        statuses = exp.get_status(*everything)
+        ended = [(s == SmartSimStatus.STATUS_COMPLETED or s == SmartSimStatus.STATUS_FAILED) for s in statuses]
+        print(ended)
+        if any(ended):
+            print('Something finished/crashed so stopping everything')
+            break
+        time.sleep(30)
+
     exp.stop(*everything)  # lol i love the "stop everything" command
     print(exp.summary())
