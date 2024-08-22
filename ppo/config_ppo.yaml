@@ -13,7 +13,7 @@ env:
   max_yaw_angle: 40
   steps_per_frame: 50
   reset_frames: 150
-  frame_stack: 4  # Number of frames to be stacked as agent input
+  frame_stack: 5  # Number of frames to be stacked as agent input
 
 # collector
 collector:
