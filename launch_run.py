@@ -61,8 +61,8 @@ def launch_solver(experiment, instance, cfg):
                          control_freq=cfg.env.steps_per_frame,
                          probes_per_turbine=cfg.env.probes_per_turbine,
                          instance=instance)
-    case.setup_case(f"./launch_run/WindFarm_{instance}")
-    case.setup_precursor(f"./launch_run/WindFarm_{instance}/precursor_Base")
+    case.setup_case(f"./training_ppo/WindFarm_{instance}")
+    case.setup_precursor(f"./training_ppo/WindFarm_{instance}/precursor_Base")
 
     return producer
 
@@ -92,7 +92,7 @@ if __name__ == '__main__':
     cfg = compose(config_name="config_ppo.yaml")
 
     # Set up experiment
-    exp = Experiment("launch_run", launcher="auto")
+    exp = Experiment("training_ppo", launcher="auto")
 
     # Runtime parameters
     total_runtime = 120  # seconds, without including setup of orchestrator etc.
