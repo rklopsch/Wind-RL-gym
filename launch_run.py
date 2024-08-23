@@ -43,7 +43,8 @@ def launch_solver(experiment, instance, cfg):
     # aprun.set_tasks_per_node(25)
     producer = experiment.create_model(f"WindFarm_{instance}", aprun)
     files = ["./Solver/ADM/Base"]
-    producer.attach_generator_files(to_copy=files)
+    precursor_files = ["./Solver/ADM/precursor_Base"]
+    producer.attach_generator_files(to_copy=files, to_symlink=precursor_files)
     experiment.generate(producer, overwrite=True)
 
     # Configure case
