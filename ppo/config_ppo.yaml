@@ -1,8 +1,8 @@
 # task and env
 env:
-  n_parallel: 2
+  n_parallel: 32
   n_processors_per_env: 2
-  dummy_update: False
+  dummy_update: False  # TO-DO: remove, this is deprecated
   env_name: WindFarm
   turbines: 3
   probes_per_turbine: 60
@@ -17,7 +17,7 @@ env:
 
 # collector
 collector:
-  frames_per_batch: 200 # this is the actual number of frames we see in a batch
+  frames_per_batch: 512 # this is the actual number of frames we see in a batch
   max_episode_length: 1_000  # Timesteps (disregarding frame skip)
   total_frames: 50_000  # Timesteps (disregarding frame skip)
 
@@ -27,7 +27,7 @@ logger:
 
 # Optim
 optim:
-  lr: 1e-4
+  lr: 1e-5
   weight_decay: 0.0
   anneal_lr: True
 
@@ -40,14 +40,14 @@ checkpoint:
 
 # loss
 loss:
-  gamma: 0.99
+  gamma: 0.95
   mini_batch_size: 25  # must be less than frames per batch
   ppo_epochs: 10
   gae_lambda: 0.95
   clip_epsilon: 0.2
   anneal_clip_epsilon: False
   critic_coef: 0.25
-  entropy_coef: 0.0
+  entropy_coef: 0.0001
   loss_critic_type: l2
 
 # Eval
