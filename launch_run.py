@@ -104,20 +104,18 @@ if __name__ == '__main__':
 
     # Start RL
     rl_app = launch_ppo(exp, cfg)
-    exp.start(rl_app, block=False, summary=False)
-
-    # Allow time for RL to launch before sims
-    time.sleep(30)
 
     # Start simulations
     simulations = []
     for i in range(1, n_environments+1):
         simulation = launch_solver(exp, instance=i, cfg=cfg)
         simulations.append(simulation)
-        exp.start(simulation, block=False, summary=False)
 
-    # shutdown the database because we don't need it anymore
     everything = simulations + [rl_app, db]
+
+    exp.start(rl_app, block=False, summary=False)
+    time.sleep(30)
+    exp.start(*simulations, block=False, summary=False)
 
     while True:
         statuses = exp.get_status(*everything)
