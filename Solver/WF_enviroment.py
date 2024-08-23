@@ -116,7 +116,8 @@ class TurbEnv(EnvBase):
         action = tensordict.get(("agents", "action"))
         alpha = tensordict.get(("agents", "alpha"))
         u = action
-        u = u.clamp(-self.max_speed, self.max_speed)
+        # u = u.clamp(-1., 1.)  # this should happen automatically
+        u = u * self.max_speed  # since the actor outputs values between -1 and 1, correct scale here
         
         # Compute new alpha
         new_alpha = alpha + u * self.dt
@@ -242,8 +243,8 @@ class TurbEnv(EnvBase):
         # action-spec will be automatically wrapped in input_spec when
         # `self.action_spec = spec` will be called supported
         action_spec = BoundedTensorSpec(
-            low=-self.max_speed,
-            high=self.max_speed,
+            low=-1.0,
+            high=1.0,
             shape=(*self.batch_size, 1),
             dtype=torch.float32,
             device=self.device
