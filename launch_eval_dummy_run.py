@@ -34,7 +34,7 @@ def launch_solver(experiment):
     experiment.generate(producer, overwrite=True)
     return producer
 
-def launch_eval(experiment, load_params):
+def launch_eval(experiment, cfg):
     aprun = experiment.create_run_settings(exe="python", exe_args="eval.py")
     aprun.set_tasks(1)
     producer = experiment.create_model("eval", aprun)
@@ -42,8 +42,8 @@ def launch_eval(experiment, load_params):
     # Copy relevant files
     file_list = ["./ppo/eval.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml"]  # PPO files
     file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator
-    file_list += [f"{load_params['checkpoint_path']}/actor_{load_params['checkpoint_id']}.pkl"]
-    file_list += [f"{load_params['checkpoint_path']}/critic_{load_params['checkpoint_id']}.pkl"]
+    file_list += [f"{cfg.eval.model_path}/actor_{cfg.eval.model_id}.pkl"]
+    file_list += [f"{cfg.eval.model_path}/critic_{cfg.eval.model_id}.pkl"]
     producer.attach_generator_files(to_copy=file_list)
 
     experiment.generate(producer, overwrite=True)
@@ -55,13 +55,6 @@ if __name__ == '__main__':
     initialize(config_path="./ppo/", version_base="1.2")
     cfg = compose(config_name="config_ppo.yaml")
 
-    # Load a checkpointed model?
-    load_params = {
-        'load_checkpoint': bool(cfg.checkpoint.load_from_checkpoint),
-        'checkpoint_id': cfg.checkpoint.model_checkpoint_id,
-        'checkpoint_path': cfg.checkpoint.model_checkpoint_path,
-    }
-
     exp = Experiment("eval_dummy_run", launcher="auto")
 
     total_runtime = 120  # seconds, without including setup of orchestrator etc.
@@ -72,8 +65,10 @@ if __name__ == '__main__':
     solver_app = launch_solver(exp)
     exp.start(solver_app, block=False, summary=False)
 
-    rl_app = launch_eval(exp, load_params)
+    rl_app = launch_eval(exp, cfg)
     exp.start(rl_app, block=False, summary=False)
+
+    # TO-DO: can we remove the RUNTIME parameter everywhere? it's rly inconvenient...
 
     # shutdown the database because we don't need it anymore
     time.sleep(total_runtime)

@@ -11,7 +11,7 @@ from hydra import initialize, compose
 
 
 def launch_database(experiment, port):
-    db = experiment.create_database(port=port, db_nodes=1, interface=['hsn0', 'hsn1'])
+    db = experiment.create_database(port=port, db_nodes=1, interface='lo')
 
     # generate directories for output files
     # pass in objects to make dirs for
@@ -32,19 +32,18 @@ def launch_database(experiment, port):
 
 
 def launch_solver(experiment, instance, cfg):
-    os.environ['LD_LIBRARY_PATH'] = "/work/e01/e01/amole/Incompact3d-smartredis/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
-    os.environ['PATH'] = os.environ['PATH'] + ":/work/e01/e01/amole/Incompact3d-smartredis/Incompact3d/build/bin"
+    os.environ['LD_LIBRARY_PATH'] = "/home/amole/Documents/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
+    os.environ['PATH'] = os.environ['PATH'] + ":/home/amole/Documents/Incompact3d/build/bin"
     # TODO: probably (definitely) want a better way to set these
 
-    aprun = experiment.create_run_settings(exe="xcompact3d", run_command="srun")
-    aprun.set_tasks(128)
+    aprun = experiment.create_run_settings(exe="xcompact3d", run_command="mpirun")
+    aprun.set_tasks(2)
     aprun.set_cpus_per_task(1)
-    aprun.set_nodes(1)
-    aprun.set_tasks_per_node(128)
+    # aprun.set_nodes(4)
+    # aprun.set_tasks_per_node(25)
     producer = experiment.create_model(f"WindFarm_{instance}", aprun)
     files = ["./Solver/ADM/Base"]
-    precursor_files = ["./Solver/ADM/precursor_Base"]
-    producer.attach_generator_files(to_copy=files, to_symlink=precursor_files)
+    producer.attach_generator_files(to_copy=files)
     experiment.generate(producer, overwrite=True)
 
     # Configure case
@@ -69,24 +68,17 @@ def launch_solver(experiment, instance, cfg):
     return producer
 
 
-def launch_ppo(experiment, cfg):
-    aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py")
+def launch_eval(experiment, cfg):
+    aprun = experiment.create_run_settings(exe="python", exe_args="eval.py")
     aprun.set_tasks(1)
-    aprun.set_nodes(1)
-    producer = experiment.create_model("ppo", aprun)
+    producer = experiment.create_model("eval", aprun)
 
-    # create directories for the output files and copy
-    # scripts to execution location inside newly created dir
-    # only necessary if its not an executable (python is executable here) 
-    file_list = ["./ppo/ppo.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml"]  # PPO files
-    file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator files
-    if bool(cfg.checkpoint.load_from_checkpoint):  # copy in checkpointed models if desired
-        file_list += [f"{cfg.checkpoint.model_checkpoint_path}/actor_{cfg.checkpoint.model_checkpoint_id}.pkl"]
-        file_list += [f"{cfg.checkpoint.model_checkpoint_path}/critic_{cfg.checkpoint.model_checkpoint_id}.pkl"]
+    # Copy relevant files
+    file_list = ["./ppo/eval.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml"]  # PPO files
+    file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator
+    file_list += [f"{cfg.eval.model_path}/actor_{cfg.eval.model_id}.pkl"]
+    file_list += [f"{cfg.eval.model_path}/critic_{cfg.eval.model_id}.pkl"]
     producer.attach_generator_files(to_copy=file_list)
-
-    experiment.generate(producer, overwrite=True)
-    return producer
 
 
 if __name__ == '__main__':
@@ -95,33 +87,36 @@ if __name__ == '__main__':
     cfg = compose(config_name="config_ppo.yaml")
 
     # Set up experiment
-    exp = Experiment("training_ppo", launcher="auto")
+    exp = Experiment("eval_PPO", launcher="auto")
 
     # Runtime parameters
-    n_environments = cfg.env.n_parallel
+    n_environments = cfg.eval.n_parallel
 
     # Start database
     db_port = 6783
     db = launch_database(exp, db_port)
 
     # Start RL
-    rl_app = launch_ppo(exp, cfg)
+    rl_app = launch_eval(exp, cfg)
+    exp.start(rl_app, block=False, summary=False)
+
+    # Allow time for RL to launch before sims
+    time.sleep(30)
 
     # Start simulations
     simulations = []
     for i in range(1, n_environments+1):
         simulation = launch_solver(exp, instance=i, cfg=cfg)
         simulations.append(simulation)
+        exp.start(simulation, block=False, summary=False)
 
+    # shutdown the database because we don't need it anymore
     everything = simulations + [rl_app, db]
-
-    exp.start(rl_app, block=False, summary=False)
-    time.sleep(30)
-    exp.start(*simulations, block=False, summary=False)
 
     while True:
         statuses = exp.get_status(*everything)
         ended = [(s == SmartSimStatus.STATUS_COMPLETED or s == SmartSimStatus.STATUS_FAILED) for s in statuses]
+        print(ended)
         if any(ended):
             print('Something finished/crashed so stopping everything')
             break
