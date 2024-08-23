@@ -48,6 +48,8 @@ class TurbEnv(EnvBase):
         self.dt = params["dt"]
         self.reset_frames = params["reset_frames"]
         self.instance = 0 if instance is None else instance+1
+        self.penalty_scale = 1.5
+        self.penalty_exponent = 26
 
         # Create client
         self.client = Client(address=None, cluster=False)
@@ -69,14 +71,12 @@ class TurbEnv(EnvBase):
         scale = np.array([6., 4., 4.])
         return (arr-loc)/scale
 
-    def _communicate(self, new_alpha):
+    def _communicate(self, new_alpha):        
         ######### Communication with SmartRedis server ###########
         # Send yaws to X3D
         self.client.put_tensor(f"{self.instance}_yaws", new_alpha.detach().cpu().numpy().squeeze().astype(np.float64))
         # Set i_yaws_done flag to True (one)
         self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1)) # setting one as True
-
-        logging.info("HELLOHELLOLOLOLO \n\n\n")
         # print(f"Set yaws to {new_alpha} for key {self.instance}_yaws")
         # print(f"Set yaws done to True for key {self.instance}_yaws_done")
 
@@ -126,7 +126,12 @@ class TurbEnv(EnvBase):
 
         power, observation = self._communicate(new_alpha)
 
+        # Compute a penalty for large angles
+        angle_penalty = self.penalty_scale * (new_alpha/self.max_angle)**(self.penalty_exponent)
+        power = power - angle_penalty
+
         # Do a dummy update if desired - this probs needs to be changed
+        # TO-DO: remove this
         self.dummy_update=False
         if self.dummy_update:
             power = torch.ones((*tensordict.shape, self.n_turbs, 1), device=self.device)
