@@ -173,6 +173,10 @@ def main(cfg: "DictConfig"):
     # Set up empty dict for logging
     logs = {}
 
+    logging.info(f'Running initial reset')
+    # Reset the environments before starting the collection loop
+    collector.reset()
+
     logging.info(f'Starting main loop')
     for i, data in enumerate(collector):
         log_info = {}
