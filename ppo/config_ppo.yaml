@@ -41,7 +41,7 @@ checkpoint:
 # loss
 loss:
   gamma: 0.95
-  mini_batch_size: 25  # must be less than frames per batch
+  mini_batch_size: 32  # must be a divisor of frames_per_batch
   ppo_epochs: 10
   gae_lambda: 0.95
   clip_epsilon: 0.2

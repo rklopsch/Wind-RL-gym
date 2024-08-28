@@ -153,6 +153,9 @@ def main(cfg: "DictConfig"):
     num_network_updates = 0
     start_time = time.time()
     #pbar = tqdm.tqdm(total=total_frames)
+    # Check that frames_per_batch is divisible by mini_batch_size
+    if not frames_per_batch % mini_batch_size == 0:
+        raise RuntimeError(f"frames_per_batch ({frames_per_batch}) must be divisible by mini_batch_size ({mini_batch_size})!")
     num_mini_batches = frames_per_batch // mini_batch_size
     total_network_updates = (
         (total_frames // frames_per_batch)
