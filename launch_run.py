@@ -41,6 +41,7 @@ def launch_solver(experiment, instance, cfg):
     aprun.set_cpus_per_task(1)
     aprun.set_nodes(1)
     aprun.set_tasks_per_node(128)
+    print(aprun.format_run_args())
     producer = experiment.create_model(f"WindFarm_{instance}", aprun)
     files = ["./Solver/ADM/Base"]
     precursor_files = ["./Solver/ADM/precursor_Base"]
@@ -116,7 +117,7 @@ if __name__ == '__main__':
     everything = simulations + [rl_app, db]
 
     exp.start(rl_app, block=False, summary=False)
-    time.sleep(30)
+    time.sleep(300)
     exp.start(*simulations, block=False, summary=False)
 
     while True:
