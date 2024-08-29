@@ -1,15 +1,15 @@
 # task and env
 env:
   n_parallel: 32
-  n_processors_per_env: 2
-  dummy_update: False  # TO-DO: remove, this is deprecated
+  n_processors_per_env: 128
+  dummy_update: False
   env_name: WindFarm
-  turbines: 3
+  turbines: 10
   probes_per_turbine: 60
   turbine_diameter: 126
   turbine_height: 90
   turbine_spacing: 7
-  max_yaw_speed: 0.25
+  max_yaw_speed: 0.20
   max_yaw_angle: 40
   steps_per_frame: 50
   reset_frames: 150
@@ -19,7 +19,7 @@ env:
 collector:
   frames_per_batch: 512 # this is the actual number of frames we see in a batch
   max_episode_length: 1_000  # Timesteps (disregarding frame skip)
-  total_frames: 50_000  # Timesteps (disregarding frame skip)
+  total_frames: 300_000  # Timesteps (disregarding frame skip)
 
 # logger
 logger:
@@ -33,7 +33,7 @@ optim:
 
 # Settings for checkpointing
 checkpoint:
-  checkpoint_interval: 10
+  checkpoint_interval: 5
   load_from_checkpoint: False
   model_checkpoint_path: utils/checkpoint_test   # Path to checkpoint, RELATIVE to Wind-RL/
   model_checkpoint_id: 2000  # ID of checkpoint
@@ -41,7 +41,7 @@ checkpoint:
 # loss
 loss:
   gamma: 0.95
-  mini_batch_size: 25  # must be less than frames per batch
+  mini_batch_size: 32  # must be a factor of frames per batch
   ppo_epochs: 10
   gae_lambda: 0.95
   clip_epsilon: 0.2
