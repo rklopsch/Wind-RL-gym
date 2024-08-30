@@ -112,6 +112,8 @@ class TurbEnv(EnvBase):
         #       X = num_actions_per_turbine for action
         #       X = 1 for reward
 
+        # print(f"instance {self.instance} step {tensordict.get('step_count').item()}")
+
         # Retrieve action and previous alpha from tensordict
         action = tensordict.get(("agents", "action"))
         alpha = tensordict.get(("agents", "alpha"))

@@ -7,13 +7,13 @@ import logging
 import torch.optim
 import tqdm
 from tensordict import TensorDict
-from torchrl.collectors import SyncDataCollector
+from torchrl.collectors import SyncDataCollector, MultiaSyncDataCollector, MultiSyncDataCollector
 from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value.advantages import GAE
 from torchrl.record.loggers import generate_exp_name
-from utils_ppo import make_parallel_env, make_ma_ppo_models, load_model, save_model, log_metrics
+from utils_ppo import make_parallel_env, make_ma_ppo_models, load_model, save_model, log_metrics, make_env
 import shutil
 import hydra
 import numpy as np
@@ -88,16 +88,23 @@ def main(cfg: "DictConfig"):
     train_env = make_parallel_env(cfg, params, n_environments, device=device, dummy_update=dummy_update)
 
     # Create collector
-    logging.info(f'Creating data collector')
-    collector = SyncDataCollector(
-        train_env,
-        policy=actor,
-        frames_per_batch=frames_per_batch,
-        total_frames=total_frames,
-        device=device,
-        storing_device=device,
-        max_frames_per_traj=max_episode_length
-    )
+    fn_list = [lambda i=i: make_env(cfg, params, instance=i, device=device, dummy_update=dummy_update, eval_only=False) for i in range(n_environments)]
+    collector_kwargs = {
+        "create_env_fn": fn_list,
+        "policy": actor,
+        "frames_per_batch": frames_per_batch,
+        "total_frames": total_frames,
+        "device": device,
+        "storing_device": device,
+        "max_frames_per_traj": max_episode_length,
+    }
+    if cfg.collector.asynchronous:
+        logging.info(f'Creating asynchronous data collector')
+        logging.warning(f"Async data collector currently doesn't work!")
+        collector = MultiaSyncDataCollector(**collector_kwargs)
+    else:
+        logging.info(f'Creating synchronous data collector (one collector per env)')
+        collector = MultiSyncDataCollector(**collector_kwargs)
 
     # Create data buffer
     logging.info(f'Creating data buffer')
@@ -153,6 +160,9 @@ def main(cfg: "DictConfig"):
     num_network_updates = 0
     start_time = time.time()
     #pbar = tqdm.tqdm(total=total_frames)
+    # Check that frames_per_batch is divisible by mini_batch_size
+    if not frames_per_batch % mini_batch_size == 0:
+        raise RuntimeError(f"frames_per_batch ({frames_per_batch}) must be divisible by mini_batch_size ({mini_batch_size})!")
     num_mini_batches = frames_per_batch // mini_batch_size
     total_network_updates = (
         (total_frames // frames_per_batch)
