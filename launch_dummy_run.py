@@ -65,7 +65,7 @@ if __name__ == '__main__':
 
     exp = Experiment("launch_dummy_run", launcher="auto")
 
-    total_runtime = 120  # seconds, without including setup of orchestrator etc.
+    total_runtime = 150  # seconds, without including setup of orchestrator etc.
 
     db_port = 6782
     db = launch_database(exp, db_port)

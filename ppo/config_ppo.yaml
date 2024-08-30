@@ -20,6 +20,7 @@ collector:
   frames_per_batch: 512 # this is the actual number of frames we see in a batch
   max_episode_length: 1_000  # Timesteps (disregarding frame skip)
   total_frames: 50_000  # Timesteps (disregarding frame skip)
+  asynchronous: False  # if True, use asynchronous data collector. If False, use synchronous data collector.
 
 # logger
 logger:
