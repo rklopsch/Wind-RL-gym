@@ -100,6 +100,7 @@ def main(cfg: "DictConfig"):
     }
     if cfg.collector.asynchronous:
         logging.info(f'Creating asynchronous data collector')
+        logging.warning(f"Async data collector currently doesn't work!")
         collector = MultiaSyncDataCollector(**collector_kwargs)
     else:
         logging.info(f'Creating synchronous data collector (one collector per env)')
