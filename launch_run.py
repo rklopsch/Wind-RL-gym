@@ -71,9 +71,11 @@ def launch_solver(experiment, instance, cfg):
 
 
 def launch_ppo(experiment, cfg):
-    aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py")
+    aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py", run_command="srun")
     aprun.set_tasks(1)
+    aprun.set_cpus_per_task(128)
     aprun.set_nodes(1)
+    aprun.set_tasks_per_node(1)
     producer = experiment.create_model("ppo", aprun)
 
     # create directories for the output files and copy

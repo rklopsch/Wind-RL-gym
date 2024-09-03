@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=RL-test
-#SBATCH --nodes=33
+#SBATCH --nodes=34
 #SBATCH --ntasks-per-node=128
 #SBATCH --cpus-per-task=1
 #SBATCH --time=72:00:00
