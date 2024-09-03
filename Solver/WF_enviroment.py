@@ -84,6 +84,11 @@ class TurbEnv(EnvBase):
         while not self.client.get_tensor(f"{self.instance}_sim_done")[0]:
             continue
 
+        # Set i_sim_done flag to false (zero)
+        # This needs to be done in a for loop for ALL instances here
+        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1))
+        # print(f"Set sim done to True for key {self.instance}_sim_done")
+
         # Here need to loop over ALL instances, and stack the results into one tensor
         turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # [n_turbs]
         turbine_obs = np.zeros((self.total_probes, self.obs_per_probe))
@@ -137,10 +142,6 @@ class TurbEnv(EnvBase):
             reward = power
         done = torch.zeros((*tensordict.shape, 1), dtype=torch.bool)
 
-        # Set i_sim_done flag to false (zero)
-        # This needs to be done in a for loop for ALL instances here
-        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1)) 
-        # print(f"Set sim done to True for key {self.instance}_sim_done")
 
         # print(f"observation shape {observation.shape}")
 
@@ -178,8 +179,6 @@ class TurbEnv(EnvBase):
         for _ in range(self.reset_frames):
             _, _ = self._communicate(new_alpha=torch.zeros([self.n_turbs]))
         # Make sure the flags for yaws_done and sim_done are both set to False at the end of reset
-        self.client.put_tensor(f"{self.instance}_yaws_done", np.array([0]))
-        self.client.put_tensor(f"{self.instance}_sim_done", np.array([0]))
 
         # for non batch-locked envs, the input tensordict shape dictates the number
         # of simulators run simultaneously. In other contexts, the initial
