@@ -164,6 +164,12 @@ def main(cfg: "DictConfig"):
         * cfg.loss.ppo_epochs
         * num_mini_batches
         )
+    
+    # Initial reset
+    logging.info(f'Initial reset: taking {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} steps.')
+    # Each reset is cfg.env.reset_frames, we want a total of cfg.env.initial_reset_frames many
+    for _ in range(cfg.env.initial_reset_frames // cfg.env.reset_frames):
+        collector.reset()
 
     sampling_start = time.time()
 
