@@ -82,7 +82,7 @@ class ADMSimulation:
                         'nz': nz,
                     },
                      'InOutParam': {
-                        'ntimesteps': self.total_timesteps//100,
+                        'ntimesteps': 5000,
                         'ioutput': self.total_timesteps//100
                         }
                      }
@@ -124,8 +124,8 @@ class ADMSimulation:
                 'ioutput': self.total_timesteps,
                 'ilist': self.total_timesteps // 1000,
                 # 'inflowpath': relative_precursor,
-                'ntimesteps': self.total_timesteps // 100,
-                'ninflows': 100,
+                'ntimesteps': 5000,
+                'ninflows': self.total_timesteps // 5000,
                 'nprobes': self.probes_per_turbine * self.farm.n_turbines
             },
             'ADMParam': {
