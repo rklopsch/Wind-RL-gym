@@ -199,7 +199,7 @@ def make_ma_ppo_models_state(proof_environment):
         centralised=True,
         share_params=True,
         # device=cfg.train.device,
-        depth=2,
+        depth=3,
         num_cells=256,
         activation_class=torch.nn.Tanh,
     )
