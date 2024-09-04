@@ -57,6 +57,8 @@ def main(cfg: "DictConfig"):
         "dt": cfg.env.steps_per_frame * 0.2,
         "reset_frames": cfg.env.reset_frames,
         "run_steps": cfg.collector.max_episode_length * cfg.env.steps_per_frame,
+        "penalty_scale": cfg.env.penalty_scale,
+        "penalty_exp": cfg.env.penalty_exp,
     }
 
     # Create models
@@ -88,23 +90,16 @@ def main(cfg: "DictConfig"):
     train_env = make_parallel_env(cfg, params, n_environments, device=device, dummy_update=dummy_update)
 
     # Create collector
-    fn_list = [lambda i=i: make_env(cfg, params, instance=i, device=device, dummy_update=dummy_update, eval_only=False) for i in range(n_environments)]
-    collector_kwargs = {
-        "create_env_fn": fn_list,
-        "policy": actor,
-        "frames_per_batch": frames_per_batch,
-        "total_frames": total_frames,
-        "device": device,
-        "storing_device": device,
-        "max_frames_per_traj": max_episode_length,
-    }
-    if cfg.collector.asynchronous:
-        logging.info(f'Creating asynchronous data collector')
-        logging.warning(f"Async data collector currently doesn't work!")
-        collector = MultiaSyncDataCollector(**collector_kwargs)
-    else:
-        logging.info(f'Creating synchronous data collector (one collector per env)')
-        collector = MultiSyncDataCollector(**collector_kwargs)
+    logging.info(f'Creating data collector')
+    collector = SyncDataCollector(
+        train_env,
+        policy=actor,
+        frames_per_batch=frames_per_batch,
+        total_frames=total_frames,
+        device=device,
+        storing_device=device,
+        max_frames_per_traj=max_episode_length
+    )
 
     # Create data buffer
     logging.info(f'Creating data buffer')

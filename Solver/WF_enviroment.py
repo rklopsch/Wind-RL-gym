@@ -48,8 +48,8 @@ class TurbEnv(EnvBase):
         self.dt = params["dt"]
         self.reset_frames = params["reset_frames"]
         self.instance = 0 if instance is None else instance+1
-        self.penalty_scale = 1.5
-        self.penalty_exponent = 26
+        self.penalty_scale = params["penalty_scale"]
+        self.penalty_exponent = params["penalty_exp"]
 
         # Create client
         self.client = Client(address=None, cluster=False)

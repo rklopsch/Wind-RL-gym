@@ -9,11 +9,13 @@ env:
   turbine_diameter: 126
   turbine_height: 90
   turbine_spacing: 7
-  max_yaw_speed: 0.25
+  max_yaw_speed: 0.4
   max_yaw_angle: 40
   steps_per_frame: 50
   reset_frames: 150
   frame_stack: 5  # Number of frames to be stacked as agent input
+  penalty_scale: 0.5
+  penalty_exp: 26
 
 # collector
 collector:
