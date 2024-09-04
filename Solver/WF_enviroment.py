@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import Optional
 
 import numpy as np
+import math
 import torch
 import tqdm
 from tensordict.nn import TensorDictModule
@@ -177,8 +178,24 @@ class TurbEnv(EnvBase):
     def _reset(self, tensordict):
         logging.info(f"Resetting now")
 
-        for _ in range(self.reset_frames):
-            _, _ = self._communicate(new_alpha=torch.zeros([self.n_turbs]))
+        # Choose a set of random angles
+        random_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs]) - 1)
+        steps_to_change_angle = math.ceil(self.max_angle / (self.max_speed * self.dt))
+        if tensordict is not None:
+            alpha = tensordict.get(("agents", "alpha")).squeeze()
+        else:
+            alpha = torch.zeros([self.n_turbs])
+
+        if not steps_to_change_angle <= self.reset_frames:
+            raise ValueError(f"Must have at least {steps_to_change_angle} many reset frames. Only have {self.reset_frames}.")
+
+        for i in range(steps_to_change_angle):
+            interpolated_angle = (steps_to_change_angle-1-i)/(steps_to_change_angle-1)*alpha + i/(steps_to_change_angle-1)*random_angles
+            _, _ = self._communicate(new_alpha=interpolated_angle)
+            
+        for _ in range(self.reset_frames - steps_to_change_angle):
+            _, _ = self._communicate(new_alpha=random_angles)
+            
         # Make sure the flags for yaws_done and sim_done are both set to False at the end of reset
         self.client.put_tensor(f"{self.instance}_yaws_done", np.array([0]))
         self.client.put_tensor(f"{self.instance}_sim_done", np.array([0]))
