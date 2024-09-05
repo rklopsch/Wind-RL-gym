@@ -89,13 +89,16 @@ def main(cfg: "DictConfig"):
     logging.info(f'Creating {n_environments} parallel environments')
     train_env = make_parallel_env(cfg, params, n_environments, device=device, dummy_update=dummy_update)
 
+    # How many frames have already been collected (if loading from checkpoint)?
+    collected_frames = 0 if not cfg.checkpoint.load_from_checkpoint else cfg.checkpoint.model_checkpoint_id
+
     # Create collector
     logging.info(f'Creating data collector')
     collector = SyncDataCollector(
         train_env,
         policy=actor,
         frames_per_batch=frames_per_batch,
-        total_frames=total_frames,
+        total_frames=total_frames-collected_frames,
         device=device,
         storing_device=device,
         max_frames_per_traj=max_episode_length
@@ -151,19 +154,14 @@ def main(cfg: "DictConfig"):
     critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr, eps=1e-5)
 
     # Main loop
-    collected_frames = 0 if not cfg.checkpoint.load_from_checkpoint else cfg.checkpoint.model_checkpoint_id
-    num_network_updates = 0
     start_time = time.time()
     #pbar = tqdm.tqdm(total=total_frames)
     # Check that frames_per_batch is divisible by mini_batch_size
     if not frames_per_batch % mini_batch_size == 0:
         raise RuntimeError(f"frames_per_batch ({frames_per_batch}) must be divisible by mini_batch_size ({mini_batch_size})!")
     num_mini_batches = frames_per_batch // mini_batch_size
-    total_network_updates = (
-        (total_frames // frames_per_batch)
-        * cfg.loss.ppo_epochs
-        * num_mini_batches
-        )
+    num_network_updates = (collected_frames // frames_per_batch) * cfg.loss.ppo_epochs * num_mini_batches
+    total_network_updates = (total_frames // frames_per_batch) * cfg.loss.ppo_epochs * num_mini_batches
     
     # Initial reset
     logging.info(f'Initial reset: taking {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} steps.')
@@ -266,13 +264,20 @@ def main(cfg: "DictConfig"):
                     loss_module.clip_epsilon.copy_(cfg_loss_clip_epsilon * alpha)
                 num_network_updates += 1
 
+                # Exponential decay for the entropy loss
+                beta = 1.0
+                if cfg.optim.anneal_entropy:
+                    decay_rate = -np.log(cfg.optim.anneal_entropy_scale)/cfg.optim.anneal_entropy_step
+                    beta = np.exp(- decay_rate * collected_frames)
+
                 # Forward pass PPO loss
                 loss = loss_module(batch)
+                loss.set("loss_entropy", beta * loss.get("loss_entropy"))
                 losses[j, k] = loss.select(
                     "loss_critic", "loss_entropy", "loss_objective"
                 ).detach()
-                critic_loss = loss["loss_critic"]
-                actor_loss = loss["loss_objective"] + loss["loss_entropy"]
+                critic_loss = loss.get("loss_critic")
+                actor_loss = loss.get("loss_objective") + loss.get("loss_entropy")
 
                 # Backward pass
                 actor_loss.backward()

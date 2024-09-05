@@ -34,13 +34,16 @@ optim:
   lr: 1e-5
   weight_decay: 0.0
   anneal_lr: True
+  anneal_entropy: True
+  anneal_entropy_step: 100_000
+  anneal_entropy_scale: 0.1
 
 # Settings for checkpointing
 checkpoint:
-  checkpoint_interval: 10
+  checkpoint_interval: 2
   load_from_checkpoint: False
   model_checkpoint_path: utils/checkpoint_test   # Path to checkpoint, RELATIVE to Wind-RL/
-  model_checkpoint_id: 2000  # ID of checkpoint
+  model_checkpoint_id: 1536  # ID of checkpoint
 
 # loss
 loss:
