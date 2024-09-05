@@ -13,7 +13,7 @@ env:
   max_yaw_angle: 40
   steps_per_frame: 50
   reset_frames: 150
-  initial_reset_frames: 1 # 20_000
+  initial_reset_frames: 20_000
   frame_stack: 5  # Number of frames to be stacked as agent input
   penalty_scale: 0.5
   penalty_exp: 26
