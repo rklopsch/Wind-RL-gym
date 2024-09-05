@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import Optional
 
 import numpy as np
+import math
 import torch
 import tqdm
 from tensordict.nn import TensorDictModule
@@ -48,8 +49,8 @@ class TurbEnv(EnvBase):
         self.dt = params["dt"]
         self.reset_frames = params["reset_frames"]
         self.instance = 0 if instance is None else instance+1
-        self.penalty_scale = 1.5
-        self.penalty_exponent = 26
+        self.penalty_scale = params["penalty_scale"]
+        self.penalty_exponent = params["penalty_exp"]
 
         # Create client
         self.client = Client(address=None, cluster=False)
@@ -70,6 +71,12 @@ class TurbEnv(EnvBase):
         loc = np.array([6., 0., 0.])
         scale = np.array([6., 4., 4.])
         return (arr-loc)/scale
+    
+    @staticmethod
+    def _position_encoding(n_turbs):
+        idxs = torch.arange(n_turbs).view([n_turbs, 1])
+        idxs = (torch.pi/2) * idxs / (n_turbs-1)
+        return torch.sin(idxs)
 
     def _communicate(self, new_alpha):        
         ######### Communication with SmartRedis server ###########
@@ -128,8 +135,6 @@ class TurbEnv(EnvBase):
         new_alpha = alpha + u * self.dt
         new_alpha = new_alpha.clamp(-self.max_angle, self.max_angle)
 
-        # print(f"In step (Turbenv): angles = {new_alpha}")
-
         power, observation = self._communicate(new_alpha)
 
         # Compute a penalty for large angles
@@ -142,8 +147,7 @@ class TurbEnv(EnvBase):
             reward = power
         done = torch.zeros((*tensordict.shape, 1), dtype=torch.bool)
 
-
-        # print(f"observation shape {observation.shape}")
+        pos_enc = self._position_encoding(self.n_turbs)
 
         source = {
             "done": done,
@@ -155,6 +159,7 @@ class TurbEnv(EnvBase):
                     "alpha": new_alpha[..., i, :],
                     "observation": observation[..., i, :],
                     "reward": reward[..., i, :],
+                    "pos_enc": pos_enc[..., i, :],
                 },
                 ()  # tensordict.shape,
                 )
@@ -171,13 +176,31 @@ class TurbEnv(EnvBase):
             device=self.device,
         )
 
+        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1)) 
+
         return out
 
     def _reset(self, tensordict):
         logging.info(f"Resetting now")
 
-        for _ in range(self.reset_frames):
-            _, _ = self._communicate(new_alpha=torch.zeros([self.n_turbs]))
+        # Choose a set of random angles
+        random_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs]) - 1)
+        steps_to_change_angle = math.ceil(self.max_angle / (self.max_speed * self.dt))
+        if tensordict is not None:
+            alpha = tensordict.get(("agents", "alpha")).squeeze()
+        else:
+            alpha = torch.zeros([self.n_turbs])
+
+        if not steps_to_change_angle <= self.reset_frames:
+            raise ValueError(f"Must have at least {steps_to_change_angle} many reset frames. Only have {self.reset_frames}.")
+
+        for i in range(steps_to_change_angle):
+            interpolated_angle = (steps_to_change_angle-1-i)/(steps_to_change_angle-1)*alpha + i/(steps_to_change_angle-1)*random_angles
+            _, _ = self._communicate(new_alpha=interpolated_angle)
+            
+        for _ in range(self.reset_frames - steps_to_change_angle):
+            _, _ = self._communicate(new_alpha=random_angles)
+            
         # Make sure the flags for yaws_done and sim_done are both set to False at the end of reset
 
         # for non batch-locked envs, the input tensordict shape dictates the number
@@ -185,6 +208,7 @@ class TurbEnv(EnvBase):
         # random state's shape will depend upon the environment batch-size instead.
         alpha = torch.zeros((*self.batch_size, self.n_turbs, 1), device=self.device)
         observation = torch.zeros((*self.batch_size, self.n_turbs, self.obs_per_turbine), device=self.device)
+        pos_enc = self._position_encoding(self.n_turbs)
 
         agent_tds = []
         for i in range(self.n_turbs):
@@ -192,6 +216,7 @@ class TurbEnv(EnvBase):
                 {
                     "alpha": alpha[..., i, :],
                     "observation": observation[..., i, :],
+                    "pos_enc": pos_enc[..., i, :],
                 },
                 ()  #self.batch_size,
             )
@@ -216,6 +241,11 @@ class TurbEnv(EnvBase):
                 alpha=BoundedTensorSpec(
                     low=-self.max_angle,
                     high=self.max_angle,
+                    shape=(*self.batch_size, 1),
+                    dtype=torch.float32,
+                    device=self.device
+                ),
+                pos_enc=UnboundedContinuousTensorSpec(
                     shape=(*self.batch_size, 1),
                     dtype=torch.float32,
                     device=self.device
