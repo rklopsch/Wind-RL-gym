@@ -10,7 +10,7 @@ import torch.nn
 import torch.optim
 import pickle
 import logging
-from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule
+from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule, TensorDictSequential
 from tensordict.nn.distributions import NormalParamExtractor
 from torchrl.data import CompositeSpec
 from torchrl.envs import (
@@ -155,9 +155,9 @@ def make_ppo_models(cfg, params):
 
 def make_ma_ppo_models_state(proof_environment):
     # Policy
-    actor_net = torch.nn.Sequential(
+    actor_module = TensorDictModule(
         MultiAgentMLP(
-            n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1],
+            n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1] + 1,
             n_agent_outputs=2 * proof_environment.action_spec.shape[-1],
             n_agents=proof_environment.n_turbs,
             centralised=False,
@@ -167,13 +167,16 @@ def make_ma_ppo_models_state(proof_environment):
             num_cells=256,
             activation_class=torch.nn.Tanh,
         ),
-        NormalParamExtractor(),
+        in_keys=[("agents", "observation"), ("agents", "alpha")],
+        out_keys=[("agents", "actor_net_output")],
     )
-    policy_module = TensorDictModule(
-        actor_net,
-        in_keys=[("agents", "observation")],
+    normal_param_extractor = TensorDictModule(
+        NormalParamExtractor(),
+        in_keys=[("agents", "actor_net_output")],
         out_keys=[("agents", "loc"), ("agents", "scale")],
     )
+    policy_module = TensorDictSequential(actor_module, normal_param_extractor)
+
     policy = ProbabilisticActor(
         module=policy_module,
         # spec=proof_environment.unbatched_action_spec,
@@ -193,7 +196,7 @@ def make_ma_ppo_models_state(proof_environment):
 
     # Critic
     module = MultiAgentMLP(
-        n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1],
+        n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1] + 1,
         n_agent_outputs=1,
         n_agents=proof_environment.n_turbs,
         centralised=True,
@@ -205,7 +208,7 @@ def make_ma_ppo_models_state(proof_environment):
     )
     value_module = ValueOperator(
         module=module,
-        in_keys=[("agents", "observation")],
+        in_keys=[("agents", "observation"), ("agents", "alpha")],
         out_keys=[("agents", "state_value")]
     )
 
