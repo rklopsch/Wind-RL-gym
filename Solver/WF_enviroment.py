@@ -71,6 +71,12 @@ class TurbEnv(EnvBase):
         loc = np.array([6., 0., 0.])
         scale = np.array([6., 4., 4.])
         return (arr-loc)/scale
+    
+    @staticmethod
+    def _position_encoding(n_turbs):
+        idxs = torch.arange(n_turbs).view([n_turbs, 1])
+        idxs = (torch.pi/2) * idxs / (n_turbs-1)
+        return torch.sin(idxs)
 
     def _communicate(self, new_alpha):        
         ######### Communication with SmartRedis server ###########
@@ -126,8 +132,6 @@ class TurbEnv(EnvBase):
         new_alpha = alpha + u * self.dt
         new_alpha = new_alpha.clamp(-self.max_angle, self.max_angle)
 
-        # print(f"In step (Turbenv): angles = {new_alpha}")
-
         power, observation = self._communicate(new_alpha)
 
         # Compute a penalty for large angles
@@ -139,13 +143,8 @@ class TurbEnv(EnvBase):
         else:
             reward = power
         done = torch.zeros((*tensordict.shape, 1), dtype=torch.bool)
-
-        # Set i_sim_done flag to false (zero)
-        # This needs to be done in a for loop for ALL instances here
-        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1)) 
-        # print(f"Set sim done to True for key {self.instance}_sim_done")
-
-        # print(f"observation shape {observation.shape}")
+        
+        pos_enc = self._position_encoding(self.n_turbs)
 
         source = {
             "done": done,
@@ -157,6 +156,7 @@ class TurbEnv(EnvBase):
                     "alpha": new_alpha[..., i, :],
                     "observation": observation[..., i, :],
                     "reward": reward[..., i, :],
+                    "pos_enc": pos_enc[..., i, :],
                 },
                 ()  # tensordict.shape,
                 )
@@ -172,6 +172,8 @@ class TurbEnv(EnvBase):
             batch_size=self.batch_size,
             device=self.device,
         )
+
+        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1)) 
 
         return out
 
@@ -205,6 +207,7 @@ class TurbEnv(EnvBase):
         # random state's shape will depend upon the environment batch-size instead.
         alpha = torch.zeros((*self.batch_size, self.n_turbs, 1), device=self.device)
         observation = torch.zeros((*self.batch_size, self.n_turbs, self.obs_per_turbine), device=self.device)
+        pos_enc = self._position_encoding(self.n_turbs)
 
         agent_tds = []
         for i in range(self.n_turbs):
@@ -212,6 +215,7 @@ class TurbEnv(EnvBase):
                 {
                     "alpha": alpha[..., i, :],
                     "observation": observation[..., i, :],
+                    "pos_enc": pos_enc[..., i, :],
                 },
                 ()  #self.batch_size,
             )
@@ -236,6 +240,11 @@ class TurbEnv(EnvBase):
                 alpha=BoundedTensorSpec(
                     low=-self.max_angle,
                     high=self.max_angle,
+                    shape=(*self.batch_size, 1),
+                    dtype=torch.float32,
+                    device=self.device
+                ),
+                pos_enc=UnboundedContinuousTensorSpec(
                     shape=(*self.batch_size, 1),
                     dtype=torch.float32,
                     device=self.device

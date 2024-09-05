@@ -47,7 +47,7 @@ def transforms(cfg, eval_only=False):
         CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[("agents", "observation")]),
         ObservationNorm(
             loc=0.,
-            scale=(1/cfg.env.max_yaw_angle),
+            scale=(4/cfg.env.max_yaw_angle),
             in_keys=[("agents", "alpha")],
             out_keys=[("agents", "alpha_normalised")]
         )
@@ -159,11 +159,11 @@ def make_ppo_models(cfg, params):
     return actor, critic
 
 
-def make_ma_ppo_models_state(proof_environment):
+def make_ma_ppo_models_state(proof_environment):    
     # Policy
     actor_module = TensorDictModule(
         MultiAgentMLP(
-            n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1] + 1,
+            n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1] + 2,
             n_agent_outputs=2 * proof_environment.action_spec.shape[-1],
             n_agents=proof_environment.n_turbs,
             centralised=False,
@@ -173,7 +173,7 @@ def make_ma_ppo_models_state(proof_environment):
             num_cells=256,
             activation_class=torch.nn.Tanh,
         ),
-        in_keys=[("agents", "observation"), ("agents", "alpha_normalised")],
+        in_keys=[("agents", "observation"), ("agents", "alpha_normalised"), ("agents", "pos_enc")],
         out_keys=[("agents", "actor_net_output")],
     )
     normal_param_extractor = TensorDictModule(
@@ -202,7 +202,7 @@ def make_ma_ppo_models_state(proof_environment):
 
     # Critic
     module = MultiAgentMLP(
-        n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1] + 1,
+        n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1] + 2,
         n_agent_outputs=1,
         n_agents=proof_environment.n_turbs,
         centralised=True,
@@ -214,7 +214,7 @@ def make_ma_ppo_models_state(proof_environment):
     )
     value_module = ValueOperator(
         module=module,
-        in_keys=[("agents", "observation"), ("agents", "alpha_normalised")],
+        in_keys=[("agents", "observation"), ("agents", "alpha_normalised"), ("agents", "pos_enc")],
         out_keys=[("agents", "state_value")]
     )
 
