@@ -45,6 +45,12 @@ def transforms(cfg, eval_only=False):
         RewardSum(),
         FiniteTensorDictCheck(),
         CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[("agents", "observation")]),
+        ObservationNorm(
+            loc=0.,
+            scale=(1/cfg.env.max_yaw_angle),
+            in_keys=[("agents", "alpha")],
+            out_keys=[("agents", "alpha_normalised")]
+        )
     ]
     if eval_only:
         transform_list.append(StepCounter(cfg.eval.episode_length))
@@ -167,7 +173,7 @@ def make_ma_ppo_models_state(proof_environment):
             num_cells=256,
             activation_class=torch.nn.Tanh,
         ),
-        in_keys=[("agents", "observation"), ("agents", "alpha")],
+        in_keys=[("agents", "observation"), ("agents", "alpha_normalised")],
         out_keys=[("agents", "actor_net_output")],
     )
     normal_param_extractor = TensorDictModule(
@@ -208,7 +214,7 @@ def make_ma_ppo_models_state(proof_environment):
     )
     value_module = ValueOperator(
         module=module,
-        in_keys=[("agents", "observation"), ("agents", "alpha")],
+        in_keys=[("agents", "observation"), ("agents", "alpha_normalised")],
         out_keys=[("agents", "state_value")]
     )
 
