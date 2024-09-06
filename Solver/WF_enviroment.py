@@ -84,17 +84,13 @@ class TurbEnv(EnvBase):
         self.client.put_tensor(f"{self.instance}_yaws", new_alpha.detach().cpu().numpy().squeeze().astype(np.float64))
         # Set i_yaws_done flag to True (one)
         self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1)) # setting one as True
-        # print(f"Set yaws to {new_alpha} for key {self.instance}_yaws")
-        # print(f"Set yaws done to True for key {self.instance}_yaws_done")
 
         # Poll whether X3D simulation is done
         while not self.client.get_tensor(f"{self.instance}_sim_done")[0]:
             continue
 
         # Set i_sim_done flag to false (zero)
-        # This needs to be done in a for loop for ALL instances here
         self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1))
-        # print(f"Set sim done to True for key {self.instance}_sim_done")
 
         # Here need to loop over ALL instances, and stack the results into one tensor
         turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # [n_turbs]
@@ -175,8 +171,6 @@ class TurbEnv(EnvBase):
             batch_size=self.batch_size,
             device=self.device,
         )
-
-        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1)) 
 
         return out
 
