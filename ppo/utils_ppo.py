@@ -58,9 +58,9 @@ def transforms(cfg, eval_only=False):
     return transforms
 
 
-def make_env(cfg, params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True, eval_only=False):
+def make_env(cfg, params, instance=None, save=False, device="cpu", add_transforms=True, eval_only=False):
     from WF_enviroment import TurbEnv
-    env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
+    env = TurbEnv(params, save=save, instance=instance, device=device)
     if add_transforms:
         env = TransformedEnv(env, transforms(cfg, eval_only))
     if eval_only:
@@ -68,8 +68,8 @@ def make_env(cfg, params, instance=None, save=False, device="cpu", dummy_update=
     return env
 
 
-def make_parallel_env(cfg, params, num_envs, device="cpu", dummy_update=False, eval_only=False):
-    function_list = [lambda i=i: make_env(cfg, params, instance=i, device=device, dummy_update=dummy_update, eval_only=eval_only) for i in
+def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
+    function_list = [lambda i=i: make_env(cfg, params, instance=i, device=device, eval_only=eval_only) for i in
                      range(num_envs)]
     env = ParallelEnv(num_envs, function_list)
     return env
@@ -154,7 +154,7 @@ def make_ppo_models_state(proof_environment):
 
 
 def make_ppo_models(cfg, params):
-    proof_environment = make_env(cfg, params, device="cpu", dummy_update=True)
+    proof_environment = make_env(cfg, params, device="cpu")
     actor, critic = make_ppo_models_state(proof_environment)
     return actor, critic
 
@@ -222,12 +222,12 @@ def make_ma_ppo_models_state(proof_environment):
 
 
 def make_ma_ppo_models(cfg, params):
-    proof_environment = make_env(cfg, params, device="cpu", dummy_update=True)
+    proof_environment = make_env(cfg, params, device="cpu")
     actor, critic = make_ma_ppo_models_state(proof_environment)
     return actor, critic
 
 
-def load_model(cfg, env_params, path_to_model, id, dummy_update=False):
+def load_model(cfg, env_params, path_to_model, id):
     try:
         """
         # Load env transforms
