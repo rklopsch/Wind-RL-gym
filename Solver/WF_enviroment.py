@@ -33,7 +33,7 @@ class TurbEnv(EnvBase):
                  save=False,
                  instance=None,
                  device="cpu",
-                 dummy_update=False):
+                 ):
 
         super().__init__(device=device, batch_size=[])
 
@@ -61,8 +61,6 @@ class TurbEnv(EnvBase):
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
-
-        self.dummy_update = dummy_update  # If True, perform a dummy update for testing
 
     @staticmethod
     def _normalise_probe_data(arr):
