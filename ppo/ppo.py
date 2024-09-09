@@ -8,7 +8,7 @@ import torch.optim
 import tqdm
 from tensordict import TensorDict
 from torchrl.collectors import SyncDataCollector, MultiaSyncDataCollector, MultiSyncDataCollector
-from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
+from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer, LazyTensorStorage
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value.advantages import GAE
@@ -37,12 +37,10 @@ def main(cfg: "DictConfig"):
     max_episode_length = cfg.collector.max_episode_length
     mini_batch_size = cfg.loss.mini_batch_size
     n_environments = cfg.env.n_parallel
-    dummy_update = cfg.env.dummy_update
 
-    if not dummy_update:
-        hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-        results_dir = os.path.join(hydra_dir, 'RESULTS')
-        os.makedirs(results_dir, exist_ok=True)
+    hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    results_dir = os.path.join(hydra_dir, 'RESULTS')
+    os.makedirs(results_dir, exist_ok=True)
 
     # TO-DO: pass only the cfg into all functions...    
     params = {
@@ -81,13 +79,13 @@ def main(cfg: "DictConfig"):
             env_params=params,
             id=cfg.checkpoint.model_checkpoint_id,
             path_to_model='checkpoints',
-            dummy_update=dummy_update)
+            )
         logging.info(f"Loaded models. Starting training from frame {cfg.checkpoint.model_checkpoint_id}.")
     actor, critic = actor.to(device), critic.to(device)
 
     # Create environments
     logging.info(f'Creating {n_environments} parallel environments')
-    train_env = make_parallel_env(cfg, params, n_environments, device=device, dummy_update=dummy_update)
+    train_env = make_parallel_env(cfg, params, n_environments, device=device)
 
     # How many frames have already been collected (if loading from checkpoint)?
     collected_frames = 0 if not cfg.checkpoint.load_from_checkpoint else cfg.checkpoint.model_checkpoint_id
@@ -115,7 +113,7 @@ def main(cfg: "DictConfig"):
 
     # Create replay buffer to remember entire history
     full_buffer = TensorDictReplayBuffer(
-        storage=LazyMemmapStorage(total_frames),
+        storage=LazyTensorStorage(total_frames // n_environments),
     )
 
     # Create loss and adv modules
@@ -164,7 +162,7 @@ def main(cfg: "DictConfig"):
     total_network_updates = (total_frames // frames_per_batch) * cfg.loss.ppo_epochs * num_mini_batches
     
     # Initial reset
-    logging.info(f'Initial reset: taking {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} steps.')
+    logging.info(f'Initial reset: collecting {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
     # Each reset is cfg.env.reset_frames, we want a total of cfg.env.initial_reset_frames many
     for _ in range(cfg.env.initial_reset_frames // cfg.env.reset_frames):
         collector.reset()
@@ -235,6 +233,9 @@ def main(cfg: "DictConfig"):
                 }
             )
 
+        # Save to full buffer
+        full_buffer.extend(data.transpose(0,1))
+
         training_start = time.time()
         for j in range(cfg_loss_ppo_epochs):
 
@@ -245,7 +246,6 @@ def main(cfg: "DictConfig"):
 
             # Update the data buffers
             data_buffer.extend(data_reshape)
-            full_buffer.extend(data_reshape)
 
             for k, batch in enumerate(data_buffer):
 
@@ -311,8 +311,8 @@ def main(cfg: "DictConfig"):
             if not os.path.exists('checkpoints'):
                 os.mkdir('checkpoints')
             output_dir = os.getcwd() + '/checkpoints/'
-            # full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
-            # logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
+            torch.save(full_buffer._storage._storage, output_dir + 'replay_buffer_checkpoint.pt')
+            logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
             save_model(cfg, actor, critic, output_dir, collected_frames)
             logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{collected_frames}.pkl and {output_dir}critic_{collected_frames}.pkl")
             
