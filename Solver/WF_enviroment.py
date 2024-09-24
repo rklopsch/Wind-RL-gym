@@ -39,7 +39,13 @@ class TurbEnv(EnvBase):
 
         self.save = save
         self.probes_per_turbine = params["probes_per_turbine"]
-        self.obs_per_probe = 3
+        lookup = {"ux": 0, "uy": 1, "uz": 2}
+        if not all(p in lookup.keys() for p in params["flow_field_directions"]):
+            raise ValueError(f"The parameter 'flow_field_directions' must be a list containing only the elements 'ux', 'uy', 'uz'. Got {params['flow_field_directions']}")
+        if not len(set(params["flow_field_directions"])) == len(params["flow_field_directions"]):
+            raise ValueError(f"The parameter 'flow_field_directions' must not contain duplicates. Got {params['flow_field_directions']}.")
+        self.obs_idxs = list(map(lookup.get, params["flow_field_directions"]))
+        self.obs_per_probe = len(self.obs_idxs)
         self.obs_per_turbine = self.probes_per_turbine * self.obs_per_probe
         self.n_turbs = params["n_turbines"]
         self.total_probes = self.probes_per_turbine * self.n_turbs
@@ -94,7 +100,7 @@ class TurbEnv(EnvBase):
         turbine_obs = np.zeros((self.total_probes, self.obs_per_probe))
         for i in range(self.total_probes):
             probe = self.client.get_tensor(f"{self.instance}_probe_{i+1}")
-            turbine_obs[i] = self._normalise_probe_data(probe)  # [n_turbs*probes_per_turbine, obs_per_probe]
+            turbine_obs[i] = self._normalise_probe_data(probe)[self.obs_idxs]  # [n_turbs*probes_per_turbine, obs_per_probe]
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine, self.obs_per_probe)
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)  # [n_turbs, probes_per_turbine*obs_per_probe]
 

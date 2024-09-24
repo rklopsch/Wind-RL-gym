@@ -6,6 +6,7 @@ env:
   env_name: WindFarm
   turbines: 3
   probes_per_turbine: 60
+  flow_field_directions: ['ux']  # we will use these components of the flow field for each probe
   turbine_diameter: 126
   turbine_height: 90
   turbine_spacing: 7
