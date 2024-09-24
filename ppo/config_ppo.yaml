@@ -18,6 +18,7 @@ env:
   frame_stack: 5  # Number of frames to be stacked as agent input
   penalty_scale: 0.5
   penalty_exp: 26
+  random_reset: False  # If True, at each reset angles will be chosen randomly
 
 # collector
 collector:

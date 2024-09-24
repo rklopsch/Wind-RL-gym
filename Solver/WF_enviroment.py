@@ -57,6 +57,7 @@ class TurbEnv(EnvBase):
         self.instance = 0 if instance is None else instance+1
         self.penalty_scale = params["penalty_scale"]
         self.penalty_exponent = params["penalty_exp"]
+        self.random_reset = bool(params["random_reset"])
 
         # Create client
         self.client = Client(address=None, cluster=False)
@@ -184,8 +185,12 @@ class TurbEnv(EnvBase):
     def _reset(self, tensordict):
         logging.info(f"Resetting now")
 
-        # Choose a set of random angles
-        random_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs]) - 1)
+        if self.random_reset:
+            # Choose a set of random angles
+            reset_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs]) - 1)
+        else:
+            # Set angles to all 0
+            reset_angles = torch.zeros([self.n_turbs])
         steps_to_change_angle = math.ceil(self.max_angle / (self.max_speed * self.dt))
         if tensordict is not None:
             alpha = tensordict.get(("agents", "alpha")).squeeze()
@@ -196,11 +201,11 @@ class TurbEnv(EnvBase):
             raise ValueError(f"Must have at least {steps_to_change_angle} many reset frames. Only have {self.reset_frames}.")
 
         for i in range(steps_to_change_angle):
-            interpolated_angle = (steps_to_change_angle-1-i)/(steps_to_change_angle-1)*alpha + i/(steps_to_change_angle-1)*random_angles
+            interpolated_angle = (steps_to_change_angle-1-i)/(steps_to_change_angle-1)*alpha + i/(steps_to_change_angle-1)*reset_angles
             _, _ = self._communicate(new_alpha=interpolated_angle)
             
         for _ in range(self.reset_frames - steps_to_change_angle):
-            _, _ = self._communicate(new_alpha=random_angles)
+            _, _ = self._communicate(new_alpha=reset_angles)
             
         # Make sure the flags for yaws_done and sim_done are both set to False at the end of reset
         self.client.put_tensor(f"{self.instance}_yaws_done", np.array([0]))

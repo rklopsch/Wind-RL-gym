@@ -58,6 +58,7 @@ def main(cfg: "DictConfig"):
         "run_steps": cfg.collector.max_episode_length * cfg.env.steps_per_frame,
         "penalty_scale": cfg.env.penalty_scale,
         "penalty_exp": cfg.env.penalty_exp,
+        "random_reset": cfg.env.random_reset,
     }
 
     # Create models
@@ -165,8 +166,9 @@ def main(cfg: "DictConfig"):
     # Initial reset
     logging.info(f'Initial reset: collecting {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
     # Each reset is cfg.env.reset_frames, we want a total of cfg.env.initial_reset_frames many
+    reset_td = collector.reset()
     for _ in range(cfg.env.initial_reset_frames // cfg.env.reset_frames):
-        collector.reset()
+        reset_td = collector.reset(reset_td)
 
     sampling_start = time.time()
 
