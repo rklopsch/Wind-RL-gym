@@ -14,7 +14,7 @@ env:
   max_yaw_angle: 40
   steps_per_frame: 50
   reset_frames: 150
-  initial_reset_frames: 300
+  initial_reset_frames: 2500
   frame_stack: 5  # Number of frames to be stacked as agent input
   penalty_scale: 0.5
   penalty_exp: 26
@@ -23,10 +23,8 @@ env:
 # collector
 collector:
   frames_per_batch: 512 # this is the actual number of frames we see in a batch
-  max_episode_length: 1_000  # Timesteps (disregarding frame skip)
-  total_frames: 300_000  # Timesteps (disregarding frame skip)
-  max_episode_length: 50 # 1_000  # Timesteps (disregarding frame skip)
-  total_frames: 50_000  # Timesteps (disregarding frame skip)
+  max_episode_length: 2_000  # Timesteps (disregarding frame skip)
+  total_frames: 1_000_000  # Timesteps (disregarding frame skip)
 
 # logger
 logger:
@@ -43,18 +41,14 @@ optim:
 
 # Settings for checkpointing
 checkpoint:
-<<<<<<< HEAD
-  checkpoint_interval: 5
-=======
-  checkpoint_interval: 2
->>>>>>> smartsim
+  checkpoint_interval: 10
   load_from_checkpoint: False
   model_checkpoint_path: utils/checkpoint_test   # Path to checkpoint, RELATIVE to Wind-RL/
   model_checkpoint_id: 1536  # ID of checkpoint
 
 # loss
 loss:
-  gamma: 0.95
+  gamma: 0.99
   mini_batch_size: 32  # must be a factor of frames per batch
   ppo_epochs: 10
   gae_lambda: 0.95
