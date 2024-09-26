@@ -39,7 +39,13 @@ class TurbEnv(EnvBase):
 
         self.save = save
         self.probes_per_turbine = params["probes_per_turbine"]
-        self.obs_per_probe = 3
+        lookup = {"ux": 0, "uy": 1, "uz": 2}
+        if not all(p in lookup.keys() for p in params["flow_field_directions"]):
+            raise ValueError(f"The parameter 'flow_field_directions' must be a list containing only the elements 'ux', 'uy', 'uz'. Got {params['flow_field_directions']}")
+        if not len(set(params["flow_field_directions"])) == len(params["flow_field_directions"]):
+            raise ValueError(f"The parameter 'flow_field_directions' must not contain duplicates. Got {params['flow_field_directions']}.")
+        self.obs_idxs = list(map(lookup.get, params["flow_field_directions"]))
+        self.obs_per_probe = len(self.obs_idxs)
         self.obs_per_turbine = self.probes_per_turbine * self.obs_per_probe
         self.n_turbs = params["n_turbines"]
         self.total_probes = self.probes_per_turbine * self.n_turbs
@@ -51,6 +57,7 @@ class TurbEnv(EnvBase):
         self.instance = 0 if instance is None else instance+1
         self.penalty_scale = params["penalty_scale"]
         self.penalty_exponent = params["penalty_exp"]
+        self.random_reset = bool(params["random_reset"])
 
         # Create client
         self.client = Client(address=None, cluster=False)
@@ -95,7 +102,7 @@ class TurbEnv(EnvBase):
         turbine_obs = np.zeros((self.total_probes, self.obs_per_probe))
         for i in range(self.total_probes):
             probe = self.client.get_tensor(f"{self.instance}_probe_{i+1}")
-            turbine_obs[i] = self._normalise_probe_data(probe)  # [n_turbs*probes_per_turbine, obs_per_probe]
+            turbine_obs[i] = self._normalise_probe_data(probe)[self.obs_idxs]  # [n_turbs*probes_per_turbine, obs_per_probe]
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine, self.obs_per_probe)
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)  # [n_turbs, probes_per_turbine*obs_per_probe]
 
@@ -175,8 +182,12 @@ class TurbEnv(EnvBase):
     def _reset(self, tensordict):
         logging.info(f"Resetting now")
 
-        # Choose a set of random angles
-        random_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs]) - 1)
+        if self.random_reset:
+            # Choose a set of random angles
+            reset_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs]) - 1)
+        else:
+            # Set angles to all 0
+            reset_angles = torch.zeros([self.n_turbs])
         steps_to_change_angle = math.ceil(self.max_angle / (self.max_speed * self.dt))
         if tensordict is not None:
             alpha = tensordict.get(("agents", "alpha")).squeeze()
@@ -187,11 +198,11 @@ class TurbEnv(EnvBase):
             raise ValueError(f"Must have at least {steps_to_change_angle} many reset frames. Only have {self.reset_frames}.")
 
         for i in range(steps_to_change_angle):
-            interpolated_angle = (steps_to_change_angle-1-i)/(steps_to_change_angle-1)*alpha + i/(steps_to_change_angle-1)*random_angles
+            interpolated_angle = (steps_to_change_angle-1-i)/(steps_to_change_angle-1)*alpha + i/(steps_to_change_angle-1)*reset_angles
             _, _ = self._communicate(new_alpha=interpolated_angle)
             
         for _ in range(self.reset_frames - steps_to_change_angle):
-            _, _ = self._communicate(new_alpha=random_angles)
+            _, _ = self._communicate(new_alpha=reset_angles)
             
         # Make sure the flags for yaws_done and sim_done are both set to False at the end of reset
 
