@@ -59,7 +59,8 @@ def launch_solver(experiment, instance, cfg):
     simulation_steps = (cfg.env.steps_per_frame
                         *((cfg.collector.total_frames//cfg.collector.frames_per_batch)+1)
                         *((cfg.collector.frames_per_batch//cfg.env.n_parallel)+1)
-                        *(1 + (cfg.env.reset_frames / cfg.collector.max_episode_length)))  # This is horrible
+                        *(1 + (cfg.env.reset_frames / cfg.collector.max_episode_length))
+                        +cfg.env.steps_per_frame*cfg.env.initial_reset_frames)  # This is horrible
     case = ADMSimulation(farm1, timesteps=math.ceil(simulation_steps),
                          control_freq=cfg.env.steps_per_frame,
                          probes_per_turbine=cfg.env.probes_per_turbine,
@@ -119,7 +120,7 @@ if __name__ == '__main__':
     everything = simulations + [rl_app, db]
 
     exp.start(rl_app, block=False, summary=False)
-    time.sleep(300)
+    time.sleep(60)
     exp.start(*simulations, block=False, summary=False)
 
     while True:
