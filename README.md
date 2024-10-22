@@ -16,7 +16,6 @@ module swap PrgEnv-cray PrgEnv-gnu
 module load cmake/3.21.3
 cd work/<PROJECTCODE>/<PROJECTCODE>/<USERNAME>
 git clone https://github.com/admole/Incompact3d.git
-git checkout smartRedis-coupling
 cd Incompact3d
 sed -i 's|install/lib|install/lib64|g' cmake/FindSmartRedis.cmake
 export FC=mpif90
@@ -80,7 +79,13 @@ SR_LOG_LEVEL=QUIET
 python launch_run.py
 ```
 
-Running on Archer TBA
+### Running on Archer
+Launch with submission script
+
+```bash
+sbatch submit_run.sh
+```
+
 
 ## Database Coupling Procedure
 
