@@ -3,16 +3,20 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
+print(os.getcwd())
+import hydra
 import torch.nn
 import torch.optim
 import pickle
 import logging
-from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule
+from tensordict.nn import AddStateIndependentNormalScale, TensorDictModule, TensorDictSequential
 from tensordict.nn.distributions import NormalParamExtractor
 from torchrl.data import CompositeSpec
 from torchrl.envs import (
     ClipTransform,
     DoubleToFloat,
+    CatFrames,
     ExplorationType,
     RewardSum,
     StepCounter,
@@ -27,70 +31,47 @@ from torchrl.envs import (
 )
 from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.modules.models.multiagent import MultiAgentMLP
-from Solver.WF_enviroment import TurbEnv
 import numpy as np
 
 
 # ====================================================================
 # Environment utils
 # --------------------------------------------------------------------
-def obs_normalisation():
-    # The first three inputs are: turbine velocity, turbine power and turbine yaw.
-    # Then the inputs are the u_x and u_x velocities behind the turbine at the sample points
-    return {'loc': np.array([4.5, 0., 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.,
-                             5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75,
-                             0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.,
-                             5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75,
-                             0., 5.75, 0., 5.75, 0., 5.75, 0., 5.75, 0.]),
-            'scale': np.array([1.0, 1.0, 40., 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65,
-                               0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65,
-                               0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65,
-                               0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65,
-                               0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65])}
 
 
-def add_env_transforms(env, obs_norm_params=None):
-    # Load observation normalisation parameters from file
-    if not obs_norm_params:
-        obs_norm_params = obs_normalisation()
-    assert obs_norm_params is not None
-
+def transforms(cfg, eval_only=False):
     transform_list = [
         InitTracker(),
         RewardSum(),
         FiniteTensorDictCheck(),
+        CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[("agents", "observation")]),
         ObservationNorm(
-            loc=obs_norm_params['loc'],
-            scale=obs_norm_params['scale'],
-            in_keys=[('agents', 'observation')]
+            loc=0.,
+            scale=(4/cfg.env.max_yaw_angle),
+            in_keys=[("agents", "alpha")],
+            out_keys=[("agents", "alpha_normalised")]
         )
     ]
+    if eval_only:
+        transform_list.append(StepCounter(cfg.eval.episode_length))
     transforms = Compose(*transform_list)
-    return TransformedEnv(env, transforms)
+    return transforms
 
 
-def make_env(params, instance=None, save=False, device="cpu", dummy_update=False, add_transforms=True):
-    env = TurbEnv(params, save=save, instance=instance, device=device, dummy_update=dummy_update)
+def make_env(cfg, params, instance=None, save=False, device="cpu", add_transforms=True, eval_only=False):
+    from WF_enviroment import TurbEnv
+    env = TurbEnv(params, save=save, instance=instance, device=device)
     if add_transforms:
-        env = add_env_transforms(env)
+        env = TransformedEnv(env, transforms(cfg, eval_only))
+    if eval_only:
+        env.eval()
     return env
 
 
-def make_parallel_env(params, num_envs, device="cpu", dummy_update=False):
-    """
-    # Different way of creating parallel envs, this way the VecNorm is synchronised
-    # However idk how to figure out the instance parameter here...
-    env_creator = EnvCreator(lambda: make_env(params, device=device, dummy_update=dummy_update))
-    env = ParallelEnv(num_envs, env_creator)
-    env_creator.state_dict()["transforms.3._extra_state"]["td"]["agents_observation_count"].fill_(0.0)
-    env_creator.state_dict()["transforms.3._extra_state"]["td"]["agents_observation_ssq"].fill_(0.0)
-    env_creator.state_dict()["transforms.3._extra_state"]["td"]["agents_observation_sum"].fill_(0.0)
-    # return env
-    """
-    function_list = [lambda i=i: make_env(params, instance=i, device=device, dummy_update=dummy_update) for i in
+def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
+    function_list = [lambda i=i: make_env(cfg, params, instance=i, device=device, eval_only=eval_only) for i in
                      range(num_envs)]
-    env = ParallelEnv(num_envs, function_list, )
-    # serial_for_single=True)
+    env = ParallelEnv(num_envs, function_list)
     return env
 
 
@@ -172,33 +153,36 @@ def make_ppo_models_state(proof_environment):
     return policy_module, value_module
 
 
-def make_ppo_models(params):
-    proof_environment = make_env(params, device="cpu", dummy_update=True)
+def make_ppo_models(cfg, params):
+    proof_environment = make_env(cfg, params, device="cpu")
     actor, critic = make_ppo_models_state(proof_environment)
     return actor, critic
 
 
-def make_ma_ppo_models_state(proof_environment):
+def make_ma_ppo_models_state(proof_environment):    
     # Policy
-    actor_net = torch.nn.Sequential(
+    actor_module = TensorDictModule(
         MultiAgentMLP(
-            n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1],
+            n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1] + 2,
             n_agent_outputs=2 * proof_environment.action_spec.shape[-1],
             n_agents=proof_environment.n_turbs,
             centralised=False,
             share_params=True,
             # device=cfg.train.device,
-            depth=2,
+            depth=3,
             num_cells=256,
             activation_class=torch.nn.Tanh,
         ),
-        NormalParamExtractor(),
+        in_keys=[("agents", "observation"), ("agents", "alpha_normalised"), ("agents", "pos_enc")],
+        out_keys=[("agents", "actor_net_output")],
     )
-    policy_module = TensorDictModule(
-        actor_net,
-        in_keys=[("agents", "observation")],
+    normal_param_extractor = TensorDictModule(
+        NormalParamExtractor(),
+        in_keys=[("agents", "actor_net_output")],
         out_keys=[("agents", "loc"), ("agents", "scale")],
     )
+    policy_module = TensorDictSequential(actor_module, normal_param_extractor)
+
     policy = ProbabilisticActor(
         module=policy_module,
         # spec=proof_environment.unbatched_action_spec,
@@ -218,48 +202,54 @@ def make_ma_ppo_models_state(proof_environment):
 
     # Critic
     module = MultiAgentMLP(
-        n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1],
+        n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1] + 2,
         n_agent_outputs=1,
         n_agents=proof_environment.n_turbs,
         centralised=True,
         share_params=True,
         # device=cfg.train.device,
-        depth=2,
+        depth=3,
         num_cells=256,
         activation_class=torch.nn.Tanh,
     )
     value_module = ValueOperator(
         module=module,
-        in_keys=[("agents", "observation")],
+        in_keys=[("agents", "observation"), ("agents", "alpha_normalised"), ("agents", "pos_enc")],
         out_keys=[("agents", "state_value")]
     )
 
     return policy, value_module
 
 
-def make_ma_ppo_models(params):
-    proof_environment = make_env(params, device="cpu", dummy_update=True)
+def make_ma_ppo_models(cfg, params):
+    proof_environment = make_env(cfg, params, device="cpu")
     actor, critic = make_ma_ppo_models_state(proof_environment)
     return actor, critic
 
 
-def load_model(env_params, filepath, id, dummy_update=False):
+def load_model(cfg, env_params, path_to_model, id):
     try:
+        """
         # Load env transforms
-        with open(filepath + 'env_transforms' + f"_{id}" + '.pkl', 'rb') as file:
+        with open('checkpoints/env_transforms' + f"_{id}" + '.pkl', 'rb') as file:
             transforms_params = pickle.load(file)
+        """
+        # Filenames
+        actor_path = path_to_model + '/actor' + f"_{id}" + '.pkl'
+        critic_path = path_to_model + '/critic' + f"_{id}" + '.pkl'
         # Load model parameters
-        with open(filepath + 'actor' + f"_{id}" + '.pkl', 'rb') as file:
+        with open(actor_path, 'rb') as file:
             actor_params = torch.load(file)
-        with open(filepath + 'critic' + f"_{id}" + '.pkl', 'rb') as file:
+        with open(critic_path, 'rb') as file:
             critic_params = torch.load(file)
     except FileNotFoundError:
-        print(f"File {filepath}env_transforms_{id}.pkl or {filepath}model_{id}.pkl has not been found.")
+        print(f"File {actor_path} or {critic_path} has not been found.")
         return False
 
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     # Build the env without transforms
     # Since the purpose of loading a trained model is to test, we only build a single env
+    """
     env = make_env(
         env_params,
         instance='TestEnv',
@@ -270,16 +260,38 @@ def load_model(env_params, filepath, id, dummy_update=False):
     )
 
     # Rebuild the Transforms, but replacing the VecNorm with an ObservationNorm
-    env = add_env_transforms(env, obs_norm_params=transforms_params)
+    env = TransformedEnv(env, transforms())
+    """
 
     # Instantiating the model with random params
-    actor, critic = make_ma_ppo_models(env_params)
+    actor, critic = make_ma_ppo_models(cfg, env_params)
     actor, critic = actor.to(device), critic.to(device)
     # Inserting the loaded parameters
     actor.load_state_dict(actor_params)
     critic.load_state_dict(critic_params)
 
-    return env, actor, critic
+    return actor, critic
+
+
+def save_model(cfg, actor, critic, filepath, id):
+    # Read out loc and scale used in ObservationNorm, if used
+    transform_list = transforms(cfg)
+    obs_norm_transform = next((t for t in transform_list if isinstance(t, ObservationNorm)), None)
+    if obs_norm_transform:
+        norm_dict = {
+            'loc': obs_norm_transform.loc,
+            'scale': obs_norm_transform.scale,
+        }
+        # Save env transforms
+        with open(filepath + 'env_transforms' + f"_{id}" + '.pkl', 'wb') as file:
+            pickle.dump(norm_dict, file)
+    # Save model
+    with open(filepath + 'actor' + f"_{id}" + '.pkl', 'wb') as file:
+        torch.save(actor.state_dict(), file)
+    with open(filepath + 'critic' + f"_{id}" + '.pkl', 'wb') as file:
+        torch.save(critic.state_dict(), file)
+
+    return True
 
 
 # ====================================================================
@@ -326,3 +338,20 @@ def eval_model(actor, test_env, num_turbines, num_episodes=3, episode_length=100
 
     # Return matching the structure: mean/std for rewards, lists for alpha means/stds
     return rewards_mean, rewards_stdv, alpha_means_final, alpha_stds_final
+
+
+# ====================================================================
+# Logging utils
+# --------------------------------------------------------------------
+
+
+def log_metrics(logs, metrics):
+    for metric_name, metric_value in metrics.items():
+        if metric_name in logs.keys():
+            logs[metric_name].append(metric_value)
+        else:
+            logs[metric_name] = [metric_value]
+    # Save logs to disk
+    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
+    with open(output_dir + "logs.pkl", "wb") as f:
+        pickle.dump(logs, f)

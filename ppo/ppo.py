@@ -1,14 +1,6 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-#
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
-
-"""
-This script reproduces the Proximal Policy Optimization (PPO) Algorithm
-results from Schulman et al. 2017 for the on MuJoCo Environments.
-"""
 import os
 import sys
+sys.path.append(os.getcwd())
 import time
 import copy
 import logging
@@ -16,92 +8,104 @@ import torch.optim
 import tqdm
 from tensordict import TensorDict
 from torchrl.collectors import SyncDataCollector
-from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
+from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer, LazyTensorStorage
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
-from torchrl.envs import ExplorationType, set_exploration_type
-from torchrl.objectives import ClipPPOLoss, ValueEstimators
+from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value.advantages import GAE
-from torchrl.record.loggers import generate_exp_name, get_logger
-from utils_ppo import eval_model, make_env, make_parallel_env, make_ma_ppo_models, load_model
-from utils.save_model import save_model
-from omegaconf import OmegaConf
-import wandb
+from torchrl.record.loggers import generate_exp_name
+from utils_ppo import make_parallel_env, make_ma_ppo_models, load_model, save_model, log_metrics
 import shutil
 import hydra
+import numpy as np
+import shutil
 
 
 @hydra.main(config_path="./", config_name="config_ppo", version_base="1.2")
 def main(cfg: "DictConfig"):
-    sys.path.append(os.getcwd())
-    device = "cpu" if not torch.cuda.device_count() else "cuda"
-    print(f'Running on {device}')
-    print(f'cuda version:{torch.version.cuda}')
+    device = "cpu"  # Run on CPU only
+    logging.info(f'Running on device: {device}.')
 
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging_stream = sys.stdout if cfg.logger.logging_stream == 'stdout' else None
+    logging.basicConfig(
+        level=logging.INFO, 
+        format='%(asctime)s - %(levelname)s - %(message)s', 
+        stream=logging_stream,
+    )
 
-    # Correct for frame_skip
-    frame_skip = cfg.collector.frame_skip
-    total_frames = cfg.collector.total_frames // frame_skip
-    frames_per_batch = cfg.collector.frames_per_batch // frame_skip
-    max_episode_length = cfg.collector.max_episode_length // frame_skip
-    mini_batch_size = cfg.loss.mini_batch_size // frame_skip
-    test_interval = cfg.logger.test_interval // frame_skip
+    total_frames = cfg.collector.total_frames
+    frames_per_batch = cfg.collector.frames_per_batch
+    max_episode_length = cfg.collector.max_episode_length
+    mini_batch_size = cfg.loss.mini_batch_size
     n_environments = cfg.env.n_parallel
 
-    dummy_update = cfg.env.dummy_update
+    hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    results_dir = os.path.join(hydra_dir, 'RESULTS')
+    os.makedirs(results_dir, exist_ok=True)
 
-    if not dummy_update:
-        hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-        results_dir = os.path.join(hydra_dir, 'RESULTS')
-        os.makedirs(results_dir, exist_ok=True)
-
+    # TO-DO: pass only the cfg into all functions...    
     params = {
         "n_turbines": cfg.env.turbines,
         "n_procs": cfg.env.n_processors_per_env,
         "n_envs": cfg.env.n_parallel,
         "probes_per_turbine": cfg.env.probes_per_turbine,
+        "flow_field_directions": cfg.env.flow_field_directions,
         "turbine_diameter": cfg.env.turbine_diameter,
         "turbine_spacing": cfg.env.turbine_spacing,
         "max_yaw_speed": cfg.env.max_yaw_speed,
         "max_yaw_angle": cfg.env.max_yaw_angle,
         "dt": cfg.env.steps_per_frame * 0.2,
+        "reset_frames": cfg.env.reset_frames,
         "run_steps": cfg.collector.max_episode_length * cfg.env.steps_per_frame,
+        "penalty_scale": cfg.env.penalty_scale,
+        "penalty_exp": cfg.env.penalty_exp,
+        "random_reset": cfg.env.random_reset,
     }
 
-    test_params = copy.deepcopy(params)
-    test_params["n_procs"]=cfg.env.n_processors_per_env*cfg.env.n_parallel
-    test_params["n_envs"]=1
-
     # Create models
-    if not cfg.optim.load_from_checkpoint:
+    logging.info('Creating models')
+    if not cfg.checkpoint.load_from_checkpoint:
         # Create a new model
-        actor, critic = make_ma_ppo_models(params)
+        actor, critic = make_ma_ppo_models(cfg, params)
     else:
         # Load from specified checkpoint
-        _, actor, critic = load_model(
-            env_params=None,
-            filepath=cfg.optim.model_checkpoint_path,
-            id=cfg.optim.model_checkpoint_id,
-            dummy_update=True)
+        # Copy the loaded models into the ppo/checkpoints directory
+        if not os.path.exists('checkpoints'):
+            os.mkdir('checkpoints')
+        for arch in ['actor', 'critic']:
+            filename = f"{arch}_{cfg.checkpoint.model_checkpoint_id}.pkl"
+            if os.path.exists(filename):
+                shutil.move(filename, "checkpoints")
+        # Load actor and critic
+        actor, critic = load_model(
+            cfg=cfg,
+            env_params=params,
+            id=cfg.checkpoint.model_checkpoint_id,
+            path_to_model='checkpoints',
+            )
+        logging.info(f"Loaded models. Starting training from frame {cfg.checkpoint.model_checkpoint_id}.")
     actor, critic = actor.to(device), critic.to(device)
 
     # Create environments
-    train_env = make_parallel_env(params, n_environments, device=device, dummy_update=dummy_update)
-    test_env = make_env(test_params, instance='TestEnv', save=True, device=device, dummy_update=dummy_update)
-    test_env.eval()
+    logging.info(f'Creating {n_environments} parallel environments')
+    train_env = make_parallel_env(cfg, params, n_environments, device=device)
+
+    # How many frames have already been collected (if loading from checkpoint)?
+    collected_frames = 0 if not cfg.checkpoint.load_from_checkpoint else cfg.checkpoint.model_checkpoint_id
 
     # Create collector
+    logging.info(f'Creating data collector')
     collector = SyncDataCollector(
         train_env,
         policy=actor,
         frames_per_batch=frames_per_batch,
-        total_frames=total_frames,
+        total_frames=total_frames-collected_frames,
         device=device,
         storing_device=device,
         max_frames_per_traj=max_episode_length
     )
 
     # Create data buffer
+    logging.info(f'Creating data buffer')
     sampler = SamplerWithoutReplacement()
     data_buffer = TensorDictReplayBuffer(
         storage=LazyMemmapStorage(frames_per_batch),
@@ -111,7 +115,7 @@ def main(cfg: "DictConfig"):
 
     # Create replay buffer to remember entire history
     full_buffer = TensorDictReplayBuffer(
-        storage=LazyMemmapStorage(total_frames),
+        storage=LazyTensorStorage(total_frames // n_environments),
     )
 
     # Create loss and adv modules
@@ -125,8 +129,8 @@ def main(cfg: "DictConfig"):
         normalize_advantage=False,
     )
     loss_module.set_keys(  # We have to tell the loss where to find the keys
-        reward=test_env.reward_key,
-        action=test_env.action_key,
+        reward=train_env.reward_key,
+        action=train_env.action_key,
         sample_log_prob=("agents", "sample_log_prob"),
         value=("agents", "state_value"),
         # These last 2 keys will be expanded to match the reward shape
@@ -142,37 +146,26 @@ def main(cfg: "DictConfig"):
     )
     adv_module.set_keys(
         value=("agents", "state_value"),
-        reward=test_env.reward_key,
+        reward=train_env.reward_key,
     )
 
     # Create optimizers
     actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr, eps=1e-5)
     critic_optim = torch.optim.Adam(critic.parameters(), lr=cfg.optim.lr, eps=1e-5)
 
-    # Create logger
-    exp_name = generate_exp_name("PPO_", cfg.env.env_name)
-    if cfg.logger.project_name is None:
-        raise ValueError("WandB project name must be specified in config.")
-    wandb.init(
-        mode=str(cfg.logger.mode),
-        project=str(cfg.logger.project_name),
-        entity=str(cfg.logger.team_name),
-        name=exp_name,
-        config=OmegaConf.to_container(cfg, resolve=True),
-    )
-
     # Main loop
-    collected_frames = 0
-    num_network_updates = 0
-    test_number = 0
     start_time = time.time()
     #pbar = tqdm.tqdm(total=total_frames)
     num_mini_batches = frames_per_batch // mini_batch_size
-    total_network_updates = (
-        (total_frames // frames_per_batch)
-        * cfg.loss.ppo_epochs
-        * num_mini_batches
-        )
+    num_network_updates = (collected_frames // frames_per_batch) * cfg.loss.ppo_epochs * num_mini_batches
+    total_network_updates = (total_frames // frames_per_batch) * cfg.loss.ppo_epochs * num_mini_batches
+    
+    # Initial reset
+    logging.info(f'Initial reset: collecting {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
+    # Each reset is cfg.env.reset_frames, we want a total of cfg.env.initial_reset_frames many
+    reset_td = collector.reset()
+    for _ in range(cfg.env.initial_reset_frames // cfg.env.reset_frames):
+        reset_td = collector.reset(reset_td)
 
     sampling_start = time.time()
 
@@ -182,16 +175,17 @@ def main(cfg: "DictConfig"):
     cfg_optim_lr = cfg.optim.lr
     cfg_loss_anneal_clip_eps = cfg.loss.anneal_clip_epsilon
     cfg_loss_clip_epsilon = cfg.loss.clip_epsilon
-    cfg_logger_num_test_episodes = cfg.logger.num_test_episodes
-    cfg_logger_test_episode_length = cfg.logger.test_episode_length
     losses = TensorDict({}, batch_size=[cfg_loss_ppo_epochs, num_mini_batches])
 
-    for i, data in enumerate(collector):
+    # Set up empty dict for logging
+    logs = {}
 
+    logging.info(f'Starting main loop')
+    for i, data in enumerate(collector):
         log_info = {}
         sampling_time = time.time() - sampling_start
         frames_in_batch = data.numel()
-        collected_frames += frames_in_batch * frame_skip
+        collected_frames += frames_in_batch
         #pbar.update(data.numel())
         logging.info(f"Training step {collected_frames}/{total_frames}.")
 
@@ -199,42 +193,48 @@ def main(cfg: "DictConfig"):
             ("next", "agents", "done"),
             data.get(("next", "done"))
             .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", test_env.reward_key))),
+            .expand(data.get_item_shape(("next", train_env.reward_key))),
         )
         data.set(
             ("next", "agents", "terminated"),
             data.get(("next", "terminated"))
             .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", test_env.reward_key))),
+            .expand(data.get_item_shape(("next", train_env.reward_key))),
         )
         data.set(
             ("next", "done"),
             data.get(("next", "done"))
             .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", test_env.reward_key))),
+            .expand(data.get_item_shape(("next", train_env.reward_key))),
         )
         data.set(
             ("next", "terminated"),
             data.get(("next", "terminated"))
             .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", test_env.reward_key))),
+            .expand(data.get_item_shape(("next", train_env.reward_key))),
         )
         # We need to expand the done and terminated to match the reward shape (this is expected by the value estimator)
 
-        """
         # Get training rewards and episode lengths
-        episode_rewards = data["next", "agents", "episode_reward"].sum(-2)
-        episode_rewards = episode_rewards[data["next", "done"]]
-        if len(episode_rewards) > 0:
-            episode_length = data["next", "step_count"][data["next", "done"]]
+        episode_rewards = data["next", "agents", "episode_reward"][data["next", "done"]]
+        episode_length = data["next", "step_count"][data["next", "done"].all(-2)]
+        if len(episode_length) > 0:
             log_info.update(
                 {
-                    "train/reward": episode_rewards.mean().item(),
-                    "train/episode_length": episode_length.sum().item()
-                    / len(episode_length),
+                    "train/episode_reward": episode_rewards.mean().item(),
+                    "train/episode_length": episode_length.sum().item() / len(episode_length),
                 }
             )
-        """
+        else:  # if no end of an episode is contained in the batch, fill the logs with NaN
+            log_info.update(
+                {
+                    "train/episode_reward": np.nan,
+                    "train/episode_length": np.nan,
+                }
+            )
+
+        # Save to full buffer
+        full_buffer.extend(data.transpose(0,1))
 
         training_start = time.time()
         for j in range(cfg_loss_ppo_epochs):
@@ -246,7 +246,6 @@ def main(cfg: "DictConfig"):
 
             # Update the data buffers
             data_buffer.extend(data_reshape)
-            full_buffer.extend(data_reshape)
 
             for k, batch in enumerate(data_buffer):
 
@@ -265,13 +264,20 @@ def main(cfg: "DictConfig"):
                     loss_module.clip_epsilon.copy_(cfg_loss_clip_epsilon * alpha)
                 num_network_updates += 1
 
+                # Exponential decay for the entropy loss
+                beta = 1.0
+                if cfg.optim.anneal_entropy:
+                    decay_rate = -np.log(cfg.optim.anneal_entropy_scale)/cfg.optim.anneal_entropy_step
+                    beta = np.exp(- decay_rate * collected_frames)
+
                 # Forward pass PPO loss
                 loss = loss_module(batch)
+                loss.set("loss_entropy", beta * loss.get("loss_entropy"))
                 losses[j, k] = loss.select(
                     "loss_critic", "loss_entropy", "loss_objective"
                 ).detach()
-                critic_loss = loss["loss_critic"]
-                actor_loss = loss["loss_objective"] + loss["loss_entropy"]
+                critic_loss = loss.get("loss_critic")
+                actor_loss = loss.get("loss_objective") + loss.get("loss_entropy")
 
                 # Backward pass
                 actor_loss.backward()
@@ -296,63 +302,27 @@ def main(cfg: "DictConfig"):
                 "train/clip_epsilon": alpha * cfg_loss_clip_epsilon
                 if cfg_loss_anneal_clip_eps
                 else cfg_loss_clip_epsilon,
+                "step": collected_frames,
             }
         )
 
-        # Get test rewards
-        with torch.no_grad(), set_exploration_type(ExplorationType.MODE):
-            if ((i - 1) * frames_in_batch * frame_skip) // test_interval < (
-                i * frames_in_batch * frame_skip
-            ) // test_interval:
-                test_number += 1
-                actor.eval()
-                eval_start = time.time()
-
-                test_rewards_mean, test_rewards_stdv, test_alpha_means, test_alpha_stdvs = eval_model(
-                    actor, test_env, cfg.env.turbines,
-                    num_episodes=cfg_logger_num_test_episodes,
-                    episode_length=cfg_logger_test_episode_length
-                )
-
-                eval_time = time.time() - eval_start
-
-                # Prepare to update log_info with dynamic alpha means and stdvs
-                log_info.update({
-                    "eval/reward_mean": test_rewards_mean,
-                    "eval/reward_stdv": test_rewards_stdv,
-                    "eval/time": eval_time,
-                })
-
-                # Dynamically update log_info for each turbine
-                turbine_log = {}
-                for idx, (mean, stdv) in enumerate(zip(test_alpha_means, test_alpha_stdvs), start=1):
-                    turbine_log[f"eval/alpha_{idx}_mean"] = mean
-                    turbine_log[f"eval/alpha_{idx}_stdv"] = stdv
-
-                log_info.update(turbine_log)
-                actor.train()
-
-                # Copy LES data from evaluation into results directory in output
-                if not dummy_update:
-                    shutil.move('./LES_RUNS/TestEnv/Running/data', os.path.join(results_dir, f'TEST_{test_number}/data'))
-                    for turb in range(test_env.n_turbs):
-                        shutil.copy(f'./LES_RUNS/TestEnv/Running/disc{turb+1}.adm', os.path.join(results_dir, f'TEST_{test_number}'))
-
-        if i % cfg.logger.checkpoint_interval == 0 or i == total_frames // frames_per_batch:
-            output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
-            full_buffer.dumps(output_dir + 'replay_buffer_checkpoint')
+        if i % cfg.checkpoint.checkpoint_interval == 0 or i >= total_frames // frames_per_batch:
+            # output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
+            if not os.path.exists('checkpoints'):
+                os.mkdir('checkpoints')
+            output_dir = os.getcwd() + '/checkpoints/'
+            torch.save(full_buffer._storage._storage, output_dir + 'replay_buffer_checkpoint.pt')
             logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
-            save_model(test_env, actor, critic, output_dir, i)
-            logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{i}.pkl and {output_dir}critic_{i}.pkl")
-
-        wandb.log(data=log_info, step=collected_frames)
+            save_model(cfg, actor, critic, output_dir, collected_frames)
+            logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{collected_frames}.pkl and {output_dir}critic_{collected_frames}.pkl")
+            
+        log_metrics(logs, log_info)
         collector.update_policy_weights_()
         sampling_start = time.time()
 
-    wandb.finish()
     end_time = time.time()
     execution_time = end_time - start_time
-    print(f"Training took {execution_time:.2f} seconds to finish")
+    logging.info(f"Training took {execution_time:.2f} seconds to finish")
 
 
 if __name__ == "__main__":

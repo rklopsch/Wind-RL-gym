@@ -2,15 +2,13 @@ from collections import defaultdict
 from typing import Optional
 
 import numpy as np
+import math
 import torch
 import tqdm
 from tensordict.nn import TensorDictModule
 from tensordict.tensordict import TensorDict, TensorDictBase
 from torch import nn
 import time
-
-from Solver.ADM_runner import ADM
-from Solver.farm import Turbine, Farm
 
 from torchrl.data import BoundedTensorSpec, CompositeSpec, UnboundedContinuousTensorSpec
 from torchrl.envs import (
@@ -22,6 +20,8 @@ from torchrl.envs import (
 )
 from torchrl.envs.transforms.transforms import _apply_to_composite
 from torchrl.envs.utils import check_env_specs, step_mdp
+from smartredis import Client
+import logging
 
 
 class TurbEnv(EnvBase):
@@ -34,42 +34,91 @@ class TurbEnv(EnvBase):
                  save=False,
                  instance=None,
                  device="cpu",
-                 dummy_update=False):
-
-        if not params:
-            params = self.gen_params()
+                 ):
 
         super().__init__(device=device, batch_size=[])
 
         self.save = save
-        self.obs_per_turbine = params["probes_per_turbine"] * 2 + 3
+        self.probes_per_turbine = params["probes_per_turbine"]
+        lookup = {"ux": 0, "uy": 1, "uz": 2}
+        if not all(p in lookup.keys() for p in params["flow_field_directions"]):
+            raise ValueError(f"The parameter 'flow_field_directions' must be a list containing only the elements 'ux', 'uy', 'uz'. Got {params['flow_field_directions']}")
+        if not len(set(params["flow_field_directions"])) == len(params["flow_field_directions"]):
+            raise ValueError(f"The parameter 'flow_field_directions' must not contain duplicates. Got {params['flow_field_directions']}.")
+        self.obs_idxs = list(map(lookup.get, params["flow_field_directions"]))
+        self.obs_per_probe = len(self.obs_idxs)
+        self.obs_per_turbine = self.probes_per_turbine * self.obs_per_probe
         self.n_turbs = params["n_turbines"]
+        self.total_probes = self.probes_per_turbine * self.n_turbs
         self.total_obs = self.obs_per_turbine * self.n_turbs
         self.max_speed = params["max_yaw_speed"]  # maximum angular velocity of wind turbine
         self.max_angle = params["max_yaw_angle"]
         self.dt = params["dt"]
-        self.instance = instance
+        self.reset_frames = params["reset_frames"]
+        self.instance = 0 if instance is None else instance+1
+        self.penalty_scale = params["penalty_scale"]
+        self.penalty_exponent = params["penalty_exp"]
+        self.random_reset = bool(params["random_reset"])
+
+        # Create client
+        self.client = Client(address=None, cluster=False)
+        self.client.put_tensor(f"{self.instance}_yaws_done", np.array([0]))
+        self.client.put_tensor(f"{self.instance}_sim_done", np.array([0]))
 
         self._make_spec()
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
 
-        # set up a farm environment (probably better to pass params to ADM_runner and set up there)
-        diameter = params["turbine_diameter"]
-        spacing = params["turbine_spacing"]
-        self.farm1 = Farm(diameter * spacing * self.n_turbs, diameter * 4,
-                          self.n_turbs, Turbine(diameter, 90, yaw=0),
-                          offset=[4 * diameter, 2 * diameter])
-        self.farm1.grid(staggered=False)
-        self.adm = ADM(self.farm1, params["probes_per_turbine"], base_dir=f'{instance}', nprocs=params["n_procs"], nenvs=params["n_envs"])
-        self.adm.total_timesteps = params["run_steps"] + self.adm.init_timesteps
+    @staticmethod
+    def _normalise_probe_data(arr):
+        # Each probe contains (U, V, W) = (u_x, u_y, u_z)
+        # The range is typically 0 < U < 12, -4 < V,W < 4.
+        loc = np.array([6., 0., 0.])
+        scale = np.array([6., 4., 4.])
+        return (arr-loc)/scale
+    
+    @staticmethod
+    def _position_encoding(n_turbs):
+        idxs = torch.arange(n_turbs).view([n_turbs, 1])
+        idxs = (torch.pi/2) * idxs / (n_turbs-1)
+        return torch.sin(idxs)
 
-        self.dummy_update = dummy_update  # If True, perform a dummy update for testing
-        if not self.dummy_update:
-            self.adm.run_precursor()
-            self.adm.initialise_flow(self.adm.init_timesteps)
-            self.adm.restart()
+    def _communicate(self, new_alpha):        
+        ######### Communication with SmartRedis server ###########
+        # Send yaws to X3D
+        self.client.put_tensor(f"{self.instance}_yaws", new_alpha.detach().cpu().numpy().squeeze().astype(np.float64))
+        # Set i_yaws_done flag to True (one)
+        self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1)) # setting one as True
+
+        # Poll whether X3D simulation is done
+        while not self.client.get_tensor(f"{self.instance}_sim_done")[0]:
+            continue
+
+        # Set i_sim_done flag to false (zero)
+        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1))
+
+        # Here need to loop over ALL instances, and stack the results into one tensor
+        turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # [n_turbs]
+        turbine_obs = np.zeros((self.total_probes, self.obs_per_probe))
+        for i in range(self.total_probes):
+            probe = self.client.get_tensor(f"{self.instance}_probe_{i+1}")
+            turbine_obs[i] = self._normalise_probe_data(probe)[self.obs_idxs]  # [n_turbs*probes_per_turbine, obs_per_probe]
+        turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine, self.obs_per_probe)
+        turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)  # [n_turbs, probes_per_turbine*obs_per_probe]
+
+        # Process the outputs from the solver
+        turbine_powers /= 1e06
+        farm_power = turbine_powers.mean(axis=-1)  # Compute mean over iterations many time steps
+        farm_power = np.broadcast_to(farm_power, (self.n_turbs,))  # repeat farm power for all turbines
+        # farm_power = turbine_powers.mean(axis=-1)  # Compute mean over iterations many time steps
+        # turbine_obs = turbine_obs.mean(axis=-1)  # Compute mean over iterations many time steps
+
+        # Convert to Torch tensors
+        power = torch.tensor(farm_power, dtype=torch.float32).to(self.device)
+        observation = torch.tensor(turbine_obs, dtype=torch.float32).to(self.device)
+
+        return power, observation
 
     def _step(self, tensordict):
         # All tensors are expected to be of shape [*batch_size, num_turbs, X]
@@ -77,29 +126,30 @@ class TurbEnv(EnvBase):
         #       X = num_actions_per_turbine for action
         #       X = 1 for reward
 
-        print(f"Hello. I am instance {self.instance} This is the time at start of step: {time.time():.4f}.")
-
+        # Retrieve action and previous alpha from tensordict
         action = tensordict.get(("agents", "action"))
-        # action = action.unbind(dim=1)
         alpha = tensordict.get(("agents", "alpha"))
-        # u = tensordict["action"].squeeze(-1)
         u = action
-        u = u.clamp(-self.max_speed, self.max_speed)
+        # u = u.clamp(-1., 1.)  # this should happen automatically
+        u = u * self.max_speed  # since the actor outputs values between -1 and 1, correct scale here
         
+        # Compute new alpha
         new_alpha = alpha + u * self.dt
         new_alpha = new_alpha.clamp(-self.max_angle, self.max_angle)
 
-        # update by running ADM
-        if self.dummy_update:
-            power = torch.ones((*tensordict.shape, self.n_turbs, 1), device=self.device)
-            observation = torch.zeros((*tensordict.shape, self.n_turbs, self.obs_per_turbine), device=self.device)
-        else:
-            power, observation = (self.adm.advance(new_alpha.cpu(), save=self.save))
-            power = power.to(self.device)
-            observation = observation.to(self.device)
+        power, observation = self._communicate(new_alpha)
 
-        reward = power.expand(*tensordict.shape, self.n_turbs, 1)
+        # Compute a penalty for large angles
+        angle_penalty = self.penalty_scale * (new_alpha.squeeze()/self.max_angle)**(self.penalty_exponent)
+        power = power - angle_penalty
+
+        if len(power.shape) < len(tensordict.shape) + 2:
+            reward = power.unsqueeze(dim=-1)
+        else:
+            reward = power
         done = torch.zeros((*tensordict.shape, 1), dtype=torch.bool)
+
+        pos_enc = self._position_encoding(self.n_turbs)
 
         source = {
             "done": done,
@@ -111,6 +161,7 @@ class TurbEnv(EnvBase):
                     "alpha": new_alpha[..., i, :],
                     "observation": observation[..., i, :],
                     "reward": reward[..., i, :],
+                    "pos_enc": pos_enc[..., i, :],
                 },
                 ()  # tensordict.shape,
                 )
@@ -132,15 +183,38 @@ class TurbEnv(EnvBase):
         return out
 
     def _reset(self, tensordict):
+        logging.info(f"Resetting now")
 
-        if not self.dummy_update:
-            self.adm.restart()
+        if self.random_reset:
+            # Choose a set of random angles
+            reset_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs]) - 1)
+        else:
+            # Set angles to all 0
+            reset_angles = torch.zeros([self.n_turbs])
+        steps_to_change_angle = math.ceil(self.max_angle / (self.max_speed * self.dt))
+        if tensordict is not None:
+            alpha = tensordict.get(("agents", "alpha")).squeeze()
+        else:
+            alpha = torch.zeros([self.n_turbs])
+
+        if not steps_to_change_angle <= self.reset_frames:
+            raise ValueError(f"Must have at least {steps_to_change_angle} many reset frames. Only have {self.reset_frames}.")
+
+        for i in range(steps_to_change_angle):
+            interpolated_angle = (steps_to_change_angle-1-i)/(steps_to_change_angle-1)*alpha + i/(steps_to_change_angle-1)*reset_angles
+            _, _ = self._communicate(new_alpha=interpolated_angle)
+            
+        for _ in range(self.reset_frames - steps_to_change_angle):
+            _, _ = self._communicate(new_alpha=reset_angles)
+            
+        # Make sure the flags for yaws_done and sim_done are both set to False at the end of reset
 
         # for non batch-locked envs, the input tensordict shape dictates the number
         # of simulators run simultaneously. In other contexts, the initial
         # random state's shape will depend upon the environment batch-size instead.
         alpha = torch.zeros((*self.batch_size, self.n_turbs, 1), device=self.device)
         observation = torch.zeros((*self.batch_size, self.n_turbs, self.obs_per_turbine), device=self.device)
+        pos_enc = self._position_encoding(self.n_turbs)
 
         agent_tds = []
         for i in range(self.n_turbs):
@@ -148,6 +222,7 @@ class TurbEnv(EnvBase):
                 {
                     "alpha": alpha[..., i, :],
                     "observation": observation[..., i, :],
+                    "pos_enc": pos_enc[..., i, :],
                 },
                 ()  #self.batch_size,
             )
@@ -176,6 +251,11 @@ class TurbEnv(EnvBase):
                     dtype=torch.float32,
                     device=self.device
                 ),
+                pos_enc=UnboundedContinuousTensorSpec(
+                    shape=(*self.batch_size, 1),
+                    dtype=torch.float32,
+                    device=self.device
+                ),
                 observation=UnboundedContinuousTensorSpec(
                     shape=(*self.batch_size, self.obs_per_turbine),
                     dtype=torch.float32,
@@ -190,8 +270,8 @@ class TurbEnv(EnvBase):
         # action-spec will be automatically wrapped in input_spec when
         # `self.action_spec = spec` will be called supported
         action_spec = BoundedTensorSpec(
-            low=-self.max_speed,
-            high=self.max_speed,
+            low=-1.0,
+            high=1.0,
             shape=(*self.batch_size, 1),
             dtype=torch.float32,
             device=self.device
@@ -257,37 +337,4 @@ class TurbEnv(EnvBase):
         rng = torch.Generator(device=self.device)
         rng.manual_seed(seed)
         self.rng = rng
-
-    @staticmethod
-    def gen_params() -> TensorDictBase:
-        """Returns a dict containing the physical parameters such as speed and angle limits."""
-        params = {
-            "n_turbines": 3,
-            "probes_per_turbine": 25,
-            "turbine_diameter": 126,
-            "turbine_spacing": 7,
-            "max_yaw_speed": 0.25,
-            "max_yaw_angle": 40,
-            "dt": 10,
-            "run_steps": 10,
-        }
-        return params
-
-
-if __name__ == '__main__':
-
-    test_env = TurbEnv(save=True, dummy_update=True)
-
-    check_env_specs(test_env)
-
-    print("action_keys:", test_env.action_keys)
-    print("reward_keys:", test_env.reward_keys)
-    print("observation_keys:", test_env.observation_spec)
-    print("done_keys:", test_env.done_keys)
-    rollout = test_env.rollout(max_steps=3)
-    print(f"alpha = {rollout[('agents', 'alpha')][:, 1].mean()}")
-    # print(f"Reward = {rollout['next', 'episode_reward'][rollout['next', 'done']][:, 1].mean()}")
-
-    print("\nTesting environment rollout...")
-    print(rollout)
 
