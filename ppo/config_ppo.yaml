@@ -10,6 +10,7 @@ env:
   turbine_diameter: 126
   turbine_height: 90
   turbine_spacing: 7
+  turbine_spacing_z: 7
   max_yaw_speed: 0.4
   max_yaw_angle: 40
   steps_per_frame: 50

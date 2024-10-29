@@ -54,7 +54,7 @@ def launch_solver(experiment, instance, cfg):
                  cfg.env.turbine_diameter * 1 * 1,
                  cfg.env.turbines,
                  Turbine(cfg.env.turbine_diameter, cfg.env.turbine_height, yaw=0),
-                 offset=[(cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter, (cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter])
+                 offset=[(cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter, (cfg.env.turbine_spacing_z-1)/2*cfg.env.turbine_diameter])
     farm1.grid()
     simulation_steps = (cfg.env.steps_per_frame
                         *((cfg.collector.total_frames//cfg.collector.frames_per_batch)+1)
