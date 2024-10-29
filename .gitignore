@@ -4,6 +4,8 @@ outputs
 wandb
 .venv
 Solver/ADM/TESTING
+Solver/ADM/precursor_?
+Solver/ADM/precursor_??
 Solver/.ADM*
 RESULTS
 LES_RUNS
@@ -13,3 +15,5 @@ input.i3d
 launch_dummy_run
 launch_run
 eval_dummy_run
+training_ppo*
+eval_ppo*
