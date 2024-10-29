@@ -72,6 +72,7 @@ def main(cfg: "DictConfig"):
         "n_procs": cfg.env.n_processors_per_env,
         "n_envs": cfg.eval.n_parallel,
         "probes_per_turbine": cfg.env.probes_per_turbine,
+        "flow_field_directions": cfg.env.flow_field_directions,
         "turbine_diameter": cfg.env.turbine_diameter,
         "turbine_spacing": cfg.env.turbine_spacing,
         "max_yaw_speed": cfg.env.max_yaw_speed,
@@ -79,6 +80,9 @@ def main(cfg: "DictConfig"):
         "dt": cfg.env.steps_per_frame * 0.2,
         "reset_frames": cfg.env.reset_frames,
         "run_steps": max_episode_length * cfg.env.steps_per_frame,
+        "penalty_scale": cfg.env.penalty_scale,
+        "penalty_exp": cfg.env.penalty_exp,
+        "random_reset": cfg.env.random_reset,
     }
 
     # Load the models to be evaluated
