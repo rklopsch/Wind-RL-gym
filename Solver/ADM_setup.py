@@ -89,7 +89,7 @@ class ADMSimulation:
         f90nml.patch(os.path.join(directory, 'old_input.i3d'),
                      patch_nml, os.path.join(directory, 'input.i3d'))
 
-    def setup_case(self, directory):
+    def setup_case(self, directory, save_flow=False):
 
         lx = self.farm.lx + self.farm.offset[0] + 7*self.diameter
         ly = 500
@@ -97,6 +97,10 @@ class ADMSimulation:
         nx, ny, nz = find_grid_dimensions(lx, ly, lz, self.gridsize)
         nx += 1
         ny += 1
+        if save_flow:
+            save_interval = self.control_freq
+        else:
+            save_interval = self.total_timesteps
 
         self.add_probes(directory)
         # Set-up ADM turbine parameters
@@ -121,9 +125,9 @@ class ADMSimulation:
             'InOutParam': {
                 'irestart': 0,
                 'icheckpoint': self.total_timesteps,
-                'ioutput': self.total_timesteps,
+                'ioutput': save_interval,
                 'ilist': self.total_timesteps // 1000,
-                # 'inflowpath': relative_precursor,
+                'inflowpath': f'precursor_{self.instance}/out/',
                 'ntimesteps': 5000,
                 'ninflows': self.total_timesteps // 5000,
                 'nprobes': self.probes_per_turbine * self.farm.n_turbines

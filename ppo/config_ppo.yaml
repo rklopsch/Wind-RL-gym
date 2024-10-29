@@ -65,6 +65,7 @@ eval:
   n_parallel: 5  # Number of eval envs to be run in parallel
   model_path: utils/checkpoint_test  # Path to stored model, relative to Wind-RL/
   model_id: 4200  # ID of model to be evaluated
+  save_flow: False
 
 # Configure hydra
 hydra:
