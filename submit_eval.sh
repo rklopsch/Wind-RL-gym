@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=RL3-train
-#SBATCH --nodes=34
+#SBATCH --job-name=RL3-eval
+#SBATCH --nodes=3
 #SBATCH --ntasks-per-node=128
 #SBATCH --cpus-per-task=1
-#SBATCH --time=24:00:00
+#SBATCH --time=02:00:00
 
 #SBATCH --account=e809-MOLE
 #SBATCH --partition=standard
@@ -28,4 +28,4 @@ export SR_SOCKET_TIMEOUT=300000
 export D4RL_DATASET_DIR=./.cache/torchrl/data/d4rl/datasets
 
 # Launch script
-python launch_run.py
+python launch_eval_run.py

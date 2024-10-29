@@ -32,8 +32,8 @@ def launch_database(experiment, port):
 
 
 def launch_solver(experiment, instance, cfg):
-    os.environ['LD_LIBRARY_PATH'] = "/work/e01/e01/amole/Incompact3d-smartredis/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
-    os.environ['PATH'] = os.environ['PATH'] + ":/work/e01/e01/amole/Incompact3d-smartredis/Incompact3d/build/bin"
+    os.environ['LD_LIBRARY_PATH'] = "/work/e809/e809/amole-e809/Incompact3d-smartredis/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
+    os.environ['PATH'] = os.environ['PATH'] + ":/work/e809/e809/amole-e809/Incompact3d-smartredis/Incompact3d/build/bin"
     # TODO: probably (definitely) want a better way to set these
 
     aprun = experiment.create_run_settings(exe="xcompact3d", run_command="srun")
@@ -44,7 +44,7 @@ def launch_solver(experiment, instance, cfg):
     print(aprun.format_run_args())
     producer = experiment.create_model(f"WindFarm_{instance}", aprun)
     files = ["./Solver/ADM/Base"]
-    precursor_files = ["./Solver/ADM/precursor_Base"]
+    precursor_files = [f"./Solver/ADM/precursor_{instance}"]
     producer.attach_generator_files(to_copy=files, to_symlink=precursor_files)
     experiment.generate(producer, overwrite=True)
 
@@ -54,7 +54,7 @@ def launch_solver(experiment, instance, cfg):
                  cfg.env.turbine_diameter * 1 * 1,
                  cfg.env.turbines,
                  Turbine(cfg.env.turbine_diameter, cfg.env.turbine_height, yaw=0),
-                 offset=[(cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter, (cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter])
+                 offset=[(cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter, (cfg.env.turbine_spacing_z-1)/2*cfg.env.turbine_diameter])
     farm1.grid()
     simulation_steps = (cfg.env.steps_per_frame
                         *((cfg.collector.total_frames//cfg.collector.frames_per_batch)+1)
@@ -66,7 +66,7 @@ def launch_solver(experiment, instance, cfg):
                          probes_per_turbine=cfg.env.probes_per_turbine,
                          instance=instance)
     case.setup_case(f"./training_ppo/WindFarm_{instance}")
-    case.setup_precursor(f"./training_ppo/WindFarm_{instance}/precursor_Base")
+    case.setup_precursor(f"./training_ppo/WindFarm_{instance}/precursor_{instance}")
 
     return producer
 

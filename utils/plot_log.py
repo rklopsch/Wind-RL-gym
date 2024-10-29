@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 import hydra
 import pickle
-import fonts
+# import fonts
 
 
 def plot_keys(keys, data):
@@ -15,6 +15,9 @@ def plot_keys(keys, data):
         axes[i][0].plot(steps, data[key])
         label = key.replace('train/', '')
         axes[i][0].set_ylabel(label.replace('_', ' '))
+        # if 'loss_critic' in key:
+        if 'loss' in key:
+            axes[i][0].set_yscale('log')
 
     # Set the label for the common x-axis
     axes[-1][0].set_xlabel('Step')

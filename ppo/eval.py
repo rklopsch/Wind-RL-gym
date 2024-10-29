@@ -60,12 +60,10 @@ def main(cfg: "DictConfig"):
 
     max_episode_length = cfg.eval.episode_length
     n_environments = cfg.eval.n_parallel
-    dummy_update = cfg.env.dummy_update
 
-    if not dummy_update:
-        hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-        results_dir = os.path.join(hydra_dir, 'RESULTS')
-        os.makedirs(results_dir, exist_ok=True)
+    hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    results_dir = os.path.join(hydra_dir, 'RESULTS')
+    os.makedirs(results_dir, exist_ok=True)
 
     # TO-DO: why does params have n_envs as a parameter? This is passed explicitly wherever necessary
 
@@ -74,6 +72,7 @@ def main(cfg: "DictConfig"):
         "n_procs": cfg.env.n_processors_per_env,
         "n_envs": cfg.eval.n_parallel,
         "probes_per_turbine": cfg.env.probes_per_turbine,
+        "flow_field_directions": cfg.env.flow_field_directions,
         "turbine_diameter": cfg.env.turbine_diameter,
         "turbine_spacing": cfg.env.turbine_spacing,
         "max_yaw_speed": cfg.env.max_yaw_speed,
@@ -81,6 +80,9 @@ def main(cfg: "DictConfig"):
         "dt": cfg.env.steps_per_frame * 0.2,
         "reset_frames": cfg.env.reset_frames,
         "run_steps": max_episode_length * cfg.env.steps_per_frame,
+        "penalty_scale": cfg.env.penalty_scale,
+        "penalty_exp": cfg.env.penalty_exp,
+        "random_reset": cfg.env.random_reset,
     }
 
     # Load the models to be evaluated
@@ -97,7 +99,7 @@ def main(cfg: "DictConfig"):
         env_params=params,
         id=cfg.eval.model_id,
         path_to_model='models',
-        dummy_update=dummy_update)
+        )
     logging.info(f"Loaded actor_{cfg.eval.model_id}.pkl and critic_{cfg.eval.model_id}.pkl.")
     actor, critic = actor.to(device), critic.to(device)
 
@@ -107,7 +109,6 @@ def main(cfg: "DictConfig"):
         params,
         n_environments,
         device=device,
-        dummy_update=dummy_update,
         eval_only=True,
     )
 

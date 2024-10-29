@@ -4,16 +4,18 @@ env:
   n_processors_per_env: 128
   dummy_update: False
   env_name: WindFarm
-  turbines: 10
+  turbines: 3
   probes_per_turbine: 60
   flow_field_directions: ['ux']  # we will use these components of the flow field for each probe
   turbine_diameter: 126
   turbine_height: 90
-  turbine_spacing: 7
+  turbine_spacing: 5
+  turbine_spacing_z: 7
   max_yaw_speed: 0.4
   max_yaw_angle: 40
   steps_per_frame: 50
   reset_frames: 150
+  # reset_frames: 3000  # combined for eval
   initial_reset_frames: 2500
   frame_stack: 5  # Number of frames to be stacked as agent input
   penalty_scale: 0.5
@@ -23,7 +25,7 @@ env:
 # collector
 collector:
   frames_per_batch: 512 # this is the actual number of frames we see in a batch
-  max_episode_length: 2_000  # Timesteps (disregarding frame skip)
+  max_episode_length: 500  # Timesteps (disregarding frame skip)
   total_frames: 1_000_000  # Timesteps (disregarding frame skip)
 
 # logger
@@ -36,19 +38,19 @@ optim:
   weight_decay: 0.0
   anneal_lr: True
   anneal_entropy: True
-  anneal_entropy_step: 100_000
+  anneal_entropy_step: 500_000
   anneal_entropy_scale: 0.1
 
 # Settings for checkpointing
 checkpoint:
-  checkpoint_interval: 10
+  checkpoint_interval: 100
   load_from_checkpoint: False
-  model_checkpoint_path: utils/checkpoint_test   # Path to checkpoint, RELATIVE to Wind-RL/
-  model_checkpoint_id: 1536  # ID of checkpoint
+  model_checkpoint_path: training_ppo_03-10-24/ppo/checkpoints   # Path to checkpoint, RELATIVE to Wind-RL/
+  model_checkpoint_id: 1  # ID of checkpoint
 
 # loss
 loss:
-  gamma: 0.99
+  gamma: 0.9
   mini_batch_size: 32  # must be a factor of frames per batch
   ppo_epochs: 10
   gae_lambda: 0.95
@@ -61,10 +63,12 @@ loss:
 # Eval
 # These settings only apply when running eval.py (instead of ppo.py)
 eval:
-  episode_length: 1_000
-  n_parallel: 5  # Number of eval envs to be run in parallel
-  model_path: utils/checkpoint_test  # Path to stored model, relative to Wind-RL/
-  model_id: 4200  # ID of model to be evaluated
+  episode_length: 2_000
+  n_parallel: 1  # Number of eval envs to be run in parallel
+  model_path: training_ppo_28-10-24/ppo/checkpoints  # Path to stored model, relative to Wind-RL/
+  model_id: 870912  # ID of model to be evaluated
+
+  save_flow: False
 
 # Configure hydra
 hydra:
