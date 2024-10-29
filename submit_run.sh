@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=RL-test
+#SBATCH --job-name=RL3-train
 #SBATCH --nodes=34
 #SBATCH --ntasks-per-node=128
 #SBATCH --cpus-per-task=1
-#SBATCH --time=72:00:00
+#SBATCH --time=24:00:00
 
-#SBATCH --account=e01-ICL-Laizet
+#SBATCH --account=e809-MOLE
 #SBATCH --partition=standard
-#SBATCH --qos=long
+#SBATCH --qos=standard
 
 
 # load required modules
@@ -15,7 +15,7 @@ module swap PrgEnv-cray PrgEnv-gnu
 module load cray-python
 
 # load python environment
-source /work/e01/e01/amole/smartsim_venv/bin/activate
+source /work/e809/e809/amole-e809/smartsim_venv/bin/activate
 
 # Set environment variables
 # export OMP_NUM_THREADS=1
