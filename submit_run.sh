@@ -20,6 +20,7 @@ source /work/e809/e809/amole-e809/smartsim_venv/bin/activate
 # Set environment variables
 # export OMP_NUM_THREADS=1
 export SMARTSIM_LOG_LEVEL=DEBUG
+export SMARTSIM_WLM_TRIALS=50  # default 10 stopped working  
 # export SR_LOG_LEVEL=DEBUG
 export SR_LOG_LEVEL=INFO
 export SR_LOG_FILE=./log.sr
