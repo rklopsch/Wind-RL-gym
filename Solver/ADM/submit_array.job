@@ -1,0 +1,35 @@
+#!/bin/bash
+
+#SBATCH --job-name=ABL_Array
+#SBATCH --time=8:00:0
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=128
+#SBATCH --cpus-per-task=1
+#SBATCH --array=1-32
+
+#SBATCH --account=e809-MOLE
+#SBATCH --partition=standard
+#SBATCH --qos=standard
+
+# Propagate the cpus-per-task setting from script to srun commands
+#    By default, Slurm does not propagate this setting from the sbatch
+#    options to srun commands in the job script. If this is not done,
+#    process/thread pinning may be incorrect leading to poor performance
+export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
+
+# Set the number of threads to 1
+#   This prevents any threaded system libraries from automatically 
+#   using threading.
+export OMP_NUM_THREADS=1
+
+module swap PrgEnv-cray PrgEnv-gnu
+
+cd ${SLURM_SUBMIT_DIR}
+cp -r precursor_Base precursor_$SLURM_ARRAY_TASK_ID
+cd precursor_$SLURM_ARRAY_TASK_ID
+
+date
+pwd
+
+srun --hint=nomultithread --distribution=block:block /work/e809/e809/amole-e809/Incompact3d/xcompact3d
+
