@@ -60,12 +60,10 @@ def main(cfg: "DictConfig"):
 
     max_episode_length = cfg.eval.episode_length
     n_environments = cfg.eval.n_parallel
-    dummy_update = cfg.env.dummy_update
 
-    if not dummy_update:
-        hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-        results_dir = os.path.join(hydra_dir, 'RESULTS')
-        os.makedirs(results_dir, exist_ok=True)
+    hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    results_dir = os.path.join(hydra_dir, 'RESULTS')
+    os.makedirs(results_dir, exist_ok=True)
 
     # TO-DO: why does params have n_envs as a parameter? This is passed explicitly wherever necessary
 
@@ -97,7 +95,7 @@ def main(cfg: "DictConfig"):
         env_params=params,
         id=cfg.eval.model_id,
         path_to_model='models',
-        dummy_update=dummy_update)
+        )
     logging.info(f"Loaded actor_{cfg.eval.model_id}.pkl and critic_{cfg.eval.model_id}.pkl.")
     actor, critic = actor.to(device), critic.to(device)
 
@@ -107,7 +105,6 @@ def main(cfg: "DictConfig"):
         params,
         n_environments,
         device=device,
-        dummy_update=dummy_update,
         eval_only=True,
     )
 
