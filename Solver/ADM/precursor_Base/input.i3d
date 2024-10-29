@@ -89,7 +89,7 @@ ioutput = 97      ! Frequency for visualization
 ilist =  10         ! Frequency for write to screen 
 nvisu = 1            ! Size for visualisation collection
 ioutflow=1           ! Outflow flag
-ntimesteps=97     ! Number of planes saved in each file
+ntimesteps=5000     ! Number of planes saved in each file
 
 /End
 
