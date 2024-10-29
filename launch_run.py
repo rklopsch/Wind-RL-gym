@@ -44,7 +44,7 @@ def launch_solver(experiment, instance, cfg):
     print(aprun.format_run_args())
     producer = experiment.create_model(f"WindFarm_{instance}", aprun)
     files = ["./Solver/ADM/Base"]
-    precursor_files = ["./Solver/ADM/precursor_Base"]
+    precursor_files = [f"./Solver/ADM/precursor_{instance}"]
     producer.attach_generator_files(to_copy=files, to_symlink=precursor_files)
     experiment.generate(producer, overwrite=True)
 
@@ -66,7 +66,7 @@ def launch_solver(experiment, instance, cfg):
                          probes_per_turbine=cfg.env.probes_per_turbine,
                          instance=instance)
     case.setup_case(f"./training_ppo/WindFarm_{instance}")
-    case.setup_precursor(f"./training_ppo/WindFarm_{instance}/precursor_Base")
+    case.setup_precursor(f"./training_ppo/WindFarm_{instance}/precursor_{instance}")
 
     return producer
 
