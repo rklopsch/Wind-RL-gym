@@ -40,9 +40,12 @@ class TimeSeries:
             self.data.append(dat)
 
     def draw_power(self, it, ax):
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
+                  '#17becf']
         total_power = 0
         for turbine in range(self.n_turbs):
             ax.plot(self.data[turbine]['Time'][:it], self.data[turbine]['Power'][:it] / 1e6,
+                    color=colors[turbine],
                     label=f'Turbine {turbine + 1}')
             total_power += self.data[turbine]['Power'][:it]
         ax.plot(self.data[turbine]['Time'][:it], total_power[:it] / 1e6,
@@ -65,31 +68,43 @@ class TimeSeries:
 
         # only use first labels in legend
         handles, labels = ax.get_legend_handles_labels()
-        handles = handles[:4]
-        labels = labels[:4]
+        handles = handles[:self.n_turbs]
+        labels = labels[:self.n_turbs]
         ax.legend(handles, labels, frameon=False, ncols=5)
 
     def draw_power_psd(self, it, ax):
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
+                  '#17becf']
         fs = 1/self.dt
         for turbine in range(self.n_turbs):
             freqs, psd = welch(self.data[turbine]['Power'][3000:it], fs, nperseg=1024)
-            ax.semilogx(freqs, psd*freqs, label=f'Turbine {turbine + 1}')
+            ax.semilogx(freqs, psd*freqs, color=colors[turbine], label=f'Turbine {turbine + 1}')
 
         ax.set_xlabel(r'$f \; (Hz)$')
         ax.set_ylabel(r'$f \, PSD \; (W^2)$')
-        ax.legend(frameon=False, ncols=1)
+        # only use first labels in legend
+        handles, labels = ax.get_legend_handles_labels()
+        handles = handles[:self.n_turbs]
+        labels = labels[:self.n_turbs]
+        ax.legend(handles, labels, frameon=False, ncols=1)
 
         self.add_frequecies(ax, max(psd*freqs))
 
     def draw_yaw_psd(self, it, ax):
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
+                  '#17becf']
         fs = 1/self.dt
         for turbine in range(self.n_turbs):
             freqs, psd = welch(self.data[turbine]['YawAng'][3000:it], fs, nperseg=1024)
-            ax.semilogx(freqs, psd * freqs, label=f'Turbine {turbine + 1}')
+            ax.semilogx(freqs, psd * freqs, color=colors[turbine], label=f'Turbine {turbine + 1}')
 
         ax.set_xlabel(r'$f \; (Hz)$')
         ax.set_ylabel(r'$f \, PSD$')
-        ax.legend(frameon=False, ncols=1)
+        # only use first labels in legend
+        handles, labels = ax.get_legend_handles_labels()
+        handles = handles[:self.n_turbs]
+        labels = labels[:self.n_turbs]
+        ax.legend(handles, labels, frameon=False, ncols=1)
 
         self.add_frequecies(ax, max(psd*freqs))
 
@@ -135,19 +150,20 @@ class TimeSeries:
 def main():
 
     fig, axs = plt.subplots(2, 2,
-                            figsize=(12, 8),
+                            figsize=(14, 8),
                             constrained_layout=True,
                             gridspec_kw={'width_ratios': [2, 1]})
                             # sharey=True)
 
-    casename = f'./training_ppo_28-10-24'
-    with open(os.path.join(casename, "ppo/config_ppo.yaml"), "r") as file:
+    casename = f'./eval_ppo_31-10-24'
+    with open(os.path.join(casename, "eval/config_ppo.yaml"), "r") as file:
         config = yaml.safe_load(file)
     print(casename)
 
-    for env in range(2):
-    # for env in [0]:
-        environment_name = f'./training_ppo_28-10-24/WindFarm_{env+1}'
+    for env in range(config['eval']['n_parallel']):
+        for ax in axs.flatten():
+            ax.cla()
+        environment_name = os.path.join(casename, f'WindFarm_{env+1}')
         print(environment_name)
         series1 = TimeSeries(environment_name, config)
         series1.collect_data()
@@ -157,9 +173,12 @@ def main():
         series1.draw_power(4998, axs[1, 0])
         fig.savefig(os.path.join(environment_name, 'time_series.pdf'))
     axs[1, 0].set_ylim(0, 7)
-    plt.show()
 
     fig.savefig(os.path.join(casename, 'time_series_all.pdf'))
+    fig.savefig(os.path.join(casename, 'time_series_all.png'), dpi=600)
+
+    plt.show()
+
 
 
 if __name__ == "__main__":
