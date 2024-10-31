@@ -166,26 +166,79 @@ def main():
     with open(os.path.join(casename, "eval/config_ppo.yaml"), "r") as file:
         config = yaml.safe_load(file)
     print(casename)
+    
+    all_powers = []
+    all_yaws = []
+    all_power_psds = []
+    all_yaw_psds = []
+    all_freqs = None
+    all_time_data = None
 
+    # plot time series and psd for each environment
     for env in range(config['eval']['n_parallel']):
         for ax in axs.flatten():
             ax.cla()
         environment_name = os.path.join(casename, f'WindFarm_{env+1}')
         print(environment_name)
-        series1 = TimeSeries(environment_name, config)
-        series1.collect_data()
-        series1.calculate_psds()
-        series1.draw_yaw_psd(-1, axs[0, 1])
-        series1.draw_yaw(-1, axs[0, 0])
-        series1.draw_power_psd(-1, axs[1, 1])
-        series1.draw_power(4998, axs[1, 0])
+        series = TimeSeries(environment_name, config)
+        series.collect_data()
+        series.calculate_psds()
+        series.draw_yaw_psd(-1, axs[0, 1])
+        series.draw_yaw(-1, axs[0, 0])
+        series.draw_power_psd(-1, axs[1, 1])
+        series.draw_power(4998, axs[1, 0])
         fig.savefig(os.path.join(environment_name, 'time_series.pdf'))
+        yaw_psds = [series.freq_data[turbine]['YawAng_PSD'] for turbine in range(series.n_turbs)]
+        power_psds = [series.freq_data[turbine]['Power_PSD'] for turbine in range(series.n_turbs)]
+        all_yaw_psds.append(yaw_psds)
+        all_power_psds.append(power_psds)
+        if all_time_data is None:
+            all_freqs = series.freq_data[0]['Frequency']
 
-    fig.savefig(os.path.join(casename, 'time_series_all.pdf'))
+    # Calculate ensemble statistics
+    all_yaw_psds = np.stack(all_yaw_psds, axis=1)
+    avg_yaw_psd = np.mean(all_yaw_psds, axis=1)
+    med_yaw_psd = np.median(all_yaw_psds, axis=1)
+    std_yaw_psd = np.std(all_yaw_psds, axis=1)
+    min_yaw_psd = np.min(all_yaw_psds, axis=1)
+    max_yaw_psd = np.max(all_yaw_psds, axis=1)
+
+    all_power_psds = np.stack(all_power_psds, axis=1)
+    avg_power_psd = np.mean(all_power_psds, axis=1)
+    med_power_psd = np.median(all_power_psds, axis=1)
+    std_power_psd = np.std(all_power_psds, axis=1)
+    min_power_psd = np.min(all_power_psds, axis=1)
+    max_power_psd = np.max(all_power_psds, axis=1)
+
+    fig, ax = plt.subplots(2, 1, figsize=(6, 6), constrained_layout=True)
+
+    series.add_frequecies(ax[0], np.max(avg_yaw_psd[0] * all_freqs))
+    series.add_frequecies(ax[1], np.max(avg_power_psd[0] * all_freqs))
+
+    for turbine in range(series.n_turbs):
+        ax[0].semilogx(all_freqs, avg_yaw_psd[turbine] * all_freqs, label=f'Turbine {turbine + 1}')
+        ax[0].fill_between(all_freqs,
+                           (avg_yaw_psd[turbine]-std_yaw_psd[turbine])*all_freqs,
+                           (avg_yaw_psd[turbine]+std_yaw_psd[turbine])*all_freqs,
+                           alpha=0.3)
+        ax[1].semilogx(all_freqs, avg_power_psd[turbine] * all_freqs, label=f'Turbine {turbine + 1}')
+        ax[1].fill_between(all_freqs,
+                           (avg_power_psd[turbine]-std_power_psd[turbine])*all_freqs,
+                           (avg_power_psd[turbine]+std_power_psd[turbine])*all_freqs,
+                           alpha=0.3)
+
+    ax[0].set_xlabel(r'$f \; (Hz)$')
+    ax[0].set_ylabel(r'$f \, \text{PSD}(\theta) \; (^{\circ 2})$')
+    ax[1].set_xlabel(r'$f \; (Hz)$')
+    ax[1].set_ylabel(r'$f \, \text{PSD}(P_i) \; (MW^2)$')
+
+    ax[0].legend(frameon=False, ncols=1)
+    ax[1].legend(frameon=False, ncols=1)
+
+    fig.savefig(os.path.join(casename, 'time_series_mean.pdf'))
     fig.savefig(os.path.join(casename, 'time_series_all.png'), dpi=600)
 
     plt.show()
-
 
 
 if __name__ == "__main__":
