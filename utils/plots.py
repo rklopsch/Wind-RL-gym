@@ -81,6 +81,26 @@ class TimeSeries:
         labels = labels[:self.n_turbs]
         ax.legend(handles, labels, frameon=False, ncols=5)
 
+    def draw_yaw(self, it, ax):
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
+                  '#17becf']
+        for turbine in range(self.n_turbs):
+                ax.plot(self.data[turbine]['Time'][:it], self.data[turbine]['YawAng'][:it],
+                    color=colors[turbine],
+                    alpha=1,
+                    label=f'Turbine {turbine + 1}')
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel(r'$\text{Yaw}_i \; (^{\circ})$')
+        ax.set_xlim(self.data[0]['Time'].iloc[0], self.data[0]['Time'].iloc[-1])
+        ax.set_ylim(-45, 45)
+        ax.set_xlim(self.start_time, self.end_time)
+
+        # only use first labels in legend
+        handles, labels = ax.get_legend_handles_labels()
+        handles = handles[:self.n_turbs]
+        labels = labels[:self.n_turbs]
+        ax.legend(handles, labels, frameon=False, ncols=5)
+
     def draw_power_psd(self, it, ax):
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
                   '#17becf']
@@ -130,27 +150,6 @@ class TimeSeries:
         ax.text(self.U / self.spacing * 1.1, label_max, 'Turbine Spacing', rotation=90, va='top', alpha=0.3)
         ax.axvline(1 / (self.end_time - self.start_time), color='k', linestyle='--')
         ax.text(1 / (self.end_time - self.start_time) * 1.1, label_max, 'Episode Length', rotation=90, va='top', alpha=0.3)
-
-    def draw_yaw(self, it, ax):
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
-                  '#17becf']
-        for turbine in range(self.n_turbs):
-                ax.plot(self.data[turbine]['Time'][:it], self.data[turbine]['YawAng'][:it],
-                    color=colors[turbine],
-                    alpha=1,
-                    label=f'Turbine {turbine + 1}')
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel(r'$\text{Yaw}_i (^{\circ})$')
-        ax.set_xlim(self.data[0]['Time'].iloc[0], self.data[0]['Time'].iloc[-1])
-        ax.set_ylim(-45, 45)
-        ax.set_xlim(self.start_time, self.end_time)
-
-        # only use first labels in legend
-        handles, labels = ax.get_legend_handles_labels()
-        handles = handles[:self.n_turbs]
-        labels = labels[:self.n_turbs]
-        ax.legend(handles, labels, frameon=False, ncols=5)
-        # ax.legend(loc='upper right', ncol=len(cases), columnspacing=0.5, frameon=False)
 
 
 # @hydra.main(config_path="../ppo/", config_name="config_ppo", version_base="1.2")
