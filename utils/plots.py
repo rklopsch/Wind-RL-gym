@@ -42,9 +42,10 @@ class TimeSeries:
 
     def calculate_psds(self):
         fs = 1/self.dt
+        total_steps = int((self.end_time - self.start_time)//self.dt)-1
         for turbine in range(self.n_turbs):
-            freqs, psd_power = welch(self.data[turbine]['Power'][int(self.start_time//self.dt):-1], fs, nperseg=2048)
-            freqs, psd_yaw = welch(self.data[turbine]['YawAng'][int(self.start_time//self.dt):-1], fs, nperseg=2048)
+            freqs, psd_power = welch(self.data[turbine]['Power'][int(self.start_time//self.dt):-1], fs, nperseg=total_steps)
+            freqs, psd_yaw = welch(self.data[turbine]['YawAng'][int(self.start_time//self.dt):-1], fs, nperseg=total_steps)
             df_psd = pd.DataFrame({'Frequency': freqs, 'Power_PSD': psd_power, 'YawAng_PSD': psd_yaw})
             self.freq_data.append(df_psd)
 
