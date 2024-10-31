@@ -109,7 +109,7 @@ class TimeSeries:
                         self.freq_data[turbine]['Power_PSD'] * self.freq_data[turbine]['Frequency'],
                         color=colors[turbine], label=f'Turbine {turbine + 1}')
         ax.set_xlabel(r'$f \; (Hz)$')
-        ax.set_ylabel(r'$f \, PSD \; (W^2)$')
+        ax.set_ylabel(r'$f \, \text{PSD}(P_i) \; (MW^2)$')
         # only use first labels in legend
         handles, labels = ax.get_legend_handles_labels()
         handles = handles[:self.n_turbs]
@@ -127,7 +127,7 @@ class TimeSeries:
                         color=colors[turbine], label=f'Turbine {turbine + 1}')
 
         ax.set_xlabel(r'$f \; (Hz)$')
-        ax.set_ylabel(r'$f \, PSD$')
+        ax.set_ylabel(r'$f \, \text{PSD}(\theta) \; (^{\circ 2})$')
         # only use first labels in legend
         handles, labels = ax.get_legend_handles_labels()
         handles = handles[:self.n_turbs]
