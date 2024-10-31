@@ -20,6 +20,7 @@ class TimeSeries:
     def __init__(self, casename, config, eval=True):
         self.casename = casename
         self.data = []
+        self.freq_data = []
         self.U = 8
         self.n_turbs = config['env']['turbines']
         self.D = config['env']['turbine_diameter']
@@ -38,6 +39,14 @@ class TimeSeries:
             dat = pd.read_csv(file, sep="\s+|, ", engine='python')
             dat['NonDimTime'] = dat['Time'] * self.U / self.D
             self.data.append(dat)
+
+    def calculate_psds(self):
+        fs = 1/self.dt
+        for turbine in range(self.n_turbs):
+            freqs, psd_power = welch(self.data[turbine]['Power'][int(self.start_time//self.dt):-1], fs, nperseg=2048)
+            freqs, psd_yaw = welch(self.data[turbine]['YawAng'][int(self.start_time//self.dt):-1], fs, nperseg=2048)
+            df_psd = pd.DataFrame({'Frequency': freqs, 'Power_PSD': psd_power, 'YawAng_PSD': psd_yaw})
+            self.freq_data.append(df_psd)
 
     def draw_power(self, it, ax):
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
@@ -62,9 +71,8 @@ class TimeSeries:
         # ax.legend(loc='upper right', ncol=len(cases), columnspacing=0.5, frameon=False)
         ax.set_xlabel('Time (s)')
         ax.set_ylabel('Power (MW)')
-        ax.set_xlim(self.data[0]['Time'][0], self.data[0]['Time'].iloc[-1])
-        # ax.set_ylim(0, max(total_power/1e6))
         ax.set_xlim(self.start_time, self.end_time)
+        ax.set_ylim(0, max(total_power[int(self.start_time//self.dt):]/1e6))
 
         # only use first labels in legend
         handles, labels = ax.get_legend_handles_labels()
@@ -75,11 +83,10 @@ class TimeSeries:
     def draw_power_psd(self, it, ax):
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
                   '#17becf']
-        fs = 1/self.dt
         for turbine in range(self.n_turbs):
-            freqs, psd = welch(self.data[turbine]['Power'][3000:it], fs, nperseg=1024)
-            ax.semilogx(freqs, psd*freqs, color=colors[turbine], label=f'Turbine {turbine + 1}')
-
+            ax.semilogx(self.freq_data[turbine]['Frequency'],
+                        self.freq_data[turbine]['Power_PSD'] * self.freq_data[turbine]['Frequency'],
+                        color=colors[turbine], label=f'Turbine {turbine + 1}')
         ax.set_xlabel(r'$f \; (Hz)$')
         ax.set_ylabel(r'$f \, PSD \; (W^2)$')
         # only use first labels in legend
@@ -88,15 +95,15 @@ class TimeSeries:
         labels = labels[:self.n_turbs]
         ax.legend(handles, labels, frameon=False, ncols=1)
 
-        self.add_frequecies(ax, max(psd*freqs))
+        self.add_frequecies(ax, max(self.freq_data[turbine]['Power_PSD'] * self.freq_data[turbine]['Frequency']))
 
     def draw_yaw_psd(self, it, ax):
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
                   '#17becf']
-        fs = 1/self.dt
         for turbine in range(self.n_turbs):
-            freqs, psd = welch(self.data[turbine]['YawAng'][3000:it], fs, nperseg=1024)
-            ax.semilogx(freqs, psd * freqs, color=colors[turbine], label=f'Turbine {turbine + 1}')
+            ax.semilogx(self.freq_data[turbine]['Frequency'],
+                        self.freq_data[turbine]['YawAng_PSD'] * self.freq_data[turbine]['Frequency'],
+                        color=colors[turbine], label=f'Turbine {turbine + 1}')
 
         ax.set_xlabel(r'$f \; (Hz)$')
         ax.set_ylabel(r'$f \, PSD$')
@@ -106,7 +113,7 @@ class TimeSeries:
         labels = labels[:self.n_turbs]
         ax.legend(handles, labels, frameon=False, ncols=1)
 
-        self.add_frequecies(ax, max(psd*freqs))
+        self.add_frequecies(ax, max(self.freq_data[turbine]['YawAng_PSD'] * self.freq_data[turbine]['Frequency']))
 
     def add_frequecies(self, ax, label_max):
         ax.axvspan(0.15 * self.U / self.D, 0.25 * self.U / self.D, color='k', alpha=0.1)
@@ -167,12 +174,12 @@ def main():
         print(environment_name)
         series1 = TimeSeries(environment_name, config)
         series1.collect_data()
+        series1.calculate_psds()
         series1.draw_yaw_psd(-1, axs[0, 1])
         series1.draw_yaw(-1, axs[0, 0])
         series1.draw_power_psd(-1, axs[1, 1])
         series1.draw_power(4998, axs[1, 0])
         fig.savefig(os.path.join(environment_name, 'time_series.pdf'))
-    axs[1, 0].set_ylim(0, 7)
 
     fig.savefig(os.path.join(casename, 'time_series_all.pdf'))
     fig.savefig(os.path.join(casename, 'time_series_all.png'), dpi=600)
