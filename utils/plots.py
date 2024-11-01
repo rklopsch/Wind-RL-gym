@@ -60,8 +60,10 @@ class TimeSeries:
             total_power += self.data[turbine]['Power'][:it]
         ax.plot(self.data[turbine]['Time'][:it], total_power[:it] / 1e6,
                 color='k',
-                alpha=1,
+                alpha=0.5,
                 label=f'Total')
+        average_power = np.mean(total_power[int(self.start_time//self.dt):])/1e6
+        ax.plot([self.start_time, self.end_time], [average_power, average_power], 'k', label='Total Mean')
 
         # ax.plot([self.data[turbine]['Time'][0], self.data[turbine]['Time'][it]], [16.46, 16.46],
         #         color='r',
@@ -77,8 +79,8 @@ class TimeSeries:
 
         # only use first labels in legend
         handles, labels = ax.get_legend_handles_labels()
-        handles = handles[:self.n_turbs]
-        labels = labels[:self.n_turbs]
+        handles = handles[:self.n_turbs+2]
+        labels = labels[:self.n_turbs+2]
         ax.legend(handles, labels, frameon=False, ncols=5)
 
     def draw_yaw(self, it, ax):
@@ -152,6 +154,97 @@ class TimeSeries:
         ax.text(1 / (self.end_time - self.start_time) * 1.1, label_max, 'Episode Length', rotation=90, va='top', alpha=0.3)
 
 
+class EnsembleAverage:
+    def __init__(self, time_series_instances):
+        self.instances = time_series_instances
+
+        self.ensemble_data = []
+        self.ensemble_psd_data = []
+        for turbine_idx in range(self.instances[0].n_turbs):
+            all_dfs = [instance.data[turbine_idx] for instance in self.instances]
+            self.ensemble_data.append(pd.concat(all_dfs).groupby(level=0).mean())
+            all_dfs = [instance.freq_data[turbine_idx] for instance in self.instances]
+            self.ensemble_psd_data.append(pd.concat(all_dfs).groupby(level=0).mean())
+
+    def draw_power(self, it, ax):
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
+                  '#17becf']
+        total_power = 0
+        for turbine_idx, df in enumerate(self.ensemble_data):
+            color = colors[turbine_idx % len(colors)]
+            ax.plot(df['Time'], df['Power'] / 1e6, color=color, label=f'Turbine {turbine_idx + 1}')
+            total_power += df['Power']
+        ax.plot(df['Time'], total_power / 1e6,
+                color='k',
+                alpha=0.5,
+                label=f'Total')
+
+        average_power = np.mean(total_power[int(self.instances[0].start_time//self.instances[0].dt):])/1e6
+        ax.plot([self.instances[0].start_time, self.instances[0].end_time], [average_power, average_power], 'k', label='Total Mean')
+
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('Power (MW)')
+        ax.set_xlim(self.instances[0].start_time, self.instances[0].end_time)
+        ax.set_ylim(0, max(total_power[int(self.instances[0].start_time//self.instances[0].dt):]/1e6))
+
+        # only use first labels in legend
+        handles, labels = ax.get_legend_handles_labels()
+        handles = handles[:self.instances[0].n_turbs+2]
+        labels = labels[:self.instances[0].n_turbs+2]
+        ax.legend(handles, labels, frameon=False, ncols=5)
+
+    def draw_yaw(self, it, ax):
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
+                  '#17becf']
+        for turbine_idx, df in enumerate(self.ensemble_data):
+            color = colors[turbine_idx % len(colors)]
+            ax.plot(df['Time'], df['YawAng'], color=color, label=f'Turbine {turbine_idx + 1}')
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel(r'$\text{Yaw}_i \; (^{\circ})$')
+        ax.set_ylim(-45, 45)
+        ax.set_xlim(self.instances[0].start_time, self.instances[0].end_time)
+
+        # only use first labels in legend
+        handles, labels = ax.get_legend_handles_labels()
+        handles = handles[:self.instances[0].n_turbs]
+        labels = labels[:self.instances[0].n_turbs]
+        ax.legend(handles, labels, frameon=False, ncols=5)
+
+    def draw_power_psd(self, it, ax):
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
+                  '#17becf']
+        for turbine_idx, df in enumerate(self.ensemble_psd_data):
+            color = colors[turbine_idx % len(colors)]
+            ax.semilogx(df['Frequency'], df['Power_PSD'] * df['Frequency'], color=color, label=f'Turbine {turbine_idx+1}')
+
+        ax.set_xlabel(r'$f \; (Hz)$')
+        ax.set_ylabel(r'$f \, \text{PSD}(P_i) \; (MW^2)$')
+        # only use first labels in legend
+        handles, labels = ax.get_legend_handles_labels()
+        handles = handles[:self.instances[0].n_turbs]
+        labels = labels[:self.instances[0].n_turbs]
+        ax.legend(handles, labels, frameon=False, ncols=1)
+
+        self.instances[0].add_frequecies(ax, max(df['Power_PSD'] * df['Frequency']))
+
+    def draw_yaw_psd(self, it, ax):
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22',
+                  '#17becf']
+        for turbine_idx, df in enumerate(self.ensemble_psd_data):
+            color = colors[turbine_idx % len(colors)]
+            ax.semilogx(df['Frequency'], df['YawAng_PSD'] * df['Frequency'], color=color, label=f'Turbine {turbine_idx+1}')
+
+        ax.set_xlabel(r'$f \; (Hz)$')
+        ax.set_ylabel(r'$f \, \text{PSD}(\theta) \; (^{\circ 2})$')
+        # only use first labels in legend
+        handles, labels = ax.get_legend_handles_labels()
+        handles = handles[:self.instances[0].n_turbs]
+        labels = labels[:self.instances[0].n_turbs]
+        ax.legend(handles, labels, frameon=False, ncols=1)
+
+        self.instances[0].add_frequecies(ax, max(df['YawAng_PSD'] * df['Frequency']))
+
+
 # @hydra.main(config_path="../ppo/", config_name="config_ppo", version_base="1.2")
 # def main(cfg: "DictConfig"):
 def main():
@@ -166,15 +259,10 @@ def main():
     with open(os.path.join(casename, "eval/config_ppo.yaml"), "r") as file:
         config = yaml.safe_load(file)
     print(casename)
-    
-    all_powers = []
-    all_yaws = []
-    all_power_psds = []
-    all_yaw_psds = []
-    all_freqs = None
-    all_time_data = None
 
-    # plot time series and psd for each environment
+    # plot time series and psd for each environment and
+    # Collect time series data from multiple environments
+    time_series_instances = []
     for env in range(config['eval']['n_parallel']):
         for ax in axs.flatten():
             ax.cla()
@@ -188,55 +276,22 @@ def main():
         series.draw_power_psd(-1, axs[1, 1])
         series.draw_power(4998, axs[1, 0])
         fig.savefig(os.path.join(environment_name, 'time_series.pdf'))
-        yaw_psds = [series.freq_data[turbine]['YawAng_PSD'] for turbine in range(series.n_turbs)]
-        power_psds = [series.freq_data[turbine]['Power_PSD'] for turbine in range(series.n_turbs)]
-        all_yaw_psds.append(yaw_psds)
-        all_power_psds.append(power_psds)
-        if all_time_data is None:
-            all_freqs = series.freq_data[0]['Frequency']
+        time_series_instances.append(series)
 
-    # Calculate ensemble statistics
-    all_yaw_psds = np.stack(all_yaw_psds, axis=1)
-    avg_yaw_psd = np.mean(all_yaw_psds, axis=1)
-    med_yaw_psd = np.median(all_yaw_psds, axis=1)
-    std_yaw_psd = np.std(all_yaw_psds, axis=1)
-    min_yaw_psd = np.min(all_yaw_psds, axis=1)
-    max_yaw_psd = np.max(all_yaw_psds, axis=1)
+    # Ensemble averaging
+    ensemble = EnsembleAverage(time_series_instances)
 
-    all_power_psds = np.stack(all_power_psds, axis=1)
-    avg_power_psd = np.mean(all_power_psds, axis=1)
-    med_power_psd = np.median(all_power_psds, axis=1)
-    std_power_psd = np.std(all_power_psds, axis=1)
-    min_power_psd = np.min(all_power_psds, axis=1)
-    max_power_psd = np.max(all_power_psds, axis=1)
-
-    fig, ax = plt.subplots(2, 1, figsize=(6, 6), constrained_layout=True)
-
-    series.add_frequecies(ax[0], np.max(avg_yaw_psd[0] * all_freqs))
-    series.add_frequecies(ax[1], np.max(avg_power_psd[0] * all_freqs))
-
-    for turbine in range(series.n_turbs):
-        ax[0].semilogx(all_freqs, avg_yaw_psd[turbine] * all_freqs, label=f'Turbine {turbine + 1}')
-        ax[0].fill_between(all_freqs,
-                           (avg_yaw_psd[turbine]-std_yaw_psd[turbine])*all_freqs,
-                           (avg_yaw_psd[turbine]+std_yaw_psd[turbine])*all_freqs,
-                           alpha=0.3)
-        ax[1].semilogx(all_freqs, avg_power_psd[turbine] * all_freqs, label=f'Turbine {turbine + 1}')
-        ax[1].fill_between(all_freqs,
-                           (avg_power_psd[turbine]-std_power_psd[turbine])*all_freqs,
-                           (avg_power_psd[turbine]+std_power_psd[turbine])*all_freqs,
-                           alpha=0.3)
-
-    ax[0].set_xlabel(r'$f \; (Hz)$')
-    ax[0].set_ylabel(r'$f \, \text{PSD}(\theta) \; (^{\circ 2})$')
-    ax[1].set_xlabel(r'$f \; (Hz)$')
-    ax[1].set_ylabel(r'$f \, \text{PSD}(P_i) \; (MW^2)$')
-
-    ax[0].legend(frameon=False, ncols=1)
-    ax[1].legend(frameon=False, ncols=1)
-
-    fig.savefig(os.path.join(casename, 'time_series_mean.pdf'))
-    fig.savefig(os.path.join(casename, 'time_series_all.png'), dpi=600)
+    # Plot ensemble results
+    fig, axs = plt.subplots(2, 2,
+                            figsize=(14, 8),
+                            constrained_layout=True,
+                            gridspec_kw={'width_ratios': [2, 1]})
+    # ensemble.plot_ensemble_results(axs[1], axs[0])
+    ensemble.draw_yaw_psd(-1, axs[0, 1])
+    ensemble.draw_yaw(-1, axs[0, 0])
+    ensemble.draw_power_psd(-1, axs[1, 1])
+    ensemble.draw_power(-1, axs[1, 0])
+    fig.savefig(os.path.join(casename, 'ensemble_time_series.pdf'))
 
     plt.show()
 
