@@ -144,6 +144,7 @@ def make_sac_agent(cfg, train_env, eval_env):
     model = nn.ModuleList([actor, critic]).to(device)
 
     # Initialise models
+    # this should be removed
     with torch.no_grad(), set_exploration_type(ExplorationType.RANDOM):
         td = eval_env.reset()
         td = td.to(device)

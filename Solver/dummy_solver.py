@@ -71,3 +71,10 @@ while True:
     for i in instances:
         client.put_tensor(f'{i}_sim_done', np.array([1]))
 
+    for i in instances:
+        print(f"Wrote key {i}_sim_done to True, read out value immediately after setting: {client.get_tensor(f'{i}_sim_done')[0]}")
+    # in SOME occurences, the immediate readout value was FALSE even though we had just set it to True... but this should be fine?
+
+    # Simulated wait time for computation to finish
+    time.sleep(0.2)
+

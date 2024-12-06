@@ -99,16 +99,20 @@ class TurbEnv(EnvBase):
         print(f"Key {self.instance}_sim_done exists? {self.client.poll_key(f'{self.instance}_sim_done', 100, 10)}")
 
         # Poll whether X3D simulation is done
-        while not self.client.poll_key(f'{self.instance}_sim_done', 100, 10) or not self.client.get_tensor(f"{self.instance}_sim_done")[0]:
+        while not self.client.poll_key(f'{self.instance}_sim_done', 100, 10) or not bool(self.client.get_tensor(f"{self.instance}_sim_done")[0]):
             print('We are in here now ...')
-            print(f"POLL: {self.client.poll_key(f'{self.instance}_sim_done', 100, 10)}")
-            print(f"VALUE: {self.client.get_tensor(f'{self.instance}_sim_done')[0]}")  # this is always zero
+            print(f"POLL: {self.client.poll_key(f'{self.instance}_sim_done', 100, 10)}")  # this is always True
+            print(f"VALUE: {self.client.get_tensor(f'{self.instance}_sim_done')[0]}")  # this is zero almost always, but sometimes 1
             continue
 
-        # Set i_sim_done flag to false (zero)
-        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1))  # this confuses me every time
+        # There is def some issue with how and when we are setting the sim_done to be True in the dummy solver...
+        # for the dummy solver there is no real reason to ever set it to not true....
+        # so easy hack here could be to just not set it to False ever when using dummy mode- but this requires a conditional here which is not pretty
 
-        print(f"Set key {self.instance}_sim_done to False.")
+        # Set i_sim_done flag to false (zero)
+        # IMPORTANT: this really should be done in here!! just commented out for debugging purposes
+        print(f"Setting key {self.instance}_sim_done to False inside of communicate now.")
+        self.client.put_tensor(f"{self.instance}_sim_done", np.array([0]))
 
         # Here need to loop over ALL instances, and stack the results into one tensor
         turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # [n_turbs]
