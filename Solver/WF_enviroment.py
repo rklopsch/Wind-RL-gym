@@ -45,7 +45,7 @@ class TurbEnv(EnvBase):
             raise ValueError(f"The parameter 'flow_field_directions' must be a list containing only the elements 'ux', 'uy', 'uz'. Got {params['flow_field_directions']}")
         if not len(set(params["flow_field_directions"])) == len(params["flow_field_directions"]):
             raise ValueError(f"The parameter 'flow_field_directions' must not contain duplicates. Got {params['flow_field_directions']}.")
-        self.obs_idxs = list(map(lookup.get, params["flow_field_directions"]))
+        self.obs_idxs = list(map(lookup.get, params["flow_field_directions"]))  # nice
         self.obs_per_probe = len(self.obs_idxs)
         self.obs_per_turbine = self.probes_per_turbine * self.obs_per_probe
         self.n_turbs = params["n_turbines"]
@@ -91,12 +91,24 @@ class TurbEnv(EnvBase):
         # Set i_yaws_done flag to True (one)
         self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1)) # setting one as True
 
+        print(f"Set key {self.instance}_yaws_done to True.")
+
+        while not self.client.poll_key(f"{self.instance}_sim_done", 100, 10):
+            print(f"Waiting for key {self.instance}_sim_done to be created.")
+
+        print(f"Key {self.instance}_sim_done exists? {self.client.poll_key(f'{self.instance}_sim_done', 100, 10)}")
+
         # Poll whether X3D simulation is done
-        while not self.client.get_tensor(f"{self.instance}_sim_done")[0]:
+        while not self.client.poll_key(f'{self.instance}_sim_done', 100, 10) or not self.client.get_tensor(f"{self.instance}_sim_done")[0]:
+            print('We are in here now ...')
+            print(f"POLL: {self.client.poll_key(f'{self.instance}_sim_done', 100, 10)}")
+            print(f"VALUE: {self.client.get_tensor(f'{self.instance}_sim_done')[0]}")  # this is always zero
             continue
 
         # Set i_sim_done flag to false (zero)
-        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1))
+        self.client.put_tensor(f"{self.instance}_sim_done", np.zeros(1))  # this confuses me every time
+
+        print(f"Set key {self.instance}_sim_done to False.")
 
         # Here need to loop over ALL instances, and stack the results into one tensor
         turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # [n_turbs]

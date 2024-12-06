@@ -92,6 +92,9 @@ def main(cfg: "DictConfig"):
     # How many frames have already been collected (if loading from checkpoint)?
     collected_frames = 0 if not cfg.checkpoint.load_from_checkpoint else cfg.checkpoint.model_checkpoint_id
 
+    logging.info(f"Resetting train env for test now")
+    train_env.reset()
+
     # Create collector
     logging.info(f'Creating data collector')
     collector = SyncDataCollector(
@@ -103,6 +106,8 @@ def main(cfg: "DictConfig"):
         storing_device=device,
         max_frames_per_traj=max_episode_length
     )
+
+    logging.info("We are never getting past this point when using the dummy solver.")
 
     # Create data buffer
     logging.info(f'Creating data buffer')

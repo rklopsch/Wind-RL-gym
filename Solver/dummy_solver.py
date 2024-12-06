@@ -31,28 +31,31 @@ n_envs = cfg.env.n_parallel if training else cfg.eval.n_parallel  # use correct 
 client = Client(address=None, cluster=False)
 instances = [i+1 for i in range(n_envs)]
 
+print(f"Creating {n_envs} dummy solvers.")
+
 while True:
     # only for testing this file on its own
     # client.put_tensor(f'{instance}_yaws_done', np.array([1]))
     # Check if the file exists - idle until it does
     while not all([client.poll_key(f'{i}_yaws_done', 100, 10) for i in instances]):
-        # print(f"Waiting for yaws done to be created")
+        print(f"Waiting for yaws done to be created")
         continue
 
     # Check if the yaws have been written by the agent
     while not all([client.get_tensor(f'{i}_yaws_done')[0] for i in instances]):
-        # print(f"Waiting for yaws to be done. Time {time.time()}")
+        print(f"Waiting for yaws to be done. Time {time.time()}")
         continue
 
     # Read yaws determined by agent
     yaws = client.get_tensor(f'{instances[0]}_yaws')
     # yaws = np.zeros([3])
 
-    # print(f"Yaws are {yaws}")
+    print(f"Yaws are {yaws}")
     
     # Store the new outputs of the simulation on the database
     for i in instances:
         client.put_tensor(f'{i}_turbine_powers', 1e6 * np.random.randn(n_turbines))
+        print(f"Put tensor for key {i}_turbine_powers succeeded.")
         for j in range(total_probes):
             client.put_tensor(f"{i}_probe_{j+1}", np.random.randn(3))
 
