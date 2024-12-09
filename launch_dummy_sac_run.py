@@ -34,13 +34,13 @@ def launch_solver(experiment):
     experiment.generate(producer, overwrite=True)
     return producer
 
-def launch_ppo(experiment, load_params):
-    aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py")
+def launch_sac(experiment, load_params):
+    aprun = experiment.create_run_settings(exe="python", exe_args="sac.py")
     aprun.set_tasks(1)
-    producer = experiment.create_model("ppo", aprun)
+    producer = experiment.create_model("sac", aprun)
 
     # Copy relevant files
-    file_list = ["./ppo/ppo.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml"]  # PPO files
+    file_list = ["./sac/sac.py", "./sac/utils_sac.py", "./sac/config_sac.yaml"]  # SAC files
     file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator
     if load_params['load_checkpoint']:
         file_list += [f"{load_params['checkpoint_path']}/actor_{load_params['checkpoint_id']}.pkl"]
@@ -53,8 +53,8 @@ def launch_ppo(experiment, load_params):
 
 if __name__ == '__main__':
     # Read PPO config
-    initialize(config_path="./ppo/", version_base="1.2")
-    cfg = compose(config_name="config_ppo.yaml")
+    initialize(config_path="./sac/", version_base="1.2")
+    cfg = compose(config_name="config_sac.yaml")
 
     # Load a checkpointed model?
     load_params = {
@@ -65,17 +65,17 @@ if __name__ == '__main__':
 
     print("WARNING: The dummy solver mode is currently broken when using too many parallel envs. Since this is not really a relevant feature, it is recommended to use 5 parallel envs when using the dummy solver mode. This should be sufficient for all testing purposes.\n")
 
-    exp = Experiment("launch_dummy_run", launcher="auto")
+    exp = Experiment("launch_dummy_SAC_run", launcher="auto")
 
     total_runtime = 240  # seconds, without including setup of orchestrator etc.
 
-    db_port = 6782
+    db_port = 6784
     db = launch_database(exp, db_port)
 
     solver_app = launch_solver(exp)
     exp.start(solver_app, block=False, summary=False)
 
-    rl_app = launch_ppo(exp, load_params)
+    rl_app = launch_sac(exp, load_params)
     exp.start(rl_app, block=False, summary=False)
 
     # shutdown the database because we don't need it anymore

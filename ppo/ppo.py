@@ -92,9 +92,6 @@ def main(cfg: "DictConfig"):
     # How many frames have already been collected (if loading from checkpoint)?
     collected_frames = 0 if not cfg.checkpoint.load_from_checkpoint else cfg.checkpoint.model_checkpoint_id
 
-    logging.info(f"Resetting train env for test now")
-    train_env.reset()
-
     # Create collector
     logging.info(f'Creating data collector')
     collector = SyncDataCollector(

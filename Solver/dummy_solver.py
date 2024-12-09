@@ -7,8 +7,8 @@ import logging
 
 
 # Check if we are running in training or eval mode
-# If in training mode, there will be a "ppo" directory
-# If in eval mode, there will be a "eval" directory (and no "ppo" directory)
+# If in training mode, there will be a "ppo" or "sac" directory
+# If in eval mode, there will be a "eval" directory (and no "ppo" or "sac" directory)
 if os.path.isdir('../eval'):
     config_dir = '../eval'
     training = False
@@ -16,13 +16,21 @@ if os.path.isdir('../eval'):
 elif os.path.isdir('../ppo'):
     config_dir = '../ppo'
     training = True
-    logging.info('Running dummy solver in training mode.')
+    algo = 'ppo'
+    logging.info('Running dummy solver in training mode (PPO).')
+elif os.path.isdir('../sac'):
+    config_dir = '../sac'
+    training = True
+    algo = 'sac'
+    logging.info('Running dummy solver in training mode (SAC).')
 else:
-    raise RuntimeError(f"Did not find either ppo or eval directory.")
+    raise RuntimeError(f"Did not find either ppo, sac or eval directory.")
 
 # Load the PPO config file to configure the dummy solver correctly
+if not algo:
+    raise RuntimeError(f"Could not determine which algo is being run. Are you in eval mode? Need to implement this!")
 initialize(config_path=config_dir, version_base="1.2")
-cfg = compose(config_name="config_ppo.yaml")
+cfg = compose(config_name=f"config_{algo}.yaml")
 
 n_turbines = cfg.env.turbines
 total_probes = cfg.env.turbines * cfg.env.probes_per_turbine

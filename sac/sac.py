@@ -1,23 +1,21 @@
-import pickle
 import time
 import os
+import sys
 import hydra
-import torch
 import torch.cuda
-import tqdm
 import numpy as np
 from tensordict import TensorDict
 from torchrl.envs.utils import ExplorationType, set_exploration_type
-import wandb
-from torchrl.record.loggers import generate_exp_name
 from utils_sac import (
-    log_metrics_offline,
-    log_metrics_wandb,
     make_collector,
     make_loss_module,
     make_replay_buffer,
     make_sac_agent,
+    make_ma_sac_agents,
     make_sac_optimizer,
+    make_parallel_env,
+    log_metrics,
+    should_log_now,
 )
 import logging
 
@@ -65,15 +63,21 @@ def main(cfg: "DictConfig"):
 
     # Create agent
     logging.info('Creating models')
-    model, exploration_policy, device = make_sac_agent(cfg, train_env, eval_env)
+    # model, exploration_policy = make_sac_agent(cfg, params)
+    actor, critic = make_ma_sac_agents(cfg, params)
+    actor, critic = actor.to(device), critic.to(device)
 
     # Create SAC loss
-    loss_module, target_net_updater = make_loss_module(cfg, model)
+    logging.info('Creating loss module')
+    loss_module, target_net_updater = make_loss_module(cfg, params, actor, critic)
 
     # Create off-policy collector
-    collector = make_collector(cfg, train_env, exploration_policy)
+    logging.info('Creating collector')
+    train_env = make_parallel_env(cfg, params, cfg.env.n_parallel, device=device)
+    collector = make_collector(cfg, train_env, actor, device)
 
     # Create replay buffer
+    logging.info('Creating replay buffer')
     replay_buffer = make_replay_buffer(cfg)
 
     # Create optimizers
@@ -89,19 +93,55 @@ def main(cfg: "DictConfig"):
     # pbar = tqdm.tqdm(total=cfg.collector.total_frames // cfg.env.frame_skip)
     num_console_updates = 1000
 
-    init_random_frames = cfg.collector.init_random_frames // cfg.env.frame_skip
-    num_updates = int(
-        cfg.env.num_envs
-        * cfg.collector.frames_per_batch
-        * cfg.optim.utd_ratio
-    )
+    init_random_frames = cfg.collector.init_random_frames
+    num_updates = n_environments * frames_per_batch
     prb = cfg.replay_buffer.prb
 
+    """
+    # Initial reset to burn in simulation
+    logging.info(f'Initial reset: collecting {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
+    # Each reset is cfg.env.reset_frames, we want a total of cfg.env.initial_reset_frames many
+    reset_td = collector.reset()
+    for i in range(cfg.env.initial_reset_frames // cfg.env.reset_frames):
+        reset_td = collector.reset(reset_td)
+        logging.info(f"{100*i/(cfg.env.initial_reset_frames // cfg.env.reset_frames)}% done with initial reset.")
+    logging.info(f"100% done with initial reset.")
+    """
+
+    logging.info('Starting training...')
     sampling_start = time.time()
+    logs = {}
     train_start_time = sampling_start
     for i, tensordict in enumerate(collector):
         log_info = {}
         sampling_time = time.time() - sampling_start
+
+        tensordict.set(
+            ("next", "agents", "done"),
+            tensordict.get(("next", "done"))
+            .unsqueeze(-1)
+            .expand(tensordict.get_item_shape(("next", train_env.reward_key))),
+        )
+        tensordict.set(
+            ("next", "agents", "terminated"),
+            tensordict.get(("next", "terminated"))
+            .unsqueeze(-1)
+            .expand(tensordict.get_item_shape(("next", train_env.reward_key))),
+        )
+        tensordict.set(
+            ("next", "done"),
+            tensordict.get(("next", "done"))
+            .unsqueeze(-1)
+            .expand(tensordict.get_item_shape(("next", train_env.reward_key))),
+        )
+        tensordict.set(
+            ("next", "terminated"),
+            tensordict.get(("next", "terminated"))
+            .unsqueeze(-1)
+            .expand(tensordict.get_item_shape(("next", train_env.reward_key))),
+        )
+        # We need to expand the done and terminated to match the reward shape (this is expected by the value estimator)
+
         # Update weights of the inference policy
         collector.update_policy_weights_()
 
@@ -113,11 +153,11 @@ def main(cfg: "DictConfig"):
 
         # Console update
         # pbar.update(tensordict.numel())
-        if collected_frames % (cfg.collector.total_frames // (cfg.env.frame_skip * num_console_updates) + 1) == 0:
-            console_output = f'Frame {collected_frames}/{cfg.collector.total_frames // cfg.env.frame_skip}'
+        if should_log_now(cfg, collected_frames, num_console_updates):
+            console_output = f'Frame {collected_frames}/{cfg.collector.total_frames}'
             time_passed = time.time() - train_start_time
             console_output += f' | {time_passed/60:.0f} min' if time_passed/60 > 1 else f' | <1 min'
-            print(console_output)
+            logging.info(console_output)
 
         # Optimization steps
         training_start = time.time()
@@ -162,20 +202,24 @@ def main(cfg: "DictConfig"):
                     replay_buffer.update_tensordict_priority(sampled_tensordict)
 
         training_time = time.time() - training_start
-        episode_end = (
-            tensordict.get(("next", "done"), None)
-            if tensordict.get(("next", "done"), False).any()
-            else tensordict.get(("next", "terminated"), False)
-        )
-        episode_rewards = tensordict["next", "episode_reward"][episode_end]
 
         # Logging
-        if len(episode_rewards) > 0:
-            # we never call this for some reason...
-            episode_length = tensordict["next", "step_count"][episode_end]
-            log_info["train/reward"] = (episode_rewards/episode_length).mean().item()
-            log_info["train/last_reward"] = tensordict["next", "reward"][episode_end].mean().item()
-            log_info["train/episode_length"] = cfg.env.frame_skip * episode_length.sum().item() / len(episode_length)
+        episode_rewards = tensordict["next", "agents", "episode_reward"][tensordict["next", "done"]]
+        episode_length = tensordict["next", "step_count"][tensordict["next", "done"].all(-2)]
+        if len(episode_length) > 0:
+            log_info.update(
+                {
+                    "train/episode_reward": episode_rewards.mean().item(),
+                    "train/episode_length": episode_length.sum().item() / len(episode_length),
+                }
+            )
+        else:  # if no end of an episode is contained in the batch, fill the logs with NaN
+            log_info.update(
+                {
+                    "train/episode_reward": np.nan,
+                    "train/episode_length": np.nan,
+                }
+            )
         if collected_frames >= init_random_frames:
             log_info["train/q_loss"] = losses.get("loss_qvalue").mean().item()
             log_info["train/actor_loss"] = losses.get("loss_actor").mean().item()
@@ -185,69 +229,13 @@ def main(cfg: "DictConfig"):
             log_info["train/sampling_time"] = sampling_time
             log_info["train/training_time"] = training_time
 
-        # Evaluation
-        if i % cfg.logger.eval_iter == 0:
-            with set_exploration_type(ExplorationType.MODE), torch.no_grad():
-                eval_start = time.time()
-                eval_rollout = eval_env.rollout(
-                    cfg.logger.test_episode_length,
-                    model[0],
-                    auto_cast_to_device=True,
-                    break_when_any_done=True,
-                )
-                eval_time = time.time() - eval_start
-                # Compute total reward (norm of solution + norm of actuation)
-                eval_rewards = eval_rollout["next", "reward"].mean(-2)  # 20 x 1
-                last_rewards = eval_rollout["next", "reward"][..., -1, :]  # 20 x 1
-                mean_eval_reward = eval_rewards.mean().item()  # across all eval envs
-                std_eval_reward = eval_rewards.std().item()  # across all eval envs
-                mean_last_reward = last_rewards.mean().item()
-                std_last_reward = last_rewards.std().item()
-                # Compute mean and std of actuation
-                mean_actuations = torch.linalg.norm(eval_rollout["action"], dim=-1).mean(-1)  # 20 x 1
-                std_actuations = torch.linalg.norm(eval_rollout["action"], dim=-1).std(-1)
-                mean_mean_actuation = mean_actuations.mean().item()
-                mean_std_actuation = std_actuations.mean().item()
-                # Compute length of rollout
-                terminated = eval_rollout["terminated"].nonzero()
-                if terminated.nelement() > 0:
-                    rollout_episode_length = terminated[0][0].item()
-                else:
-                    rollout_episode_length = cfg.logger.test_episode_length
-
-            log_info.update(
-                {
-                    "eval/mean_reward": mean_eval_reward,
-                    "eval/mean_last_reward": mean_last_reward,
-                    "eval/std_reward": std_eval_reward,
-                    "eval/std_last_reward": std_last_reward,
-                    "eval/mean_mean_actuation": mean_mean_actuation,
-                    "eval/mean_std_actuation": mean_std_actuation,
-                    "eval/time": eval_time,
-                    "eval/episode_length": rollout_episode_length,
-                }
-            )
-            for i in range(eval_rewards.shape[0]):
-                log_info.update({f"eval/reward_{i}": eval_rewards[i].item()})
-                log_info.update({f"eval/last_reward_{i}": last_rewards[i].item()})
-                log_info.update({f"eval/mean_actuation_{i}": mean_actuations[i].item()})
-                log_info.update({f"eval/std_actuation_{i}": std_actuations[i].item()})
-
-        wandb.log(data=log_info, step=collected_frames)
+        log_metrics(logs, log_info)
         sampling_start = time.time()
 
-    # Save replay buffer
-    if cfg.logger.save_replay_buffer:
-        output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
-        replay_buffer.dumps(output_dir + 'replay_buffer_SAC')
-        print(f"Saved replay buffer. (Saved at {output_dir + 'replay_buffer_SAC'}).")
-
     collector.shutdown()
-    wandb.finish()
-
     end_time = time.time()
     execution_time = end_time - start_time
-    print(f"Training took {execution_time:.2f} seconds to finish")
+    logging.info(f"Training took {execution_time:.2f} seconds to finish")
 
 
 if __name__ == "__main__":

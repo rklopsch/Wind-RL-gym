@@ -1,6 +1,6 @@
 # environment and task
 env:
-  n_parallel: 32
+  n_parallel: 5
   n_processors_per_env: 128
   dummy_update: False
   env_name: WindFarm
@@ -39,7 +39,6 @@ replay_buffer:
 
 # optim
 optim:
-  utd_ratio: 1.0
   actuator_loss_weight: 0.0  # Weight hyperparameter of actuation size in reward function
   gamma: 0.99
   lr: 3.0e-4
@@ -51,8 +50,10 @@ optim:
 
 # network
 network:
-  actor_hidden_sizes: [256, 256]
-  critic_hidden_sizes: [256, 256]
+  actor_hidden_depth: 2
+  actor_hidden_size: 256
+  critic_hidden_depth: 2
+  critic_hidden_size: 256
   activation: relu  # The original TQC paper uses ReLu
   default_policy_scale: 1.0
   scale_lb: 0.1
@@ -69,7 +70,16 @@ logger:
   project_name: LatentRL
   team_name: why_are_all_the_good_names_taken_aaa
   save_replay_buffer: False
+  logging_stream: stdout  # stdout to print to console or empty (None) to print to standard log file
+
 
 # Disable output subdirectory
 hydra:
   output_subdir: config
+
+# Settings for checkpointing
+checkpoint:
+  checkpoint_interval: 100
+  load_from_checkpoint: False
+  model_checkpoint_path: training_ppo_03-10-24/ppo/checkpoints   # Path to checkpoint, RELATIVE to Wind-RL/
+  model_checkpoint_id: 1  # ID of checkpoint
