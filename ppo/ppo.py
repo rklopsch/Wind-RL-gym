@@ -107,8 +107,6 @@ def main(cfg: "DictConfig"):
         max_frames_per_traj=max_episode_length
     )
 
-    logging.info("We are never getting past this point when using the dummy solver.")
-
     # Create data buffer
     logging.info(f'Creating data buffer')
     sampler = SamplerWithoutReplacement()
@@ -164,13 +162,15 @@ def main(cfg: "DictConfig"):
     num_mini_batches = frames_per_batch // mini_batch_size
     num_network_updates = (collected_frames // frames_per_batch) * cfg.loss.ppo_epochs * num_mini_batches
     total_network_updates = (total_frames // frames_per_batch) * cfg.loss.ppo_epochs * num_mini_batches
-    
+
     # Initial reset
     logging.info(f'Initial reset: collecting {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
     # Each reset is cfg.env.reset_frames, we want a total of cfg.env.initial_reset_frames many
     reset_td = collector.reset()
-    for _ in range(cfg.env.initial_reset_frames // cfg.env.reset_frames):
+    for i in range(cfg.env.initial_reset_frames // cfg.env.reset_frames):
         reset_td = collector.reset(reset_td)
+        logging.info(f"{100*i/(cfg.env.initial_reset_frames // cfg.env.reset_frames)}% done with initial reset.")
+    logging.info(f"100% done with initial reset.")
 
     sampling_start = time.time()
 

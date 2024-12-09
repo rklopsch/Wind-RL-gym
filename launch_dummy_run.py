@@ -63,9 +63,11 @@ if __name__ == '__main__':
         'checkpoint_path': cfg.checkpoint.model_checkpoint_path,
     }
 
+    print("WARNING: The dummy solver mode is currently broken when using too many parallel envs. Since this is not really a relevant feature, it is recommended to use 5 parallel envs when using the dummy solver mode. This should be sufficient for all testing purposes.\n")
+
     exp = Experiment("launch_dummy_run", launcher="auto")
 
-    total_runtime = 120  # seconds, without including setup of orchestrator etc.
+    total_runtime = 240  # seconds, without including setup of orchestrator etc.
 
     db_port = 6782
     db = launch_database(exp, db_port)

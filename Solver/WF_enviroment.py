@@ -91,30 +91,15 @@ class TurbEnv(EnvBase):
         # Set i_yaws_done flag to True (one)
         self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1)) # setting one as True
 
-        print(f"Set key {self.instance}_yaws_done to True.")
-
-        while not self.client.poll_key(f"{self.instance}_sim_done", 100, 10):
-            print(f"Waiting for key {self.instance}_sim_done to be created.")
-
-        print(f"Key {self.instance}_sim_done exists? {self.client.poll_key(f'{self.instance}_sim_done', 100, 10)}")
-
+        # print(f"Set key {self.instance}_yaws_done to True.")
         # Poll whether X3D simulation is done
         while not self.client.poll_key(f'{self.instance}_sim_done', 100, 10) or not bool(self.client.get_tensor(f"{self.instance}_sim_done")[0]):
-            print('We are in here now ...')
-            print(f"POLL: {self.client.poll_key(f'{self.instance}_sim_done', 100, 10)}")  # this is always True
-            print(f"VALUE: {self.client.get_tensor(f'{self.instance}_sim_done')[0]}")  # this is zero almost always, but sometimes 1
             continue
 
-        # There is def some issue with how and when we are setting the sim_done to be True in the dummy solver...
-        # for the dummy solver there is no real reason to ever set it to not true....
-        # so easy hack here could be to just not set it to False ever when using dummy mode- but this requires a conditional here which is not pretty
-
         # Set i_sim_done flag to false (zero)
-        # IMPORTANT: this really should be done in here!! just commented out for debugging purposes
-        print(f"Setting key {self.instance}_sim_done to False inside of communicate now.")
+        # print(f"Setting key {self.instance}_sim_done to False inside of communicate now.")
         self.client.put_tensor(f"{self.instance}_sim_done", np.array([0]))
 
-        # Here need to loop over ALL instances, and stack the results into one tensor
         turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")  # [n_turbs]
         turbine_obs = np.zeros((self.total_probes, self.obs_per_probe))
         for i in range(self.total_probes):
@@ -194,7 +179,7 @@ class TurbEnv(EnvBase):
             device=self.device,
         )
 
-        print(f"Hello again. I am instance {self.instance} This is the time at END of step: {time.time():.4f}.")
+        # print(f"Hello again. I am instance {self.instance} This is the time at END of step: {time.time():.4f}.")
 
         return out
 
@@ -222,8 +207,6 @@ class TurbEnv(EnvBase):
             
         for _ in range(self.reset_frames - steps_to_change_angle):
             _, _ = self._communicate(new_alpha=reset_angles)
-            
-        # Make sure the flags for yaws_done and sim_done are both set to False at the end of reset
 
         # for non batch-locked envs, the input tensordict shape dictates the number
         # of simulators run simultaneously. In other contexts, the initial

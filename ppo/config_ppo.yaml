@@ -1,6 +1,6 @@
 # task and env
 env:
-  n_parallel: 32
+  n_parallel: 5
   n_processors_per_env: 128
   dummy_update: False
   env_name: WindFarm
