@@ -358,5 +358,54 @@ def log_metrics(logs, metrics):
 
 
 def should_log_now(cfg, frames, num_console_updates):
+    return True  # always log
+    return frames % (cfg.collector.total_frames // (num_console_updates) + 1) == 0  # log a total of num_console_updates times
+
+
+def load_model(cfg, env_params, path_to_model, id):
+    try:
+        # Filenames
+        actor_path = path_to_model + '/actor' + f"_{id}" + '.pkl'
+        critic_path = path_to_model + '/critic' + f"_{id}" + '.pkl'
+        # Load model parameters
+        with open(actor_path, 'rb') as file:
+            actor_params = torch.load(file)
+        with open(critic_path, 'rb') as file:
+            critic_params = torch.load(file)
+    except FileNotFoundError:
+        print(f"File {actor_path} or {critic_path} has not been found.")
+        return False
+
+    device = "cpu" if not torch.cuda.device_count() else "cuda"
+    # Instantiating the model with random params
+    actor, critic = make_ma_sac_agents(cfg, env_params)
+    actor, critic = actor.to(device), critic.to(device)
+    # Inserting the loaded parameters
+    actor.load_state_dict(actor_params)
+    critic.load_state_dict(critic_params)
+
+    return actor, critic
+
+
+def save_model(cfg, actor, critic, filepath, id):
+    # Read out loc and scale used in ObservationNorm, if used
+    transform_list = transforms(cfg)
+    obs_norm_transform = next((t for t in transform_list if isinstance(t, ObservationNorm)), None)
+    if obs_norm_transform:
+        norm_dict = {
+            'loc': obs_norm_transform.loc,
+            'scale': obs_norm_transform.scale,
+        }
+        # Save env transforms
+        with open(filepath + 'env_transforms' + f"_{id}" + '.pkl', 'wb') as file:
+            pickle.dump(norm_dict, file)
+    # Save model
+    with open(filepath + 'actor' + f"_{id}" + '.pkl', 'wb') as file:
+        torch.save(actor.state_dict(), file)
+    with open(filepath + 'critic' + f"_{id}" + '.pkl', 'wb') as file:
+        torch.save(critic.state_dict(), file)
+
     return True
-    return frames % (cfg.collector.total_frames // (num_console_updates) + 1) == 0
+
+
+

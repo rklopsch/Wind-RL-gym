@@ -26,7 +26,7 @@ env:
 collector:
   total_frames: 200_000
   init_random_frames: 25_000
-  max_episode_length: 500  # Timesteps (disregarding frame skip)
+  max_episode_length: 500  # Timesteps
   frames_per_batch: 500
   device: cpu
   reset_at_each_iter: False
@@ -39,10 +39,9 @@ replay_buffer:
 
 # optim
 optim:
-  actuator_loss_weight: 0.0  # Weight hyperparameter of actuation size in reward function
-  gamma: 0.99
+  gamma: 0.9
   lr: 3.0e-4
-  weight_decay: 0.0  # L2 regularisation | Works well for LSTM | For attention weight_decay > 0 leads to NaNs
+  weight_decay: 0.0
   batch_size: 256
   target_update_polyak: 0.995
   alpha_init: 1.0
@@ -54,24 +53,13 @@ network:
   actor_hidden_size: 256
   critic_hidden_depth: 2
   critic_hidden_size: 256
-  activation: relu  # The original TQC paper uses ReLu
   default_policy_scale: 1.0
   scale_lb: 0.1
   device: cpu
-  auto_detect_device: True  # If True, will use GPU when available or else fall back on device specified above
 
 # logging
 logger:
-  backend: wandb
-  mode: online
-  eval_iter: 20  # Evaluate every x batches
-  test_episode_length: 150
-  num_eval_envs: 20
-  project_name: LatentRL
-  team_name: why_are_all_the_good_names_taken_aaa
-  save_replay_buffer: False
   logging_stream: stdout  # stdout to print to console or empty (None) to print to standard log file
-
 
 # Disable output subdirectory
 hydra:
@@ -81,5 +69,5 @@ hydra:
 checkpoint:
   checkpoint_interval: 100
   load_from_checkpoint: False
-  model_checkpoint_path: training_ppo_03-10-24/ppo/checkpoints   # Path to checkpoint, RELATIVE to Wind-RL/
-  model_checkpoint_id: 1  # ID of checkpoint
+  model_checkpoint_path: utils/checkpoint_test_sac   # Path to checkpoint, RELATIVE to Wind-RL/
+  model_checkpoint_id: 1500  # ID of checkpoint

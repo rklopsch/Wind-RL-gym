@@ -16,8 +16,11 @@ from utils_sac import (
     make_parallel_env,
     log_metrics,
     should_log_now,
+    save_model,
+    load_model,
 )
 import logging
+import shutil
 
 
 @hydra.main(version_base="1.2", config_path="./", config_name="config_sac")
@@ -34,8 +37,6 @@ def main(cfg: "DictConfig"):
 
     total_frames = cfg.collector.total_frames
     frames_per_batch = cfg.collector.frames_per_batch
-    max_episode_length = cfg.collector.max_episode_length
-    mini_batch_size = cfg.optim.batch_size
     n_environments = cfg.env.n_parallel
 
     hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
@@ -63,9 +64,30 @@ def main(cfg: "DictConfig"):
 
     # Create agent
     logging.info('Creating models')
-    # model, exploration_policy = make_sac_agent(cfg, params)
-    actor, critic = make_ma_sac_agents(cfg, params)
+    if not cfg.checkpoint.load_from_checkpoint:
+        # Create a new model
+        actor, critic = make_ma_sac_agents(cfg, params)
+    else:
+        # Load from specified checkpoint
+        # Copy the loaded models into the /checkpoints directory
+        if not os.path.exists('checkpoints'):
+            os.mkdir('checkpoints')
+        for arch in ['actor', 'critic']:
+            filename = f"{arch}_{cfg.checkpoint.model_checkpoint_id}.pkl"
+            if os.path.exists(filename):
+                shutil.move(filename, "checkpoints")
+        # Load actor and critic
+        actor, critic = load_model(
+            cfg=cfg,
+            env_params=params,
+            id=cfg.checkpoint.model_checkpoint_id,
+            path_to_model='checkpoints',
+            )
+        logging.info(f"Loaded models. Starting training from frame {cfg.checkpoint.model_checkpoint_id}.")
     actor, critic = actor.to(device), critic.to(device)
+
+    # How many frames have already been collected (if loading from checkpoint)?
+    collected_frames = 0 if not cfg.checkpoint.load_from_checkpoint else cfg.checkpoint.model_checkpoint_id
 
     # Create SAC loss
     logging.info('Creating loss module')
@@ -89,7 +111,6 @@ def main(cfg: "DictConfig"):
 
     # Main loop
     start_time = time.time()
-    collected_frames = 0
     # pbar = tqdm.tqdm(total=cfg.collector.total_frames // cfg.env.frame_skip)
     num_console_updates = 1000
 
@@ -97,7 +118,6 @@ def main(cfg: "DictConfig"):
     num_updates = n_environments * frames_per_batch
     prb = cfg.replay_buffer.prb
 
-    """
     # Initial reset to burn in simulation
     logging.info(f'Initial reset: collecting {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
     # Each reset is cfg.env.reset_frames, we want a total of cfg.env.initial_reset_frames many
@@ -106,7 +126,6 @@ def main(cfg: "DictConfig"):
         reset_td = collector.reset(reset_td)
         logging.info(f"{100*i/(cfg.env.initial_reset_frames // cfg.env.reset_frames)}% done with initial reset.")
     logging.info(f"100% done with initial reset.")
-    """
 
     logging.info('Starting training...')
     sampling_start = time.time()
@@ -229,6 +248,16 @@ def main(cfg: "DictConfig"):
             log_info["train/sampling_time"] = sampling_time
             log_info["train/training_time"] = training_time
 
+        if i % cfg.checkpoint.checkpoint_interval == 0 or i >= total_frames // frames_per_batch:
+            # output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
+            if not os.path.exists('checkpoints'):
+                os.mkdir('checkpoints')
+            output_dir = os.getcwd() + '/checkpoints/'
+            torch.save(replay_buffer._storage._storage, output_dir + 'replay_buffer_checkpoint.pt')
+            logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
+            save_model(cfg, actor, critic, output_dir, collected_frames)
+            logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{collected_frames}.pkl and {output_dir}critic_{collected_frames}.pkl")
+            
         log_metrics(logs, log_info)
         sampling_start = time.time()
 
