@@ -27,7 +27,7 @@ collector:
   total_frames: 200_000
   init_random_frames: 25_000
   max_episode_length: 500  # Timesteps
-  frames_per_batch: 500
+  frames_per_batch: 512
   device: cpu
   reset_at_each_iter: False
 
