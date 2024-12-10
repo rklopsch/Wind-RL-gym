@@ -167,7 +167,7 @@ def make_ma_ppo_models_state(proof_environment):
             n_agent_outputs=2 * proof_environment.action_spec.shape[-1],
             n_agents=proof_environment.n_turbs,
             centralised=False,
-            share_params=True,
+            share_params=False,
             # device=cfg.train.device,
             depth=3,
             num_cells=256,
