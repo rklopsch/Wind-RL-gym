@@ -1,7 +1,7 @@
 from smartsim import Experiment
 import time
 from hydra import initialize, compose
-import os
+import sys
 
 
 def launch_database(experiment, port):
@@ -34,8 +34,8 @@ def launch_solver(experiment):
     experiment.generate(producer, overwrite=True)
     return producer
 
-def launch_ppo(experiment, load_params):
-    aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py")
+def launch_ppo(experiment, load_params, config_modifiers):
+    aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py " + " ".join(config_modifiers))
     aprun.set_tasks(1)
     producer = experiment.create_model("ppo", aprun)
 
@@ -63,6 +63,8 @@ if __name__ == '__main__':
         'checkpoint_path': cfg.checkpoint.model_checkpoint_path,
     }
 
+    config_modifiers = list(sys.argv[1:]) if len(sys.argv) > 1 else [""]
+
     print("WARNING: The dummy solver mode is currently broken when using too many parallel envs. Since this is not really a relevant feature, it is recommended to use 5 parallel envs when using the dummy solver mode. This should be sufficient for all testing purposes.\n")
 
     exp = Experiment("launch_dummy_PPO_run", launcher="auto")
@@ -75,7 +77,7 @@ if __name__ == '__main__':
     solver_app = launch_solver(exp)
     exp.start(solver_app, block=False, summary=False)
 
-    rl_app = launch_ppo(exp, load_params)
+    rl_app = launch_ppo(exp, load_params, config_modifiers)
     exp.start(rl_app, block=False, summary=False)
 
     # shutdown the database because we don't need it anymore

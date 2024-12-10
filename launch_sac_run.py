@@ -8,6 +8,7 @@ from smartredis import Client
 from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
 from hydra import initialize, compose
+import sys
 
 
 def launch_database(experiment, port):
@@ -71,8 +72,8 @@ def launch_solver(experiment, instance, cfg):
     return producer
 
 
-def launch_sac(experiment, cfg):
-    aprun = experiment.create_run_settings(exe="python", exe_args="sac.py", run_command="srun")
+def launch_sac(experiment, cfg, config_modifiers):
+    aprun = experiment.create_run_settings(exe="python", exe_args="sac.py " + " ".join(config_modifiers), run_command="srun")
     aprun.set_tasks(1)
     aprun.set_cpus_per_task(128)
     aprun.set_nodes(1)
@@ -98,8 +99,16 @@ if __name__ == '__main__':
     initialize(config_path="./sac/", version_base="1.2")
     cfg = compose(config_name="config_sac.yaml")
 
+    # The first command line argument determines the name of the run directory that everything is saved to
+    run_name = sys.argv[1] if len(sys.argv) > 1 else "training_sac"
+
+    # Any subsequent arguments (space-separated) are taken to be modifiers for the config file
+    # We assume that the arguments are valid modifiers for the config; this is not tested here.
+    # An example of a valid modifier is "optim.gamma=0.9"
+    config_modifiers = list(sys.argv[2:]) if len(sys.argv) > 1 else [""]
+
     # Set up experiment
-    exp = Experiment("training_sac", launcher="auto")
+    exp = Experiment(run_name, launcher="auto")
 
     # Runtime parameters
     n_environments = cfg.env.n_parallel
@@ -109,7 +118,7 @@ if __name__ == '__main__':
     db = launch_database(exp, db_port)
 
     # Start RL
-    rl_app = launch_sac(exp, cfg)
+    rl_app = launch_sac(exp, cfg, config_modifiers)
 
     # Start simulations
     simulations = []
