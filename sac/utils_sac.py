@@ -323,13 +323,13 @@ def make_sac_optimizer(cfg, loss_module):
 
     optimizer_actor = optim.Adam(
         trainable_actor_params,
-        lr=cfg.optim.lr,
+        lr=float(cfg.optim.lr)/cfg.optim.step_mult,
         weight_decay=cfg.optim.weight_decay,
         eps=cfg.optim.adam_eps,
     )
     optimizer_critic = optim.Adam(
         trainable_critic_params,
-        lr=cfg.optim.lr,
+        lr=float(cfg.optim.lr)/cfg.optim.step_mult,
         weight_decay=cfg.optim.weight_decay,
         eps=cfg.optim.adam_eps,
     )

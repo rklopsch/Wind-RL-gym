@@ -115,7 +115,7 @@ def main(cfg: "DictConfig"):
     num_console_updates = 1000
 
     init_random_frames = cfg.collector.init_random_frames
-    num_updates = n_environments * frames_per_batch
+    num_updates = frames_per_batch * cfg.optim.step_mult
     prb = cfg.replay_buffer.prb
 
     # Initial reset to burn in simulation
