@@ -232,7 +232,7 @@ def make_ma_sac_agents(cfg, params):
             n_agent_outputs=2 * proof_environment.action_spec.shape[-1],
             n_agents=proof_environment.n_turbs,
             centralised=False,
-            share_params=True,
+            share_params=False,
             depth=cfg.network.actor_hidden_depth,
             num_cells=cfg.network.actor_hidden_size,
             activation_class=activation,
