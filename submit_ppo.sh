@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=RL3-train
+#SBATCH --job-name=RL3-ppo
 #SBATCH --nodes=34
 #SBATCH --ntasks-per-node=128
 #SBATCH --cpus-per-task=1
@@ -28,4 +28,4 @@ export SR_SOCKET_TIMEOUT=300000
 export D4RL_DATASET_DIR=./.cache/torchrl/data/d4rl/datasets
 
 # Launch script
-python launch_run.py
+python launch_ppo_run.py training_ppo_MA_09-12-24_2

@@ -4,6 +4,7 @@ from smartsim.status import SmartSimStatus
 import time
 import os
 import math
+import sys
 from smartredis import Client
 from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
@@ -65,8 +66,9 @@ def launch_solver(experiment, instance, cfg):
                          control_freq=cfg.env.steps_per_frame,
                          probes_per_turbine=cfg.env.probes_per_turbine,
                          instance=instance)
-    case.setup_case(f"./training_ppo/WindFarm_{instance}")
-    case.setup_precursor(f"./training_ppo/WindFarm_{instance}/precursor_{instance}")
+    case.setup_case(f"./{experiment.name}/WindFarm_{instance}")
+    # case.setup_precursor(f"./{experiment.name}/WindFarm_{instance}/precursor_{instance}")
+    # case.setup_precursor(f"./Solver/ADM/precursor_Base")
 
     return producer
 
@@ -98,8 +100,10 @@ if __name__ == '__main__':
     initialize(config_path="./ppo/", version_base="1.2")
     cfg = compose(config_name="config_ppo.yaml")
 
+    run_name = sys.argv[1] if len(sys.argv) > 1 else "training_ppo"
+
     # Set up experiment
-    exp = Experiment("training_ppo", launcher="auto")
+    exp = Experiment(run_name, launcher="auto")
 
     # Runtime parameters
     n_environments = cfg.env.n_parallel
