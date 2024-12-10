@@ -73,8 +73,8 @@ def launch_solver(experiment, instance, cfg):
     return producer
 
 
-def launch_ppo(experiment, cfg):
-    aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py", run_command="srun")
+def launch_ppo(experiment, cfg, config_modifiers):
+    aprun = experiment.create_run_settings(exe="python", exe_args="ppo.py " + " ".join(config_modifiers), run_command="srun")
     aprun.set_tasks(1)
     aprun.set_cpus_per_task(128)
     aprun.set_nodes(1)
@@ -100,7 +100,13 @@ if __name__ == '__main__':
     initialize(config_path="./ppo/", version_base="1.2")
     cfg = compose(config_name="config_ppo.yaml")
 
+    # The first command line argument determines the name of the run directory that everything is saved to
     run_name = sys.argv[1] if len(sys.argv) > 1 else "training_ppo"
+
+    # Any subsequent arguments (space-separated) are taken to be modifiers for the config file
+    # We assume that the arguments are valid modifiers for the config; this is not tested here.
+    # An example of a valid modifier is "optim.gamma=0.9"
+    config_modifiers = list(sys.argv[2:]) if len(sys.argv) > 1 else [""]
 
     # Set up experiment
     exp = Experiment(run_name, launcher="auto")
@@ -113,7 +119,7 @@ if __name__ == '__main__':
     db = launch_database(exp, db_port)
 
     # Start RL
-    rl_app = launch_ppo(exp, cfg)
+    rl_app = launch_ppo(exp, cfg, config_modifiers)
 
     # Start simulations
     simulations = []
