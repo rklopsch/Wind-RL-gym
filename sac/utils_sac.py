@@ -145,7 +145,7 @@ def make_sac_agent(cfg, params):
     # Define Actor Network
     action_spec = proof_environment.action_spec
     num_outputs = action_spec.shape[-1]
-    in_keys_actor = ["observation"]
+    in_keys_actor = [("agents", "observation")]
     out_keys_actor = ["_actor_net_out"]
     #if proof_environment.batch_size:
     #    action_spec = action_spec[(0,) * len(proof_environment.batch_size)]
@@ -199,7 +199,7 @@ def make_sac_agent(cfg, params):
     )
 
     critic = ValueOperator(
-        in_keys=["action"] + in_keys_actor,
+        in_keys=proof_environment.action_key + in_keys_actor,
         module=qvalue_net,
     )
 
@@ -303,7 +303,7 @@ def make_loss_module(cfg, params, actor, critic):
         reward=proof_env.reward_key,
         action=proof_env.action_key,
         # sample_log_prob=("agents", "sample_log_prob"),
-        value=("agents", "state_action_value"),
+        state_action_value=("agents", "state_action_value"),
         # These last 2 keys will be expanded to match the reward shape
         done=("agents", "done"),
         terminated=("agents", "terminated"),
