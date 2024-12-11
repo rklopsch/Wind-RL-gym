@@ -286,6 +286,7 @@ def make_ma_sac_agents(cfg, params):
 
 def make_loss_module(cfg, params, actor, critic):
     """Make loss module and target network updater."""
+    proof_env = make_env(cfg, params, device="cpu")
     # Create SAC loss
     loss_module = SACLoss(
         actor_network=actor,
@@ -295,14 +296,13 @@ def make_loss_module(cfg, params, actor, critic):
         delay_actor=False,
         delay_qvalue=True,
         alpha_init=cfg.optim.alpha_init,
+        action_spec=proof_env.action_spec,  # this is necessary so the loss module finds the correct action key
     )
     loss_module.make_value_estimator(gamma=cfg.optim.gamma)
-    
-    proof_env = make_env(cfg, params, device="cpu")
+
     loss_module.set_keys(  # We have to tell the loss where to find the keys
         reward=proof_env.reward_key,
         action=proof_env.action_key,
-        # sample_log_prob=("agents", "sample_log_prob"),
         state_action_value=("agents", "state_action_value"),
         # These last 2 keys will be expanded to match the reward shape
         done=("agents", "done"),
