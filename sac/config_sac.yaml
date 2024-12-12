@@ -16,16 +16,20 @@ env:
   steps_per_frame: 50
   reset_frames: 150
   # reset_frames: 3000  # combined for eval
-  initial_reset_frames: 2500
+  initial_reset_frames: 50  # for debugging
   frame_stack: 5  # Number of frames to be stacked as agent input
   penalty_scale: 0.5
   penalty_exp: 26
   random_reset: False  # If True, at each reset angles will be chosen randomly
 
+# Multi-agent or single-agent training?
+multi_agent:
+  use: False
+
 # collector
 collector:
   total_frames: 200_000
-  init_random_frames: 25_000
+  init_random_frames: 100  # 32_000
   max_episode_length: 500  # Timesteps
   frames_per_batch: 512
   device: cpu

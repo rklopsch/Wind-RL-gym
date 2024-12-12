@@ -10,7 +10,7 @@ from utils_sac import (
     make_collector,
     make_loss_module,
     make_replay_buffer,
-    make_sac_agent,
+    make_sa_sac_agent,
     make_ma_sac_agents,
     make_sac_optimizer,
     make_parallel_env,
@@ -18,6 +18,7 @@ from utils_sac import (
     should_log_now,
     save_model,
     load_model,
+    update_data_shapes,
 )
 import logging
 import shutil
@@ -37,7 +38,6 @@ def main(cfg: "DictConfig"):
 
     total_frames = cfg.collector.total_frames
     frames_per_batch = cfg.collector.frames_per_batch
-    n_environments = cfg.env.n_parallel
 
     hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     results_dir = os.path.join(hydra_dir, 'RESULTS')
@@ -66,7 +66,10 @@ def main(cfg: "DictConfig"):
     logging.info('Creating models')
     if not cfg.checkpoint.load_from_checkpoint:
         # Create a new model
-        actor, critic = make_ma_sac_agents(cfg, params)
+        if cfg.multi_agent.use:
+            actor, critic = make_ma_sac_agents(cfg, params)
+        else:
+            actor, critic = make_sa_sac_agent(cfg, params)
     else:
         # Load from specified checkpoint
         # Copy the loaded models into the /checkpoints directory
@@ -135,31 +138,8 @@ def main(cfg: "DictConfig"):
         log_info = {}
         sampling_time = time.time() - sampling_start
 
-        tensordict.set(
-            ("next", "agents", "done"),
-            tensordict.get(("next", "done"))
-            .unsqueeze(-1)
-            .expand(tensordict.get_item_shape(("next", train_env.reward_key))),
-        )
-        tensordict.set(
-            ("next", "agents", "terminated"),
-            tensordict.get(("next", "terminated"))
-            .unsqueeze(-1)
-            .expand(tensordict.get_item_shape(("next", train_env.reward_key))),
-        )
-        tensordict.set(
-            ("next", "done"),
-            tensordict.get(("next", "done"))
-            .unsqueeze(-1)
-            .expand(tensordict.get_item_shape(("next", train_env.reward_key))),
-        )
-        tensordict.set(
-            ("next", "terminated"),
-            tensordict.get(("next", "terminated"))
-            .unsqueeze(-1)
-            .expand(tensordict.get_item_shape(("next", train_env.reward_key))),
-        )
-        # We need to expand the done and terminated to match the reward shape (this is expected by the value estimator)
+        if cfg.multi_agent.use:
+            tensordict = update_data_shapes(train_env, tensordict)
 
         # Update weights of the inference policy
         collector.update_policy_weights_()
