@@ -205,7 +205,7 @@ def make_sa_sac_agent(cfg, params):
     )
 
     critic = ValueOperator(
-        in_keys=proof_environment.action_key + in_keys_actor,
+        in_keys=[proof_environment.action_key] + in_keys_actor,
         module=qvalue_net,
     )
 
