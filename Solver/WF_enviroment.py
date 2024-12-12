@@ -30,6 +30,7 @@ class TurbEnv(EnvBase):
 
     def __init__(self,
                  params=None,
+                 multi_agent=True,
                  seed=None,
                  save=False,
                  instance=None,
@@ -59,16 +60,29 @@ class TurbEnv(EnvBase):
         self.penalty_scale = params["penalty_scale"]
         self.penalty_exponent = params["penalty_exp"]
         self.random_reset = bool(params["random_reset"])
+        self.multi_agent = multi_agent  # If True, using multi agent, else use single agent
 
         # Create client
         self.client = Client(address=None, cluster=False)
         self.client.put_tensor(f"{self.instance}_yaws_done", np.array([0]))
         self.client.put_tensor(f"{self.instance}_sim_done", np.array([0]))
 
-        self._make_spec()
+        # Set up spec for multi vs single agent
+        if self.multi_agent:
+            self._make_spec_ma()
+        else:
+            self._make_spec_sa()
         if seed is None:
             seed = torch.empty((), dtype=torch.int64).random_().item()
         self.set_seed(seed)
+
+        # Set up keys for single vs multi agent
+        if self.multi_agent:
+            self.env_action_key = ("agents", "action")
+            self.env_alpha_key = ("agents", "alpha")
+        else:
+            self.env_action_key = "action"
+            self.env_alpha_key = "alpha"
 
     @staticmethod
     def _normalise_probe_data(arr):
@@ -84,7 +98,7 @@ class TurbEnv(EnvBase):
         idxs = (torch.pi/2) * idxs / (n_turbs-1)
         return torch.sin(idxs)
 
-    def _communicate(self, new_alpha):        
+    def _communicate(self, new_alpha):
         ######### Communication with SmartRedis server ###########
         # Send yaws to X3D
         self.client.put_tensor(f"{self.instance}_yaws", new_alpha.detach().cpu().numpy().squeeze().astype(np.float64))
@@ -128,8 +142,8 @@ class TurbEnv(EnvBase):
         #       X = 1 for reward
 
         # Retrieve action and previous alpha from tensordict
-        action = tensordict.get(("agents", "action"))
-        alpha = tensordict.get(("agents", "alpha"))
+        action = tensordict.get(self.env_action_key)
+        alpha = tensordict.get(self.env_alpha_key)
         u = action
         # u = u.clamp(-1., 1.)  # this should happen automatically
         u = u * self.max_speed  # since the actor outputs values between -1 and 1, correct scale here
@@ -152,32 +166,10 @@ class TurbEnv(EnvBase):
 
         pos_enc = self._position_encoding(self.n_turbs)
 
-        source = {
-            "done": done,
-        }
-        agent_tds = []
-        for i in range(self.n_turbs):
-            agent_out = TensorDict(
-                {
-                    "alpha": new_alpha[..., i, :],
-                    "observation": observation[..., i, :],
-                    "reward": reward[..., i, :],
-                    "pos_enc": pos_enc[..., i, :],
-                },
-                ()  # tensordict.shape,
-                )
-            agent_tds.append(agent_out)
-
-        # agent_tds = torch.stack(agent_tds, dim=1)
-        agent_tds = torch.stack(agent_tds)
-        agent_tds = agent_tds.to_tensordict()
-        source.update({"agents": agent_tds})
-
-        out = TensorDict(
-            source=source,
-            batch_size=self.batch_size,
-            device=self.device,
-        )
+        if self.multi_agent:
+            out = self._make_tensordict_ma(done, new_alpha, observation, reward, pos_enc)
+        else:
+            out = self._make_tensordict_sa(done, new_alpha, observation, reward, pos_enc)
 
         # print(f"Hello again. I am instance {self.instance} This is the time at END of step: {time.time():.4f}.")
 
@@ -194,7 +186,7 @@ class TurbEnv(EnvBase):
             reset_angles = torch.zeros([self.n_turbs])
         steps_to_change_angle = math.ceil(self.max_angle / (self.max_speed * self.dt))
         if tensordict is not None:
-            alpha = tensordict.get(("agents", "alpha")).squeeze()
+            alpha = tensordict.get(self.env_alpha_key).squeeze()
         else:
             alpha = torch.zeros([self.n_turbs])
 
@@ -215,6 +207,7 @@ class TurbEnv(EnvBase):
         observation = torch.zeros((*self.batch_size, self.n_turbs, self.obs_per_turbine), device=self.device)
         pos_enc = self._position_encoding(self.n_turbs)
 
+        """
         agent_tds = []
         for i in range(self.n_turbs):
             agent_out = TensorDict(
@@ -237,6 +230,11 @@ class TurbEnv(EnvBase):
             },
             batch_size=self.batch_size,
         )
+        """
+        if self.multi_agent:
+            out = self._make_tensordict_ma(None, alpha, observation, None, pos_enc)
+        else:
+            out = self._make_tensordict_sa(None, alpha, observation, None, pos_enc)
 
         return out
 
@@ -282,7 +280,7 @@ class TurbEnv(EnvBase):
         )
         return action_spec, reward_spec, observation_spec
 
-    def _make_spec(self):
+    def _make_spec_ma(self):
         action_specs = []
         observation_specs = []
         reward_specs = []
@@ -315,25 +313,93 @@ class TurbEnv(EnvBase):
         # For this, EnvBase expects some state_spec to be available
         self.state_spec = self.observation_spec.clone()
 
-    def make_composite_from_td(self, td):
-        # custom funtion to convert a tensordict in a similar spec structure
-        # of unbounded values.
-        composite = CompositeSpec(
-            {
-                key: self.make_composite_from_td(tensor)
-                if isinstance(tensor, TensorDictBase)
-                else UnboundedContinuousTensorSpec(
-                    dtype=tensor.dtype, device=self.device, shape=tensor.shape
+    def _make_spec_sa(self):
+        observation_spec = CompositeSpec(
+                alpha=BoundedTensorSpec(
+                    low=-self.max_angle,
+                    high=self.max_angle,
+                    shape=(*self.batch_size, self.n_turbs),
+                    dtype=torch.float32,
+                    device=self.device
+                ),
+                observation=UnboundedContinuousTensorSpec(
+                    shape=(*self.batch_size, self.obs_per_turbine*self.n_turbs),
+                    dtype=torch.float32,
+                    device=self.device
+                ),
+                shape=(),
+                device=self.device
                 )
-                for key, tensor in td.items()
-            },
-            shape=td.shape,
+        # action-spec will be automatically wrapped in input_spec when
+        # `self.action_spec = spec` will be called supported
+        action_spec = BoundedTensorSpec(
+            low=-1.0,
+            high=1.0,
+            shape=(*self.batch_size, self.n_turbs),
+            dtype=torch.float32,
             device=self.device
         )
-        return composite
+        reward_spec = UnboundedContinuousTensorSpec(
+            shape=(*self.batch_size, 1),
+            dtype=torch.float32,
+            device=self.device
+        )
+        
+        self.action_spec = action_spec
+        self.reward_spec = reward_spec
+        self.observation_spec = observation_spec
+        self.state_spec = self.observation_spec.clone()
 
     def _set_seed(self, seed: Optional[int]):
         rng = torch.Generator(device=self.device)
         rng.manual_seed(seed)
         self.rng = rng
+
+    def _make_tensordict_ma(self, done, new_alpha, observation, reward, pos_enc):
+        source = {}
+        if done is not None:
+            source.update({"done": done})
+        agent_tds = []
+        for i in range(self.n_turbs):
+            agent_out = {
+                "alpha": new_alpha[..., i, :],
+                "observation": observation[..., i, :],
+                "pos_enc": pos_enc[..., i, :],
+            }
+            if reward is not None:
+                agent_out.update({"reward": reward[..., i, :]})
+            agent_out = TensorDict(agent_out, ())
+            agent_tds.append(agent_out)
+
+        # agent_tds = torch.stack(agent_tds, dim=1)
+        agent_tds = torch.stack(agent_tds)
+        agent_tds = agent_tds.to_tensordict()
+        source.update({"agents": agent_tds})
+
+        out = TensorDict(
+            source=source,
+            batch_size=self.batch_size,
+            device=self.device,
+        )
+
+        return out
+    
+    def _make_tensordict_sa(self, done, new_alpha, observation, reward, pos_enc):
+        source = {}
+        batch_size = new_alpha.shape[:-2]
+        if done is not None:
+            source.update({"done": done})
+        if reward is not None:
+            source.update({"reward": reward[..., 0, :]})
+        source.update({
+            "alpha": new_alpha.view(*batch_size, -1),
+            "observation": observation.view(*batch_size, -1),
+        })
+        out = TensorDict(
+            source=source,
+            batch_size=self.batch_size,
+            device=self.device,
+        )
+
+        return out
 

@@ -13,7 +13,7 @@ from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value.advantages import GAE
 from torchrl.record.loggers import generate_exp_name
-from utils_ppo import make_parallel_env, make_ma_ppo_models, load_model, save_model, log_metrics
+from utils_ppo import make_parallel_env, make_ma_ppo_models, make_sa_ppo_models, load_model, save_model, log_metrics, update_data_shapes
 import shutil
 import hydra
 import numpy as np
@@ -65,7 +65,10 @@ def main(cfg: "DictConfig"):
     logging.info('Creating models')
     if not cfg.checkpoint.load_from_checkpoint:
         # Create a new model
-        actor, critic = make_ma_ppo_models(cfg, params)
+        if cfg.multi_agent.use:
+            actor, critic = make_ma_ppo_models(cfg, params)
+        else:
+            actor, critic = make_sa_ppo_models(cfg, params)
     else:
         # Load from specified checkpoint
         # Copy the loaded models into the ppo/checkpoints directory
@@ -128,15 +131,16 @@ def main(cfg: "DictConfig"):
         critic_coef=cfg.loss.critic_coef,
         normalize_advantage=False,
     )
-    loss_module.set_keys(  # We have to tell the loss where to find the keys
-        reward=train_env.reward_key,
-        action=train_env.action_key,
-        sample_log_prob=("agents", "sample_log_prob"),
-        value=("agents", "state_value"),
-        # These last 2 keys will be expanded to match the reward shape
-        done=("agents", "done"),
-        terminated=("agents", "terminated"),
-    )
+    if cfg.multi_agent.use:
+        loss_module.set_keys(  # We have to tell the loss where to find the keys
+            reward=train_env.reward_key,
+            action=train_env.action_key,
+            sample_log_prob=("agents", "sample_log_prob"),
+            value=("agents", "state_value"),
+            # These last 2 keys will be expanded to match the reward shape
+            done=("agents", "done"),
+            terminated=("agents", "terminated"),
+        )
 
     adv_module = GAE(
         gamma=cfg.loss.gamma,
@@ -144,10 +148,11 @@ def main(cfg: "DictConfig"):
         value_network=critic,
         average_gae=False,
     )
-    adv_module.set_keys(
-        value=("agents", "state_value"),
-        reward=train_env.reward_key,
-    )
+    if cfg.multi_agent.use:
+        adv_module.set_keys(
+            value=("agents", "state_value"),
+            reward=train_env.reward_key,
+        )
 
     # Create optimizers
     actor_optim = torch.optim.Adam(actor.parameters(), lr=cfg.optim.lr, eps=1e-5)
@@ -191,35 +196,17 @@ def main(cfg: "DictConfig"):
         #pbar.update(data.numel())
         logging.info(f"Training step {collected_frames}/{total_frames}.")
 
-        data.set(
-            ("next", "agents", "done"),
-            data.get(("next", "done"))
-            .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", train_env.reward_key))),
-        )
-        data.set(
-            ("next", "agents", "terminated"),
-            data.get(("next", "terminated"))
-            .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", train_env.reward_key))),
-        )
-        data.set(
-            ("next", "done"),
-            data.get(("next", "done"))
-            .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", train_env.reward_key))),
-        )
-        data.set(
-            ("next", "terminated"),
-            data.get(("next", "terminated"))
-            .unsqueeze(-1)
-            .expand(data.get_item_shape(("next", train_env.reward_key))),
-        )
-        # We need to expand the done and terminated to match the reward shape (this is expected by the value estimator)
+        if cfg.multi_agent.use:
+            data = update_data_shapes(train_env, data)
 
         # Get training rewards and episode lengths
-        episode_rewards = data["next", "agents", "episode_reward"][data["next", "done"]]
-        episode_length = data["next", "step_count"][data["next", "done"].all(-2)]
+        if cfg.multi_agent.use:
+            episode_rewards = data[("next", "agents", "episode_reward")][data["next", "done"]]
+            episode_length = data["next", "step_count"][data["next", "done"].all(-2)]
+        else:
+            episode_rewards = data[("next", "episode_reward")][data["next", "done"]]
+            episode_length = data["next", "step_count"][data["next", "done"]]
+
         if len(episode_length) > 0:
             log_info.update(
                 {
