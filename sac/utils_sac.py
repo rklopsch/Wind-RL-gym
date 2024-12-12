@@ -295,12 +295,11 @@ def make_loss_module(cfg, params, actor, critic):
     loss_module.make_value_estimator(gamma=cfg.optim.gamma)
 
     if cfg.multi_agent.use:
-        proof_env = make_env(cfg, params, device="cpu")
         loss_module.set_keys(  # We have to tell the loss where to find the keys
             reward=proof_env.reward_key,
             action=proof_env.action_key,
             # sample_log_prob=("agents", "sample_log_prob"),
-            value=("agents", "state_action_value"),
+            state_action_value=("agents", "state_action_value"),
             # These last 2 keys will be expanded to match the reward shape
             done=("agents", "done"),
             terminated=("agents", "terminated"),

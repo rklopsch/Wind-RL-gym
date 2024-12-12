@@ -70,6 +70,7 @@ def main(cfg: "DictConfig"):
             actor, critic = make_ma_sac_agents(cfg, params)
         else:
             actor, critic = make_sa_sac_agent(cfg, params)
+        logging.info(f"Created new models in {'multi' if cfg.multi_agent.use else 'single'} agent mode.")
     else:
         # Load from specified checkpoint
         # Copy the loaded models into the /checkpoints directory

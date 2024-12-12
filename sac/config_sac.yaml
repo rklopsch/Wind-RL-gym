@@ -24,7 +24,7 @@ env:
 
 # Multi-agent or single-agent training?
 multi_agent:
-  use: False
+  use: True
 
 # collector
 collector:
