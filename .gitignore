@@ -15,7 +15,7 @@ input.i3d
 launch_dummy_run
 launch_run
 launch_dummy_SAC_run
-launc_dummy_PPO_run
+launch_dummy_PPO_run
 eval_dummy_run
 training_ppo*
 eval_ppo*

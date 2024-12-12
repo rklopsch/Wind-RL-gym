@@ -150,6 +150,7 @@ def make_sa_sac_agent(cfg, params):
     # Define Actor Network
     action_spec = proof_environment.action_spec
     num_outputs = action_spec.shape[-1]
+    
     in_keys_actor = ["observation", "alpha_normalised"]
     out_keys_actor = ["_actor_net_out"]
 
@@ -204,7 +205,7 @@ def make_sa_sac_agent(cfg, params):
     )
 
     critic = ValueOperator(
-        in_keys=["action"] + in_keys_actor,
+        in_keys=proof_environment.action_key + in_keys_actor,
         module=qvalue_net,
     )
 
@@ -279,6 +280,7 @@ def make_ma_sac_agents(cfg, params):
 
 def make_loss_module(cfg, params, actor, critic):
     """Make loss module and target network updater."""
+    proof_env = make_env(cfg, params, device="cpu")
     # Create SAC loss
     loss_module = SACLoss(
         actor_network=actor,
@@ -288,9 +290,10 @@ def make_loss_module(cfg, params, actor, critic):
         delay_actor=False,
         delay_qvalue=True,
         alpha_init=cfg.optim.alpha_init,
+        action_spec=proof_env.action_spec,  # this is necessary so the loss module finds the correct action key
     )
     loss_module.make_value_estimator(gamma=cfg.optim.gamma)
-    
+
     if cfg.multi_agent.use:
         proof_env = make_env(cfg, params, device="cpu")
         loss_module.set_keys(  # We have to tell the loss where to find the keys
