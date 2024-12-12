@@ -40,16 +40,20 @@ import numpy as np
 
 
 def transforms(cfg, eval_only=False):
+    multi_agent = cfg.multi_agent.use
+    observation_key = ("agents", "observation") if multi_agent else "observation"
+    alpha_key = ("agents", "alpha") if multi_agent else "alpha"
+    alpha_norm_key = ("agents", "alpha_normalised") if multi_agent else "alpha_normalised"
     transform_list = [
         InitTracker(),
         RewardSum(),
         FiniteTensorDictCheck(),
-        CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[("agents", "observation")]),
+        CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[observation_key]),
         ObservationNorm(
             loc=0.,
             scale=(4/cfg.env.max_yaw_angle),
-            in_keys=[("agents", "alpha")],
-            out_keys=[("agents", "alpha_normalised")]
+            in_keys=[alpha_key],
+            out_keys=[alpha_norm_key]
         )
     ]
     if eval_only:
@@ -60,7 +64,7 @@ def transforms(cfg, eval_only=False):
 
 def make_env(cfg, params, instance=None, save=False, device="cpu", add_transforms=True, eval_only=False):
     from WF_enviroment import TurbEnv
-    env = TurbEnv(params, save=save, instance=instance, device=device)
+    env = TurbEnv(params, multi_agent=cfg.multi_agent.use, save=save, instance=instance, device=device)
     if add_transforms:
         env = TransformedEnv(env, transforms(cfg, eval_only))
     if eval_only:
@@ -80,7 +84,7 @@ def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
 # --------------------------------------------------------------------
 
 
-def make_ppo_models_state(proof_environment):
+def make_sa_ppo_models_state(proof_environment):
     # Define input shape
     input_shape = proof_environment.observation_spec["observation"].shape
 
@@ -153,12 +157,6 @@ def make_ppo_models_state(proof_environment):
     return policy_module, value_module
 
 
-def make_ppo_models(cfg, params):
-    proof_environment = make_env(cfg, params, device="cpu")
-    actor, critic = make_ppo_models_state(proof_environment)
-    return actor, critic
-
-
 def make_ma_ppo_models_state(proof_environment):    
     # Policy
     actor_module = TensorDictModule(
@@ -224,6 +222,12 @@ def make_ma_ppo_models_state(proof_environment):
 def make_ma_ppo_models(cfg, params):
     proof_environment = make_env(cfg, params, device="cpu")
     actor, critic = make_ma_ppo_models_state(proof_environment)
+    return actor, critic
+
+
+def make_sa_ppo_models(cfg, params):
+    proof_environment = make_env(cfg, params, device="cpu")
+    actor, critic = make_sa_ppo_models_state(proof_environment)
     return actor, critic
 
 
@@ -355,3 +359,37 @@ def log_metrics(logs, metrics):
     output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
     with open(output_dir + "logs.pkl", "wb") as f:
         pickle.dump(logs, f)
+
+
+# ====================================================================
+# Data shape updater
+# --------------------------------------------------------------------
+
+
+def update_data_shapes(train_env, data):
+    data.set(
+        ("next", "agents", "done"),
+        data.get(("next", "done"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", train_env.reward_key))),
+    )
+    data.set(
+        ("next", "agents", "terminated"),
+        data.get(("next", "terminated"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", train_env.reward_key))),
+    )
+    data.set(
+        ("next", "done"),
+        data.get(("next", "done"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", train_env.reward_key))),
+    )
+    data.set(
+        ("next", "terminated"),
+        data.get(("next", "terminated"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", train_env.reward_key))),
+    )
+    # We need to expand the done and terminated to match the reward shape (this is expected by the value estimator)
+    return data

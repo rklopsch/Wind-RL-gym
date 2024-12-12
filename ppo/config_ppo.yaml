@@ -16,11 +16,15 @@ env:
   steps_per_frame: 50
   reset_frames: 150
   # reset_frames: 3000  # combined for eval
-  initial_reset_frames: 2500
+  initial_reset_frames: 10  # testing value
   frame_stack: 5  # Number of frames to be stacked as agent input
   penalty_scale: 0.5
   penalty_exp: 26
   random_reset: False  # If True, at each reset angles will be chosen randomly
+
+# Multi-agent or single-agent training?
+multi_agent:
+  use: False
 
 # collector
 collector:

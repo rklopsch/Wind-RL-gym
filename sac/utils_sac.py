@@ -40,16 +40,20 @@ from torchrl.modules.models.multiagent import MultiAgentMLP
 
 
 def transforms(cfg, eval_only=False):
+    multi_agent = cfg.multi_agent.use
+    observation_key = ("agents", "observation") if multi_agent else "observation"
+    alpha_key = ("agents", "alpha") if multi_agent else "alpha"
+    alpha_norm_key = ("agents", "alpha_normalised") if multi_agent else "alpha_normalised"
     transform_list = [
         InitTracker(),
         RewardSum(),
         FiniteTensorDictCheck(),
-        CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[("agents", "observation")]),
+        CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[observation_key]),
         ObservationNorm(
             loc=0.,
             scale=(4/cfg.env.max_yaw_angle),
-            in_keys=[("agents", "alpha")],
-            out_keys=[("agents", "alpha_normalised")]
+            in_keys=[alpha_key],
+            out_keys=[alpha_norm_key]
         )
     ]
     if eval_only:
@@ -60,7 +64,7 @@ def transforms(cfg, eval_only=False):
 
 def make_env(cfg, params, instance=None, save=False, device="cpu", add_transforms=True, eval_only=False):
     from WF_enviroment import TurbEnv
-    env = TurbEnv(params, save=save, instance=instance, device=device)
+    env = TurbEnv(params, multi_agent=cfg.multi_agent.use, save=save, instance=instance, device=device)
     if add_transforms:
         env = TransformedEnv(env, transforms(cfg, eval_only))
     if eval_only:
@@ -132,28 +136,29 @@ def make_replay_buffer(cfg, prefetch=3):
 # ====================================================================
 # Model
 # -----
-def make_sac_agent(cfg, params):
-    # This is the single agent version
-    # This is currently not implemented correctly
+def make_sa_sac_agent(cfg, params):
+    # Single agent SAC
+    if cfg.multi_agent.use:
+        raise RuntimeError(f"cfg.multi_agent.use is set to True, but we are calling the single agent creator function.")
 
     device = "cpu"
     proof_environment = make_env(cfg, params, device=device)
 
     # Define input shape
-    input_shape = proof_environment.observation_spec["observation"].shape
+    input_size = proof_environment.observation_spec["observation"].shape[-1] + proof_environment.observation_spec["alpha_normalised"].shape[-1]
     
     # Define Actor Network
     action_spec = proof_environment.action_spec
     num_outputs = action_spec.shape[-1]
-    in_keys_actor = [("agents", "observation")]
+    
+    in_keys_actor = ["observation", "alpha_normalised"]
     out_keys_actor = ["_actor_net_out"]
-    #if proof_environment.batch_size:
-    #    action_spec = action_spec[(0,) * len(proof_environment.batch_size)]
 
     activation = nn.ReLU
     actor_net = MLP(
-        in_features=input_shape[-1],
-        num_cells=cfg.network.actor_hidden_sizes,
+        in_features=input_size,
+        depth=cfg.network.actor_hidden_depth,
+        num_cells=cfg.network.actor_hidden_size,
         out_features=2*num_outputs,
         activation_class=activation,
     )
@@ -189,8 +194,9 @@ def make_sac_agent(cfg, params):
 
     # Define Critic Network
     qvalue_net_kwargs = {
-        "in_features": input_shape[-1],
-        "num_cells": cfg.network.critic_hidden_sizes,
+        "in_features": input_size + num_outputs,
+        "depth": cfg.network.critic_hidden_depth,
+        "num_cells": cfg.network.critic_hidden_size,
         "out_features": 1,
         "activation_class": activation,
     }
@@ -203,21 +209,9 @@ def make_sac_agent(cfg, params):
         module=qvalue_net,
     )
 
-    model = nn.ModuleList([actor, critic]).to(device)
+    actor, critic = actor.to(device), critic.to(device)
 
-    """
-    # Initialise models
-    # this should be removed
-    with torch.no_grad(), set_exploration_type(ExplorationType.RANDOM):
-        td = eval_env.reset()
-        td = td.to(device)
-        for net in model:
-            net(td)
-    del td
-    eval_env.close()
-    """
-
-    return model, model[0]
+    return actor, critic
 
 
 def make_ma_sac_agents(cfg, params):
@@ -300,14 +294,17 @@ def make_loss_module(cfg, params, actor, critic):
     )
     loss_module.make_value_estimator(gamma=cfg.optim.gamma)
 
-    loss_module.set_keys(  # We have to tell the loss where to find the keys
-        reward=proof_env.reward_key,
-        action=proof_env.action_key,
-        state_action_value=("agents", "state_action_value"),
-        # These last 2 keys will be expanded to match the reward shape
-        done=("agents", "done"),
-        terminated=("agents", "terminated"),
-    )
+    if cfg.multi_agent.use:
+        proof_env = make_env(cfg, params, device="cpu")
+        loss_module.set_keys(  # We have to tell the loss where to find the keys
+            reward=proof_env.reward_key,
+            action=proof_env.action_key,
+            # sample_log_prob=("agents", "sample_log_prob"),
+            value=("agents", "state_action_value"),
+            # These last 2 keys will be expanded to match the reward shape
+            done=("agents", "done"),
+            terminated=("agents", "terminated"),
+        )
 
     # Define Target Network Updater
     target_net_updater = SoftUpdate(loss_module, eps=cfg.optim.target_update_polyak)
@@ -407,5 +404,38 @@ def save_model(cfg, actor, critic, filepath, id):
 
     return True
 
+
+# ====================================================================
+# Data shape updater
+# --------------------------------------------------------------------
+
+
+def update_data_shapes(train_env, data):
+    data.set(
+        ("next", "agents", "done"),
+        data.get(("next", "done"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", train_env.reward_key))),
+    )
+    data.set(
+        ("next", "agents", "terminated"),
+        data.get(("next", "terminated"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", train_env.reward_key))),
+    )
+    data.set(
+        ("next", "done"),
+        data.get(("next", "done"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", train_env.reward_key))),
+    )
+    data.set(
+        ("next", "terminated"),
+        data.get(("next", "terminated"))
+        .unsqueeze(-1)
+        .expand(data.get_item_shape(("next", train_env.reward_key))),
+    )
+    # We need to expand the done and terminated to match the reward shape (this is expected by the value estimator)
+    return data
 
 
