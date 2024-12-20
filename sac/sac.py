@@ -204,8 +204,13 @@ def main(cfg: "DictConfig"):
         training_time = time.time() - training_start
 
         # Logging
-        episode_rewards = tensordict["next", "agents", "episode_reward"][tensordict["next", "done"]]
-        episode_length = tensordict["next", "step_count"][tensordict["next", "done"].all(-2)]
+        if cfg.multi_agent.use:
+            episode_rewards = tensordict[("next", "agents", "episode_reward")][tensordict["next", "done"]]
+            episode_length = tensordict["next", "step_count"][tensordict["next", "done"].all(-2)]
+        else:
+            episode_rewards = tensordict[("next", "episode_reward")][tensordict["next", "done"]]
+            episode_length = tensordict["next", "step_count"][tensordict["next", "done"]]
+
         if len(episode_length) > 0:
             log_info.update(
                 {
