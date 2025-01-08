@@ -83,6 +83,7 @@ def main(cfg: "DictConfig"):
         "penalty_scale": cfg.env.penalty_scale,
         "penalty_exp": cfg.env.penalty_exp,
         "random_reset": cfg.env.random_reset,
+        "initial_angles": cfg.env.initial_angles,
     }
 
     # Load the models to be evaluated

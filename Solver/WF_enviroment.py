@@ -60,6 +60,10 @@ class TurbEnv(EnvBase):
         self.penalty_scale = params["penalty_scale"]
         self.penalty_exponent = params["penalty_exp"]
         self.random_reset = bool(params["random_reset"])
+        self.initial_angles = params["initial_angles"]
+        if not len(self.initial_angles) == self.n_turbs:
+            raise ValueError(f'Number of initial angles provided {len(self.initial_angles)}'
+                             f'does not match number of number of turbines {self.n_turbs}')
         self.multi_agent = multi_agent  # If True, using multi agent, else use single agent
 
         # Create client
@@ -183,7 +187,7 @@ class TurbEnv(EnvBase):
             reset_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs]) - 1)
         else:
             # Set angles to all 0
-            reset_angles = torch.zeros([self.n_turbs])
+            reset_angles = torch.tensor(self.init_angles)
         steps_to_change_angle = math.ceil(self.max_angle / (self.max_speed * self.dt))
         if tensordict is not None:
             alpha = tensordict.get(self.env_alpha_key).squeeze()
