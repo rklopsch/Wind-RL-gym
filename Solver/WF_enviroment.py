@@ -187,12 +187,12 @@ class TurbEnv(EnvBase):
             reset_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs]) - 1)
         else:
             # Set angles to all 0
-            reset_angles = torch.tensor(self.init_angles)
+            reset_angles = torch.tensor(self.initial_angles)
         steps_to_change_angle = math.ceil(self.max_angle / (self.max_speed * self.dt))
         if tensordict is not None:
             alpha = tensordict.get(self.env_alpha_key).squeeze()
         else:
-            alpha = torch.zeros([self.n_turbs])
+            alpha = torch.tensor(self.initial_angles)
 
         if not steps_to_change_angle <= self.reset_frames:
             raise ValueError(f"Must have at least {steps_to_change_angle} many reset frames. Only have {self.reset_frames}.")
@@ -208,6 +208,7 @@ class TurbEnv(EnvBase):
         # of simulators run simultaneously. In other contexts, the initial
         # random state's shape will depend upon the environment batch-size instead.
         alpha = torch.zeros((*self.batch_size, self.n_turbs, 1), device=self.device)
+        alpha[:, 0] = torch.tensor(self.initial_angles)
         observation = torch.zeros((*self.batch_size, self.n_turbs, self.obs_per_turbine), device=self.device)
         pos_enc = self._position_encoding(self.n_turbs)
 
