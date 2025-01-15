@@ -3,7 +3,7 @@
 eval:
   episode_length: 2_000
   n_parallel: 1  # Number of eval envs to be run in parallel
-  training_path: training_ppo_28-10-24  # Path to stored model, relative to Wind-RL/
+  training_name: training_ppo_28-10-24  # Path to stored model, relative to Wind-RL/
   model_id: 870912  # ID of model to be evaluated
   save_flow: False
 

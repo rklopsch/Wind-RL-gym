@@ -101,7 +101,7 @@ def launch_eval(experiment, cfg, config_modifiers):
         algo = 'sac'
     file_list += f"./{algo}/utils_{algo}.py"  # SAC files
     file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator
-    file_list += [f"{cfg.eval.training_path}/{algo}/checkpoints/actor_{cfg.eval.model_id}.pkl"]
+    file_list += [f"{cfg.eval.training_name}/{algo}/checkpoints/actor_{cfg.eval.model_id}.pkl"]
     producer.attach_generator_files(to_copy=file_list)
 
     OmegaConf.save(cfg, f"./{experiment.name}/eval/config_eval.yaml")
