@@ -95,18 +95,19 @@ def launch_eval(experiment, cfg, config_modifiers):
     # scripts to execution location inside newly created dir
     # only necessary if its not an executable (python is executable here)
     file_list = ["./eval/eval.py"]
-    if 'ppo' in cfg_eval.eval.training_name:
+    if 'ppo' in cfg.eval.training_name:
         algo = 'ppo'
-    elif 'sac' in cfg_eval.eval.training_name:
+    elif 'sac' in cfg.eval.training_name:
         algo = 'sac'
-    file_list += f"./{algo}/utils_{algo}.py"  # SAC files
+    file_list += [f"./{algo}/utils_{algo}.py"]  # SAC files
     file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator
     file_list += [f"{cfg.eval.training_name}/{algo}/checkpoints/actor_{cfg.eval.model_id}.pkl"]
+    pprint(file_list)
     producer.attach_generator_files(to_copy=file_list)
+    experiment.generate(producer, overwrite=True)
 
     OmegaConf.save(cfg, f"./{experiment.name}/eval/config_eval.yaml")
 
-    experiment.generate(producer, overwrite=True)
     return producer
 
 if __name__ == '__main__':
@@ -122,12 +123,12 @@ if __name__ == '__main__':
             cfg_train = compose(config_name="config.yaml")
     elif 'sac' in run_name:
         with initialize(config_path=f"{training_name}/sac/outputs/hydra_logs", version_base="1.2"):
-            cfg_train = compose(config_name="config_ppo.yaml")
+            cfg_train = compose(config_name="config.yaml")
     else:
         raise Exception("Can not determine training algorithm")
 
     # Merge configurations
-    cfg = {**cfg_eval, **cfg_train}
+    cfg = OmegaConf.create({**cfg_eval, **cfg_train})
 
     # Any arguments (space-separated) are taken to be modifiers for the config file
     # We assume that the arguments are valid modifiers for the config; this is not tested here.
