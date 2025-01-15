@@ -65,16 +65,6 @@ loss:
   entropy_coef: 0.0001
   loss_critic_type: l2
 
-# Eval
-# These settings only apply when running eval.py (instead of ppo.py)
-eval:
-  episode_length: 2_000
-  n_parallel: 1  # Number of eval envs to be run in parallel
-  model_path: training_ppo_28-10-24/ppo/checkpoints  # Path to stored model, relative to Wind-RL/
-  model_id: 870912  # ID of model to be evaluated
-
-  save_flow: False
-
 # Configure hydra
 hydra:
   run:
