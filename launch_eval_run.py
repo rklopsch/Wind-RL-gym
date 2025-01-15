@@ -69,6 +69,20 @@ def launch_solver(experiment, instance, cfg):
     return producer
 
 
+def launch_dummy_solver(experiment):
+    aprun = experiment.create_run_settings(exe="python", exe_args="dummy_solver.py")
+    aprun.set_tasks(1)
+    producer = experiment.create_model("dummy_solver", aprun)
+
+    # create directories for the output files and copy
+    # scripts to execution location inside newly created dir
+    # only necessary if its not an executable (python is executable here)
+    producer.attach_generator_files(to_copy="./Solver/dummy_solver.py")
+
+    experiment.generate(producer, overwrite=True)
+    return producer
+
+
 def launch_eval(experiment, cfg, config_modifiers):
     aprun = experiment.create_run_settings(exe="python", exe_args="eval.py" + " ".join(config_modifiers), run_command="srun")
     aprun.set_tasks(1)
@@ -136,7 +150,10 @@ if __name__ == '__main__':
     # Start simulations
     simulations = []
     for i in range(1, n_environments+1):
-        simulation = launch_solver(exp, instance=i, cfg=cfg)
+        if cfg.env.dummy_update:
+            simulation = launch_solver(exp)
+        else:
+            simulation = launch_solver(exp, instance=i, cfg=cfg)
         simulations.append(simulation)
 
     everything = simulations + [rl_app, db]
