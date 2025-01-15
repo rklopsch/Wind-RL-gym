@@ -374,7 +374,11 @@ def load_model(cfg, env_params, path_to_model, id):
 
     device = "cpu" if not torch.cuda.device_count() else "cuda"
     # Instantiating the model with random params
-    actor, critic = make_ma_sac_agents(cfg, env_params)
+    if cfg.multi_agent.use:
+        actor, critic = make_ma_sac_agents(cfg, env_params)
+    else:
+        actor, critic = make_sa_sac_agent(cfg, env_params)
+
     actor, critic = actor.to(device), critic.to(device)
     # Inserting the loaded parameters
     actor.load_state_dict(actor_params)
