@@ -118,9 +118,10 @@ def main(cfg: "DictConfig"):
     )
 
     # Create replay buffer to remember entire history
-    full_buffer = TensorDictReplayBuffer(
-        storage=LazyTensorStorage(total_frames // n_environments),
-    )
+    if cfg.checkpoint.save_replay_buffer:
+        full_buffer = TensorDictReplayBuffer(
+            storage=LazyTensorStorage(total_frames // n_environments),
+        )
 
     # Create loss and adv modules
     loss_module = ClipPPOLoss(
@@ -224,7 +225,8 @@ def main(cfg: "DictConfig"):
             )
 
         # Save to full buffer
-        full_buffer.extend(data.transpose(0,1))
+        if cfg.checkpoint.save_replay_buffer:
+            full_buffer.extend(data.transpose(0,1))
 
         training_start = time.time()
         for j in range(cfg_loss_ppo_epochs):
@@ -301,8 +303,9 @@ def main(cfg: "DictConfig"):
             if not os.path.exists('checkpoints'):
                 os.mkdir('checkpoints')
             output_dir = os.getcwd() + '/checkpoints/'
-            torch.save(full_buffer._storage._storage, output_dir + 'replay_buffer_checkpoint.pt')
-            logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}).")
+            if cfg.checkpoint.save_replay_buffer:
+                torch.save(full_buffer._storage._storage, output_dir + 'replay_buffer_checkpoint.pt')
+                logging.info(f"Checkpointed replay buffer. (Saved at {output_dir + 'replay_buffer_checkpoint'}). #Timesteps/environment: {len(full_buffer)}")
             save_model(cfg, actor, critic, output_dir, collected_frames)
             logging.info(f"Checkpointed model. (Saved at {output_dir}actor_{collected_frames}.pkl and {output_dir}critic_{collected_frames}.pkl")
             
