@@ -4,10 +4,12 @@ from smartsim.status import SmartSimStatus
 import time
 import os
 import math
+import sys
 from smartredis import Client
 from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
 from hydra import initialize, compose
+from omegaconf import OmegaConf
 
 
 def launch_database(experiment, port):
@@ -61,14 +63,14 @@ def launch_solver(experiment, instance, cfg):
                          control_freq=cfg.env.steps_per_frame,
                          probes_per_turbine=cfg.env.probes_per_turbine,
                          instance=instance)
-    case.setup_case(f"./eval_ppo/WindFarm_{instance}", save_flow=cfg.eval.save_flow)
-    # case.setup_precursor(f"./eval_ppo/WindFarm_{instance}/precursor_{instance}")
+    case.setup_case(f"./{experiment.name}/WindFarm_{instance}")
+    # case.setup_precursor(f"./{experiment.name}/WindFarm_{instance}/precursor_{instance}")
 
     return producer
 
 
-def launch_eval(experiment, cfg):
-    aprun = experiment.create_run_settings(exe="python", exe_args="eval.py", run_command="srun")
+def launch_eval(experiment, cfg, config_modifiers):
+    aprun = experiment.create_run_settings(exe="python", exe_args="eval.py" + " ".join(config_modifiers), run_command="srun")
     aprun.set_tasks(1)
     aprun.set_cpus_per_task(128)
     aprun.set_nodes(1)
@@ -77,24 +79,49 @@ def launch_eval(experiment, cfg):
 
     # create directories for the output files and copy
     # scripts to execution location inside newly created dir
-    # only necessary if its not an executable (python is executable here) 
-    file_list = ["./ppo/eval.py", "./ppo/utils_ppo.py", "./ppo/config_ppo.yaml"]  # PPO files
+    # only necessary if its not an executable (python is executable here)
+    file_list = ["./eval/eval.py"]
+    if 'ppo' in cfg_eval.eval.training_name:
+        algo = 'ppo'
+    elif 'sac' in cfg_eval.eval.training_name:
+        algo = 'sac'
+    file_list += f"./{algo}/utils_{algo}.py"  # SAC files
     file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator
-
-    file_list += [f"{cfg.eval.model_path}/actor_{cfg.eval.model_id}.pkl"]
-    file_list += [f"{cfg.eval.model_path}/critic_{cfg.eval.model_id}.pkl"]
+    file_list += [f"{cfg.eval.training_path}/{algo}/checkpoints/actor_{cfg.eval.model_id}.pkl"]
     producer.attach_generator_files(to_copy=file_list)
+
+    OmegaConf.save(cfg, f"./{experiment.name}/eval/config_eval.yaml")
 
     experiment.generate(producer, overwrite=True)
     return producer
 
 if __name__ == '__main__':
-    # Read PPO config
-    initialize(config_path="./ppo/", version_base="1.2")
-    cfg = compose(config_name="config_ppo.yaml")
+
+    with initialize(config_path="eval", version_base="1.2"):
+        cfg_eval = compose(config_name="config_eval.yaml")
+
+    training_name = cfg_eval.eval.training_name
+    run_name = training_name.replace("training", "eval", 1)
+
+    if 'ppo' in run_name:
+        with initialize(config_path=f"{training_name}/ppo/outputs/hydra_logs", version_base="1.2"):
+            cfg_train = compose(config_name="config.yaml")
+    elif 'sac' in run_name:
+        with initialize(config_path=f"{training_name}/sac/outputs/hydra_logs", version_base="1.2"):
+            cfg_train = compose(config_name="config_ppo.yaml")
+    else:
+        raise Exception("Can not determine training algorithm")
+
+    # Merge configurations
+    cfg = {**cfg_eval, **cfg_train}
+
+    # Any arguments (space-separated) are taken to be modifiers for the config file
+    # We assume that the arguments are valid modifiers for the config; this is not tested here.
+    # An example of a valid modifier is "optim.gamma=0.9"
+    config_modifiers = list(sys.argv[1:]) if len(sys.argv) > 1 else [""]
 
     # Set up experiment
-    exp = Experiment("eval_ppo", launcher="auto")
+    exp = Experiment(run_name, launcher="auto")
 
     # Runtime parameters
     n_environments = cfg.eval.n_parallel
@@ -104,7 +131,7 @@ if __name__ == '__main__':
     db = launch_database(exp, db_port)
 
     # Start RL
-    rl_app = launch_eval(exp, cfg)
+    rl_app = launch_eval(exp, cfg, config_modifiers)
 
     # Start simulations
     simulations = []

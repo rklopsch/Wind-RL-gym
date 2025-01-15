@@ -7,7 +7,6 @@ import torch.optim
 from tensordict import TensorDict
 from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
 from torchrl.envs.utils import set_exploration_type, ExplorationType
-from utils_ppo import make_parallel_env, load_model, save_model, log_metrics
 import shutil
 import hydra
 import numpy as np
@@ -46,10 +45,17 @@ def adjust_tensor_shapes(data, env):
     return data
 
 
-@hydra.main(config_path="./", config_name="config_ppo", version_base="1.2")
+@hydra.main(config_path="./", config_name="config_eval.yaml", version_base="1.2")
 def main(cfg: "DictConfig"):
     device = "cpu"  # Run on CPU only
     logging.info(f'Running on device: {device}.')
+
+    if 'ppo' in cfg.eval.training_name:
+        from utils_ppo import make_parallel_env, load_model, save_model, log_metrics
+    elif 'sac' in cfg.eval.training_name:
+        from utils_sac import make_parallel_env, load_model, save_model, log_metrics
+    else:
+        raise Exception("Can not determine training algorithm")
 
     logging_stream = sys.stdout if cfg.logger.logging_stream == 'stdout' else None
     logging.basicConfig(
@@ -130,16 +136,29 @@ def main(cfg: "DictConfig"):
             policy=actor,
             auto_reset=True,
         )
-        data = adjust_tensor_shapes(data, eval_env)
+        if cfg.multi_agent.use:
+            data = adjust_tensor_shapes(data, eval_env)
 
         # Get rewards and episode lengths
-        episode_rewards = data["next", "agents", "episode_reward"][data["next", "done"]]
-        reward_shape = data.get_item_shape(("next", eval_env.reward_key))
-        episode_rewards = episode_rewards.view(reward_shape[-2], reward_shape[0]).mean(dim=0)
-        episode_length = data["next", "step_count"][data["next", "done"].all(-2)]
-        rewards = data["next", "agents", "reward"].squeeze().mean(dim=-1)
-        alpha = data["agents", "alpha"].squeeze()
-        actions = data["agents", "action"].squeeze()
+
+        # No "agents" in single agent
+        if cfg.multi_agent.use:
+            episode_rewards = data["next", "agents", "episode_reward"][data["next", "done"]]
+            reward_shape = data.get_item_shape(("next", eval_env.reward_key))
+            episode_rewards = episode_rewards.view(reward_shape[-2], reward_shape[0]).mean(dim=0)
+            episode_length = data["next", "step_count"][data["next", "done"].all(-2)]
+            rewards = data["next", "agents", "reward"].squeeze().mean(dim=-1)
+            alpha = data["agents", "alpha"].squeeze()
+            actions = data["agents", "action"].squeeze()
+        else:
+            episode_rewards = data["next", "episode_reward"][data["next", "done"]]
+            reward_shape = data.get_item_shape(("next", eval_env.reward_key))
+            episode_rewards = episode_rewards.view(reward_shape[-2], reward_shape[0]).mean(dim=0)
+            episode_length = data["next", "step_count"][data["next", "done"].all(-2)]
+            rewards = data["next", "reward"].squeeze().mean(dim=-1)
+            alpha = data["alpha"].squeeze()
+            actions = data["action"].squeeze()
+
         if not len(episode_length) > 0:
             raise RuntimeWarning("The eval tensordict does not contain a finished episode.")
         
