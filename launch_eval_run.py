@@ -151,7 +151,7 @@ if __name__ == '__main__':
     simulations = []
     for i in range(1, n_environments+1):
         if cfg.env.dummy_update:
-            simulation = launch_solver(exp)
+            simulation = launch_dummy_solver(exp)
         else:
             simulation = launch_solver(exp, instance=i, cfg=cfg)
         simulations.append(simulation)
