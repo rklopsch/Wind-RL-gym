@@ -102,7 +102,7 @@ def launch_eval(experiment, cfg, config_modifiers):
     file_list += [f"./{algo}/utils_{algo}.py"]  # SAC files
     file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator
     file_list += [f"{cfg.eval.training_name}/{algo}/checkpoints/actor_{cfg.eval.model_id}.pkl"]
-    pprint(file_list)
+    file_list += [f"{cfg.eval.training_name}/{algo}/checkpoints/critic_{cfg.eval.model_id}.pkl"]
     producer.attach_generator_files(to_copy=file_list)
     experiment.generate(producer, overwrite=True)
 
