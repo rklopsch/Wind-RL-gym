@@ -12,6 +12,7 @@ import logging
 if os.path.isdir('../eval'):
     config_dir = '../eval'
     training = False
+    algo = 'eval'
     logging.info('Running dummy solver in evaluation mode.')
 elif os.path.isdir('../ppo'):
     config_dir = '../ppo'
@@ -26,9 +27,6 @@ elif os.path.isdir('../sac'):
 else:
     raise RuntimeError(f"Did not find either ppo, sac or eval directory.")
 
-# Load the PPO config file to configure the dummy solver correctly
-if not algo:
-    raise RuntimeError(f"Could not determine which algo is being run. Are you in eval mode? Need to implement this!")
 initialize(config_path=config_dir, version_base="1.2")
 cfg = compose(config_name=f"config_{algo}.yaml")
 
