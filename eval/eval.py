@@ -153,9 +153,10 @@ def main(cfg: "DictConfig"):
         else:
             episode_rewards = data["next", "episode_reward"][data["next", "done"]]
             reward_shape = data.get_item_shape(("next", eval_env.reward_key))
-            episode_rewards = episode_rewards.view(reward_shape[-2], reward_shape[0]).mean(dim=0)
-            episode_length = data["next", "step_count"][data["next", "done"].all(-2)]
-            rewards = data["next", "reward"].squeeze().mean(dim=-1)
+            episode_rewards = episode_rewards.view(reward_shape[-1], reward_shape[0]).mean(dim=0)
+            episode_length = data["next", "step_count"][data["next", "done"]]
+            rewards = data["next", "reward"].squeeze()
+            observations = data["next", "observation"]
             alpha = data["alpha"].squeeze()
             actions = data["action"].squeeze()
 
@@ -168,6 +169,7 @@ def main(cfg: "DictConfig"):
             logs[f"rewards_{i+1}"] = rewards[i].detach().cpu().numpy()
             logs[f"alphas_{i+1}"] = alpha[i].detach().cpu().numpy()
             logs[f"actions_{i+1}"] = actions[i].detach().cpu().numpy()
+            logs[f"observations_{i+1}"] = observations[i].detach().cpu().numpy()
 
     # End timing
     end_time = time.time()

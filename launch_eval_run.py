@@ -10,10 +10,13 @@ from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
 from hydra import initialize, compose
 from omegaconf import OmegaConf
-
+from datetime import datetime
 
 def launch_database(experiment, port):
-    db = experiment.create_database(port=port, db_nodes=1, interface=['hsn0', 'hsn1'])
+    if cfg.eval.dummy_update:
+        db = experiment.create_database(port=port, db_nodes=1, interface='lo')
+    else:
+        db = experiment.create_database(port=port, db_nodes=1, interface=['hsn0', 'hsn1'])
 
     # generate directories for output files
     # pass in objects to make dirs for
@@ -84,21 +87,28 @@ def launch_dummy_solver(experiment):
 
 
 def launch_eval(experiment, cfg, config_modifiers):
-    aprun = experiment.create_run_settings(exe="python", exe_args="eval.py" + " ".join(config_modifiers), run_command="srun")
-    aprun.set_tasks(1)
-    aprun.set_cpus_per_task(128)
-    aprun.set_nodes(1)
-    aprun.set_tasks_per_node(1)
+    if cfg.eval.dummy_update:
+        aprun = experiment.create_run_settings(exe="python", exe_args="eval.py" + " ".join(config_modifiers))
+        aprun.set_tasks(1)
+    else:
+        aprun = experiment.create_run_settings(exe="python", exe_args="eval.py" + " ".join(config_modifiers), run_command="srun")
+        aprun.set_tasks(1)
+        aprun.set_cpus_per_task(128)
+        aprun.set_nodes(1)
+        aprun.set_tasks_per_node(1)
+
     producer = experiment.create_model("eval", aprun)
 
     # create directories for the output files and copy
     # scripts to execution location inside newly created dir
     # only necessary if its not an executable (python is executable here)
     file_list = ["./eval/eval.py"]
-    if 'ppo' in cfg.eval.training_name:
+    if 'ppo' in cfg.eval.training_name.lower():
         algo = 'ppo'
-    elif 'sac' in cfg.eval.training_name:
+    elif 'sac' in cfg.eval.training_name.lower():
         algo = 'sac'
+    else:
+        raise ValueError("Could not determine algorithm")
     file_list += [f"./{algo}/utils_{algo}.py"]  # SAC files
     file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator
     file_list += [f"{cfg.eval.training_name}/{algo}/checkpoints/actor_{cfg.eval.model_id}.pkl"]
@@ -117,11 +127,13 @@ if __name__ == '__main__':
 
     training_name = cfg_eval.eval.training_name
     run_name = training_name.replace("training", "eval", 1)
+    run_name = training_name + "_eval_" + datetime.now().strftime("%Y-%m-%d_%H-%M")
 
-    if 'ppo' in run_name:
+
+    if 'ppo' in run_name.lower():
         with initialize(config_path=f"{training_name}/ppo/outputs/hydra_logs", version_base="1.2"):
             cfg_train = compose(config_name="config.yaml")
-    elif 'sac' in run_name:
+    elif 'sac' in run_name.lower():
         with initialize(config_path=f"{training_name}/sac/outputs/hydra_logs", version_base="1.2"):
             cfg_train = compose(config_name="config.yaml")
     else:
@@ -150,12 +162,12 @@ if __name__ == '__main__':
 
     # Start simulations
     simulations = []
-    for i in range(1, n_environments+1):
-        if cfg.env.dummy_update:
-            simulation = launch_dummy_solver(exp)
-        else:
+    if cfg.eval.dummy_update:
+        simulations = [launch_dummy_solver(exp)]
+    else:
+        for i in range(1, n_environments+1):
             simulation = launch_solver(exp, instance=i, cfg=cfg)
-        simulations.append(simulation)
+            simulations.append(simulation)
 
     everything = simulations + [rl_app, db]
 
