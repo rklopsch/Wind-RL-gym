@@ -40,7 +40,6 @@ collector:
 replay_buffer:
   size: ${collector.total_frames}
   prb: False # use prioritized experience replay; the original TQC paper does not prioritized replay
-  scratch_dir:
 
 # optim
 optim:
@@ -77,3 +76,4 @@ checkpoint:
   load_from_checkpoint: False
   model_checkpoint_path: utils/checkpoint_test_sac   # Path to checkpoint, RELATIVE to Wind-RL/
   model_checkpoint_id: 1500  # ID of checkpoint
+  save_replay_buffer: True  # only save the full replay buffer if this is True

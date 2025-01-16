@@ -8,7 +8,7 @@ from tensordict.nn.distributions import NormalParamExtractor
 from torch import nn, optim
 from torchrl.collectors import SyncDataCollector
 from torchrl.data import TensorDictPrioritizedReplayBuffer, TensorDictReplayBuffer
-from torchrl.data.replay_buffers.storages import LazyMemmapStorage
+from torchrl.data.replay_buffers.storages import LazyMemmapStorage, LazyTensorStorage
 from torchrl.modules import MLP, ProbabilisticActor, ValueOperator
 from torchrl.modules.distributions import TanhNormal
 from torchrl.objectives import SoftUpdate, SACLoss
@@ -96,41 +96,38 @@ def make_collector(cfg, train_env, actor, device):
     return collector
 
 
-def make_replay_buffer(cfg, prefetch=3):
+def make_replay_buffer(cfg, prefetch=3, storage=None):
+    if storage == 'memmap':
+        st = LazyMemmapStorage
+    elif storage == 'tensor':
+        st = LazyTensorStorage
+
     batch_size = cfg.optim.batch_size
     buffer_size = cfg.replay_buffer.size
-    buffer_scratch_dir = cfg.replay_buffer.scratch_dir
     device = torch.device(cfg.collector.device)
-    with (
-            tempfile.TemporaryDirectory()
-            if buffer_scratch_dir is None
-            else nullcontext(buffer_scratch_dir)
-    ) as scratch_dir:
-        if cfg.replay_buffer.prb:
-            replay_buffer = TensorDictPrioritizedReplayBuffer(
-                alpha=0.7,
-                beta=0.5,
-                pin_memory=False,
-                prefetch=prefetch,
-                storage=LazyMemmapStorage(
-                    buffer_size,
-                    scratch_dir=scratch_dir,
-                    device=device,
-                ),
-                batch_size=batch_size,
-            )
-        else:
-            replay_buffer = TensorDictReplayBuffer(
-                pin_memory=False,
-                prefetch=prefetch,
-                storage=LazyMemmapStorage(
-                    buffer_size,
-                    scratch_dir=scratch_dir,
-                    device=device,
-                ),
-                batch_size=batch_size,
-            )
-        return replay_buffer
+    if cfg.replay_buffer.prb:
+        replay_buffer = TensorDictPrioritizedReplayBuffer(
+            alpha=0.7,
+            beta=0.5,
+            pin_memory=False,
+            prefetch=prefetch,
+            storage=st(
+                buffer_size,
+                device=device,
+            ),
+            batch_size=batch_size,
+        )
+    else:
+        replay_buffer = TensorDictReplayBuffer(
+            pin_memory=False,
+            prefetch=prefetch,
+            storage=st(
+                buffer_size,
+                device=device,
+            ),
+            batch_size=batch_size,
+        )
+    return replay_buffer
 
 
 # ====================================================================

@@ -52,6 +52,7 @@ checkpoint:
   load_from_checkpoint: False
   model_checkpoint_path: training_ppo_03-10-24/ppo/checkpoints   # Path to checkpoint, RELATIVE to Wind-RL/
   model_checkpoint_id: 1  # ID of checkpoint
+  save_replay_buffer: True  # only save full buffer if this is True
 
 # loss
 loss:
