@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from load_buffer import load_buffer
 
+# TO-DO: Scale the plots by the BASE reward.
+# TO-DO: Compute the base reward and check that we have enough data for this.
 
 if __name__ == '__main__':
     # This script reads data from a replay buffer to plot the episodic reward
