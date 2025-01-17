@@ -5,6 +5,7 @@ import time
 import logging
 import torch.optim
 from tensordict import TensorDict
+from tensordict.nn import TensorDictModule
 from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
 from torchrl.envs.utils import set_exploration_type, ExplorationType
 import shutil
@@ -43,6 +44,11 @@ def adjust_tensor_shapes(data, env):
         .expand(data.get_item_shape(("next", env.reward_key))),
     )
     return data
+
+
+def make_constant_zero_policy(env):
+    return TensorDictModule(lambda x: torch.zeros(env.action_spec.shape[-1]),
+                            in_keys=[env.observation_key], out_keys=[env.action_key])
 
 
 @hydra.main(config_path="./", config_name="config_eval.yaml", version_base="1.2")
@@ -125,6 +131,18 @@ def main(cfg: "DictConfig"):
         storage=LazyMemmapStorage(total_frames),
     )
     """
+
+    # Initial reset to burn in simulation
+    zero_policy = make_constant_zero_policy(eval_env)
+    logging.info(f'Initial reset: collecting {cfg.env.initial_reset_frames} frames.')
+    eval_env.rollout(
+        max_steps=cfg.env.initial_reset_frames,
+        policy=zero_policy,
+        auto_reset=True,
+    )
+    logging.info(f"100% done with initial reset.")
+
+    logging.info('Starting training...')
 
     # Timing
     start_time = time.time()
