@@ -1,0 +1,50 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from load_buffer import load_buffer
+
+
+if __name__ == '__main__':
+    # This script reads data from a replay buffer to plot the episodic reward
+    # Load replay buffer
+    replay_buffer = load_buffer('replay_buffer_test/replay_buffer_checkpoint_ppo.pt')
+
+    # Extract data
+    rewards = replay_buffer.get(("_data", "next", "reward")).squeeze()
+    episode_reward = replay_buffer.get(("_data", "next", "episode_reward")).squeeze().numpy()
+    done = replay_buffer.get(("_data", "next", "done")).squeeze().numpy()
+    num_envs = done.shape[-1]
+
+    # Find out where the episodes have ended
+    # Everything is synchronised so we can just look at one env
+    episode_ends = np.where(done[:, 0])
+    episode_reward = episode_reward[episode_ends]
+
+    # Take mean across environment dimension
+    mean_episode_reward = np.mean(episode_reward, axis=-1)
+    std_episode_reward = np.std(episode_reward, axis=-1)
+
+    # Plot mean with 95% confidence band
+    x = np.arange(1, episode_reward.shape[0]+1)
+    plt.plot(x, mean_episode_reward)
+    plt.fill_between(
+        x,
+        mean_episode_reward-1.98*std_episode_reward/np.sqrt(num_envs),
+        mean_episode_reward+1.98*std_episode_reward/np.sqrt(num_envs),
+        alpha=0.3
+    )
+    plt.xlabel('Number of episodes')
+    plt.ylabel('Episodic reward')
+    plt.title(f'Mean and 95% CI for {num_envs} training environments')
+    plt.savefig('mean_episode_reward.png')
+    plt.close()
+
+    # Plot all episode rewards (across environments) individually
+    for i in range(episode_reward.shape[-1]):
+        y = episode_reward[:, i]
+        plt.plot(y, alpha=0.5)
+    plt.xlabel('Number of episodes')
+    plt.ylabel('Episodic reward')
+    plt.title('Individual training envs')
+    plt.savefig('individual_episode_reward.png')
+    plt.close()
+

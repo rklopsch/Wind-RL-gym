@@ -1,12 +1,13 @@
 import torch
 import matplotlib.pyplot as plt
 
+
 def load_buffer(path):
     return torch.load(path)
 
 
 if __name__ == '__main__':
-    td = load_buffer('../launch_dummy_run/ppo/checkpoints/replay_buffer_checkpoint.pt')
+    td = load_buffer('replay_buffer_test/replay_buffer_checkpoint_ppo.pt')
     # print(td)
 
     actions = td.get(("_data", "agents", "action")).squeeze()
