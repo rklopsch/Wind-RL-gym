@@ -10,6 +10,7 @@ from utils_sac import (
     make_collector,
     make_loss_module,
     make_replay_buffer,
+    make_saving_replay_buffer,
     make_sa_sac_agent,
     make_ma_sac_agents,
     make_sac_optimizer,
@@ -105,11 +106,11 @@ def main(cfg: "DictConfig"):
 
     # Create replay buffer
     logging.info('Creating replay buffer')
-    replay_buffer = make_replay_buffer(cfg, storage = 'memmap')
+    replay_buffer = make_replay_buffer(cfg)
 
     # Create replay buffer for saving
     if cfg.checkpoint.save_replay_buffer:
-        saving_buffer = make_replay_buffer(cfg, storage = 'tensor')
+        saving_buffer = make_saving_replay_buffer(cfg)
 
     # Create optimizers
     (

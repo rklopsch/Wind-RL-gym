@@ -6,6 +6,7 @@ import copy
 import logging
 import torch.optim
 import tqdm
+import math
 from tensordict import TensorDict
 from torchrl.collectors import SyncDataCollector
 from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer, LazyTensorStorage
@@ -120,7 +121,7 @@ def main(cfg: "DictConfig"):
     # Create replay buffer to remember entire history
     if cfg.checkpoint.save_replay_buffer:
         full_buffer = TensorDictReplayBuffer(
-            storage=LazyTensorStorage(total_frames // n_environments),
+            storage=LazyTensorStorage(math.ceil(total_frames / n_environments)),
         )
 
     # Create loss and adv modules

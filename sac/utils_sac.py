@@ -3,6 +3,7 @@ from contextlib import nullcontext
 import hydra
 import pickle
 import torch
+import math
 from tensordict.nn import InteractionType, TensorDictModule, TensorDictSequential
 from tensordict.nn.distributions import NormalParamExtractor
 from torch import nn, optim
@@ -96,12 +97,7 @@ def make_collector(cfg, train_env, actor, device):
     return collector
 
 
-def make_replay_buffer(cfg, prefetch=3, storage=None):
-    if storage == 'memmap':
-        st = LazyMemmapStorage
-    elif storage == 'tensor':
-        st = LazyTensorStorage
-
+def make_replay_buffer(cfg, prefetch=3):
     batch_size = cfg.optim.batch_size
     buffer_size = cfg.replay_buffer.size
     device = torch.device(cfg.collector.device)
@@ -111,7 +107,7 @@ def make_replay_buffer(cfg, prefetch=3, storage=None):
             beta=0.5,
             pin_memory=False,
             prefetch=prefetch,
-            storage=st(
+            storage=LazyMemmapStorage(
                 buffer_size,
                 device=device,
             ),
@@ -121,12 +117,24 @@ def make_replay_buffer(cfg, prefetch=3, storage=None):
         replay_buffer = TensorDictReplayBuffer(
             pin_memory=False,
             prefetch=prefetch,
-            storage=st(
+            storage=LazyMemmapStorage(
                 buffer_size,
                 device=device,
             ),
             batch_size=batch_size,
         )
+    return replay_buffer
+
+
+def make_saving_replay_buffer(cfg):
+    buffer_size = math.ceil(cfg.collector.total_frames/cfg.env.n_parallel)
+    device = torch.device(cfg.collector.device)
+    replay_buffer = TensorDictReplayBuffer(
+        storage=LazyTensorStorage(
+            buffer_size,
+            device=device,
+        ),
+    )
     return replay_buffer
 
 
