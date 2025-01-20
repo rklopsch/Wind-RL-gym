@@ -40,4 +40,7 @@ if __name__ == '__main__':
 
     print("New tensordict", shortened_buffer)
 
+    torch.save(shortened_buffer, filename[:-3] + "_shortened.pt")
+    print("Saved shortened buffer at " + filename[:-3] + "_shortened.pt")
+
     print("All done")
