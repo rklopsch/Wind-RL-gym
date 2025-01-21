@@ -125,8 +125,13 @@ def launch_eval(experiment, cfg, config_modifiers):
 
 if __name__ == '__main__':
 
+    # Any arguments (space-separated) are taken to be modifiers for the config file
+    # We assume that the arguments are valid modifiers for the config; this is not tested here.
+    # An example of a valid modifier is "optim.gamma=0.9"
+    config_modifiers = list(sys.argv[1:]) if len(sys.argv) > 1 else [""]
+
     with initialize(config_path="eval", version_base="1.2"):
-        cfg_eval = compose(config_name="config_eval.yaml")
+        cfg_eval = compose(config_name="config_eval.yaml", overrides=config_modifiers)
 
     training_name = cfg_eval.eval.training_name
     run_name = training_name.replace("training", "eval", 1)
@@ -144,11 +149,7 @@ if __name__ == '__main__':
 
     # Merge configurations
     cfg = OmegaConf.create({**cfg_eval, **cfg_train})
-
-    # Any arguments (space-separated) are taken to be modifiers for the config file
-    # We assume that the arguments are valid modifiers for the config; this is not tested here.
-    # An example of a valid modifier is "optim.gamma=0.9"
-    config_modifiers = list(sys.argv[1:]) if len(sys.argv) > 1 else [""]
+    # cfg = OmegaConf.merge(cfg_eval, cfg_train)  # Deep merge
 
     # Set up experiment
     exp = Experiment(run_name, launcher="auto")
