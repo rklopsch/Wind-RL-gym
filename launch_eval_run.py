@@ -91,10 +91,10 @@ def launch_dummy_solver(experiment):
 
 def launch_eval(experiment, cfg, config_modifiers):
     if cfg.eval.dummy_update:
-        aprun = experiment.create_run_settings(exe="python", exe_args="eval.py" + " ".join(config_modifiers))
+        aprun = experiment.create_run_settings(exe="python", exe_args="eval.py " + " ".join(config_modifiers))
         aprun.set_tasks(1)
     else:
-        aprun = experiment.create_run_settings(exe="python", exe_args="eval.py" + " ".join(config_modifiers), run_command="srun")
+        aprun = experiment.create_run_settings(exe="python", exe_args="eval.py " + " ".join(config_modifiers), run_command="srun")
         aprun.set_tasks(1)
         aprun.set_cpus_per_task(128)
         aprun.set_nodes(1)
