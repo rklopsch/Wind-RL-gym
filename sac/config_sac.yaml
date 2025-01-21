@@ -25,7 +25,7 @@ env:
 
 # Multi-agent or single-agent training?
 multi_agent:
-  use: True
+  use: False
 
 # collector
 collector:
@@ -39,13 +39,13 @@ collector:
 # replay buffer
 replay_buffer:
   size: ${collector.total_frames}
-  prb: False # use prioritized experience replay; the original TQC paper does not prioritized replay
+  prb: False # use prioritized experience replay; the original TQC paper does not prioritized replay 
 
 # optim
 optim:
   gamma: 0.9
   lr: 3.0e-4
-  step_mult: 64
+  step_mult: 1
   weight_decay: 0.0
   batch_size: 256
   target_update_polyak: 0.995
@@ -72,7 +72,7 @@ hydra:
 
 # Settings for checkpointing
 checkpoint:
-  checkpoint_interval: 100
+  checkpoint_interval: 1
   load_from_checkpoint: False
   model_checkpoint_path: utils/checkpoint_test_sac   # Path to checkpoint, RELATIVE to Wind-RL/
   model_checkpoint_id: 1500  # ID of checkpoint
