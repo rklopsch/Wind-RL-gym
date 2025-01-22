@@ -336,7 +336,7 @@ def make_sac_optimizer(cfg, loss_module):
     )
     optimizer_alpha = optim.Adam(
         [loss_module.log_alpha],
-        lr=3.0e-4,
+        lr=float(cfg.optim.entropy_lr)/cfg.optim.step_mult,
     )
     return optimizer_actor, optimizer_critic, optimizer_alpha
 
