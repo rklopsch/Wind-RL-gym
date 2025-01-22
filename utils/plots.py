@@ -33,9 +33,9 @@ class TimeSeries:
         self.reset_length = config['env']['reset_frames']
         self.init_length = (config['env']['initial_reset_frames'] // self.reset_length) * self.reset_length
         if mode == 'eval':
-            self.start_time = config['env']['initial_reset_frames'] * self.dt
-            # self.end_time = self.start_time + config['eval']['episode_length'] * self.dt
-            self.end_time = config['env']['reset_frames'] * self.dt
+            print(config['env']['reset_frames'])
+            self.start_time = (config['env']['initial_reset_frames'] + config['env']['reset_frames']) * self.dt
+            self.end_time = self.start_time + config['eval']['episode_length'] * self.dt
         else:
             self.start_time = config['env']['initial_reset_frames'] * self.dt
             self.end_time = (self.start_time +
@@ -54,7 +54,7 @@ class TimeSeries:
         fs = 1/self.dt
         total_steps = int((self.end_time - self.start_time)//self.dt)-1
         for turbine in range(self.n_turbs):
-            freqs, psd_power = welch(self.data[turbine]['Power'][int(self.start_time//self.dt):-1], fs, nperseg=500)  # total_steps//2)
+            freqs, psd_power = welch(self.data[turbine]['Power_ave'][int(self.start_time//self.dt):-1], fs, nperseg=500)  # total_steps//2)
             freqs, psd_yaw = welch(self.data[turbine]['YawAng'][int(self.start_time//self.dt):-1], fs, nperseg=500)  # total_steps//2)
             df_psd = pd.DataFrame({'Frequency': freqs, 'Power_PSD': psd_power, 'YawAng_PSD': psd_yaw})
             self.freq_data.append(df_psd)
@@ -72,7 +72,7 @@ class TimeSeries:
         # for i in range(len(episode_data)//self.episode_length):
         #   l += self.episode_length * [i]
         episode_data.loc[:, 'chunk_id'] = (np.arange(len(df_filtered))[mask] // (self.episode_length+self.reset_length))
-        episode_averaged_power = episode_data.groupby('chunk_id')['Power'].mean()
+        episode_averaged_power = episode_data.groupby('chunk_id')['Power_ave'].mean()
         x_positions = [(cycle_length * i + self.episode_length // 2) * self.dt + self.start_time for i in episode_averaged_power.index]
         return x_positions, episode_averaged_power, mask
 
@@ -81,7 +81,7 @@ class TimeSeries:
                   '#17becf']
         total_power = 0
         for turbine in range(self.n_turbs):
-            ax.plot(self.data[turbine]['Time'][:it], self.data[turbine]['Power'][:it] / 1e6,
+            ax.plot(self.data[turbine]['Time'][:it], self.data[turbine]['Power_ave'][:it] / 1e6,
                     color=colors[turbine],
                     alpha=0.05,
                     label=f'_Turbine {turbine + 1}')
@@ -89,7 +89,7 @@ class TimeSeries:
             # ax.scatter(self.start_time+mask*10, np.ones_like(mask))
             ax.step(x, y/1e6, where='pre', label='Episode Mean', color=colors[turbine], linewidth=2)
             # ax.step(self.data[turbine]['Time'][self.init_length:it], mask[:-1], where='mid', label='Episode Mean', color=colors[turbine], linewidth=2)
-            total_power += self.data[turbine]['Power'][:it]
+            total_power += self.data[turbine]['Power_ave'][:it]
         ax.plot(self.data[turbine]['Time'][:it-1], total_power[:it] / 1e6,
                 color='k',
                 alpha=0.05,
@@ -219,10 +219,10 @@ class EnsembleAverage:
             total += mean[variable]
         if sum:
             ax.plot(mean['Time'], total/scale, color='k', label=f'Total')
-            # ax.set_ylim(0, max(total[int(self.instances[0].start_time//self.instances[0].dt):]/scale))
+            ax.set_ylim(0, max(total[int(self.instances[0].start_time//self.instances[0].dt):]/scale))
 
     def draw_power(self, it, ax):
-        self.plot_time('Power', ax, sum=True, scale=1e6)
+        self.plot_time('Power_ave', ax, sum=True, scale=1e6)
         ax.set_xlabel('Time (s)')
         ax.set_ylabel('Power (MW)')
         ax.set_xlim(self.instances[0].start_time, self.instances[0].end_time)
@@ -306,7 +306,7 @@ def main():
         series.collect_data()
         series.calculate_psds()
         # series.draw_yaw_psd(-1, axs[0, 1])
-        # series.draw_yaw(-1, axs[0, 0])
+        series.draw_yaw(-1, axs[0, 0])
         # series.draw_power_psd(-1, axs[1, 1])
         # series.draw_power(-1, axs[1, 0])
         # fig.savefig(os.path.join(environment_name, 'time_series.pdf'))
