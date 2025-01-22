@@ -160,20 +160,19 @@ class TurbEnv(EnvBase):
 
         # Compute a penalty for large angles
         angle_penalty = self.penalty_scale * (new_alpha.squeeze()/self.max_angle)**(self.penalty_exponent)
-        power = power - angle_penalty
+        reward = power - angle_penalty
 
-        if len(power.shape) < len(tensordict.shape) + 2:
-            reward = power.unsqueeze(dim=-1)
-        else:
-            reward = power
+        if len(reward.shape) < len(tensordict.shape) + 2:
+            reward = reward.unsqueeze(dim=-1)
+            power = power.unsqueeze(dim=-1)
         done = torch.zeros((*tensordict.shape, 1), dtype=torch.bool)
 
         pos_enc = self._position_encoding(self.n_turbs)
 
         if self.multi_agent:
-            out = self._make_tensordict_ma(done, new_alpha, observation, reward, pos_enc)
+            out = self._make_tensordict_ma(done, new_alpha, observation, reward, power, pos_enc)
         else:
-            out = self._make_tensordict_sa(done, new_alpha, observation, reward, pos_enc)
+            out = self._make_tensordict_sa(done, new_alpha, observation, reward, power, pos_enc)
 
         # print(f"Hello again. I am instance {self.instance} This is the time at END of step: {time.time():.4f}.")
 
@@ -237,9 +236,9 @@ class TurbEnv(EnvBase):
         )
         """
         if self.multi_agent:
-            out = self._make_tensordict_ma(None, alpha, observation, None, pos_enc)
+            out = self._make_tensordict_ma(None, alpha, observation, None, None, pos_enc)
         else:
-            out = self._make_tensordict_sa(None, alpha, observation, None, pos_enc)
+            out = self._make_tensordict_sa(None, alpha, observation, None, None, pos_enc)
 
         return out
 
@@ -263,6 +262,11 @@ class TurbEnv(EnvBase):
                     dtype=torch.float32,
                     device=self.device
                 ),
+                power=UnboundedContinuousTensorSpec(
+                    shape=(*self.batch_size, 1),
+                    dtype=torch.float32,
+                    device=self.device
+                ),
                 # we need to add the "params" to the observation specs, as we want
                 # to pass it at each step during a rollout
                 # params=self.make_composite_from_td(td_params["params"]),
@@ -283,16 +287,23 @@ class TurbEnv(EnvBase):
             dtype=torch.float32,
             device=self.device
         )
-        return action_spec, reward_spec, observation_spec
+        power_spec = UnboundedContinuousTensorSpec(
+            shape=(*self.batch_size, 1),
+            dtype=torch.float32,
+            device=self.device
+        )
+        return action_spec, reward_spec, power_spec, observation_spec
 
     def _make_spec_ma(self):
         action_specs = []
         observation_specs = []
         reward_specs = []
-        for i in range(self.n_turbs):
-            agent_i_action_spec, agent_i_reward_spec, agent_i_observation_spec = self._make_agent_spec()
+        power_specs = []
+        for _ in range(self.n_turbs):
+            agent_i_action_spec, agent_i_reward_spec, agent_i_power_spec, agent_i_observation_spec = self._make_agent_spec()
             action_specs.append(agent_i_action_spec)
             reward_specs.append(agent_i_reward_spec)
+            power_specs.append(agent_i_power_spec)
             observation_specs.append(agent_i_observation_spec)
         self.action_spec = CompositeSpec(
             {
@@ -304,7 +315,11 @@ class TurbEnv(EnvBase):
         self.reward_spec = CompositeSpec(
             {
                 "agents": CompositeSpec(
-                    {"reward": torch.stack(reward_specs, dim=0)}, shape=(self.n_turbs,)
+                    {
+                        "reward": torch.stack(reward_specs, dim=0),
+                        "power": torch.stack(power_specs, dim=0)  # this is currently broken... needs to be done differently
+                    }, 
+                    shape=(self.n_turbs,),
                 )
             }
         )
@@ -344,12 +359,21 @@ class TurbEnv(EnvBase):
             dtype=torch.float32,
             device=self.device
         )
-        reward_spec = UnboundedContinuousTensorSpec(
-            shape=(*self.batch_size, 1),
-            dtype=torch.float32,
+        reward_spec = CompositeSpec(
+            reward=UnboundedContinuousTensorSpec(
+                shape=(*self.batch_size, 1),
+                dtype=torch.float32,
+                device=self.device
+            ),
+            power=UnboundedContinuousTensorSpec(
+                shape=(*self.batch_size, 1),
+                dtype=torch.float32,
+                device=self.device
+            ),
+            shape=(),
             device=self.device
         )
-        
+
         self.action_spec = action_spec
         self.reward_spec = reward_spec
         self.observation_spec = observation_spec
@@ -360,7 +384,7 @@ class TurbEnv(EnvBase):
         rng.manual_seed(seed)
         self.rng = rng
 
-    def _make_tensordict_ma(self, done, new_alpha, observation, reward, pos_enc):
+    def _make_tensordict_ma(self, done, new_alpha, observation, reward, power, pos_enc):
         source = {}
         if done is not None:
             source.update({"done": done})
@@ -373,6 +397,8 @@ class TurbEnv(EnvBase):
             }
             if reward is not None:
                 agent_out.update({"reward": reward[..., i, :]})
+            if power is not None:
+                agent_out.update({"power": power[..., i, :]})
             agent_out = TensorDict(agent_out, ())
             agent_tds.append(agent_out)
 
@@ -389,13 +415,15 @@ class TurbEnv(EnvBase):
 
         return out
     
-    def _make_tensordict_sa(self, done, new_alpha, observation, reward, pos_enc):
+    def _make_tensordict_sa(self, done, new_alpha, observation, reward, power, pos_enc):
         source = {}
         batch_size = new_alpha.shape[:-2]
         if done is not None:
             source.update({"done": done})
         if reward is not None:
             source.update({"reward": reward[..., 0, :]})
+        if power is not None:
+            source.update({"power": power[..., 0, :]})
         source.update({
             "alpha": new_alpha.view(*batch_size, -1),
             "observation": observation.view(*batch_size, -1),

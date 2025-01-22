@@ -47,7 +47,7 @@ def transforms(cfg, eval_only=False):
     alpha_norm_key = ("agents", "alpha_normalised") if multi_agent else "alpha_normalised"
     transform_list = [
         InitTracker(),
-        RewardSum(),
+        RewardSum(in_keys=["reward", "power"], reset_keys=["_reset", "_reset"]),  # episodic reward and power
         FiniteTensorDictCheck(),
         CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[observation_key]),
         ObservationNorm(
