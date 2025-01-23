@@ -79,6 +79,7 @@ class TurbEnv(EnvBase):
         self.multi_agent = multi_agent  # If True, using multi agent, else use single agent
         self.reward_average_steps = params["reward_average_steps"]
         self.velocity_penalty_scale = params["velocity_penalty_scale"]
+        self.difference_penalty_scale = params["difference_penalty_scale"]
 
         # Create client
         self.client = Client(address=None, cluster=False)
@@ -176,7 +177,7 @@ class TurbEnv(EnvBase):
         # Compute various penalty terms
         angle_penalty = torch.mean(self.penalty_scale * (new_alpha.squeeze()/self.max_angle)**(self.penalty_exponent))
         velocity_penalty = self.velocity_penalty_scale * torch.mean((u / self.max_speed)**2)
-        difference_penalty = 0.0  # need to compute the difference penalty here
+        difference_penalty = self.difference_penalty_scale * torch.mean((power.flatten().unsqueeze(0) - power.flatten().unsqueeze(1))**2)
 
         # power contains the individual turbine powers
         # take the mean over those to get the farm power (and keep scaling)
