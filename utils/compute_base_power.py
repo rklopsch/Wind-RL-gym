@@ -71,14 +71,8 @@ def compute_power_mean(base_directory, burnin):
 
     overall_mean = np.mean(farm_means)
     overall_std = np.mean(farm_stds)
-    overall_fluctuation = np.mean(fluctuations)
     overall_stderror_mean = np.std(farm_means) / np.sqrt(len(farm_means))
     overall_stderror_std = compute_stderror(len(farm_stds), farm_stds)
-    overall_stderror_fluc = compute_stderror(len(fluctuations), fluctuations)
-
-    # print(overall_stderror_mean, compute_stderror(len(farm_means), farm_means))
-
-    # print(overall_fluctuation, overall_stderror_fluc)
 
     ks = []
     std_k_list = []
@@ -115,4 +109,3 @@ if __name__ == '__main__':
     print(f"Mean power {mean:.5f} MW (standard error {100*mean_stderr/mean:.2f}%) | Std of power {std:.5f} MW (standard error {100*std_stderr/std:.2f}%)")
     df = pd.DataFrame({'Label': ['mean of power', 'std of power', 'stderror of mean', 'stderror of std'], 'Value': [mean, std, mean_stderr, std_stderr]})
     df.to_csv(path + '/mean_error.csv', index=False)
-
