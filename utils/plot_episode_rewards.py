@@ -23,6 +23,7 @@ if __name__ == '__main__':
     episode_length = [500, 125, 250, 1000, 2000]
     learning_rate = [3e-4, 1e-4, 3e-5, 3e-6]
     batch_frames = [1024, 512, 128]
+    probes_per_turbine = [60, 40, 20, 10, 5]
 
     cmap = plt.get_cmap("tab10")
 
@@ -66,7 +67,7 @@ if __name__ == '__main__':
 
         # Plot mean with 95% confidence band
         x = num_envs * np.arange(1, episode_reward.shape[0]+1)
-        plt.plot(x, mean_episode_reward, label=f'gamma={gamma[i]}', color=cmap(i))
+        plt.plot(x, mean_episode_reward, label=f'probes_per_turbine={probes_per_turbine[i]}', color=cmap(i))
         # plt.plot(x, max_episode_reward, linestyle='--', color=cmap(i), alpha=0.5)
         # plt.plot(x, min_episode_reward, linestyle='--', color=cmap(i), alpha=0.5)
         plt.fill_between(
