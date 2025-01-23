@@ -58,6 +58,7 @@ def compute_stderror(k, arr, iterations=10000):
 def compute_power_mean(base_directory, burnin):
     farm_means = []
     farm_stds = []
+    fluctuations = []
     # Iterate over all directories in the given directory
     for entry in os.listdir(base_directory):
         entry_path = os.path.join(base_directory, entry)
@@ -66,13 +67,18 @@ def compute_power_mean(base_directory, burnin):
             means, stds = load_data_single_environment(entry_path, burnin)
             farm_means.append(means['Farm'])
             farm_stds.append(stds['Farm'])
+            fluctuations.append(2*stds['Farm']/means['Farm'])
 
     overall_mean = np.mean(farm_means)
     overall_std = np.mean(farm_stds)
+    overall_fluctuation = np.mean(fluctuations)
     overall_stderror_mean = np.std(farm_means) / np.sqrt(len(farm_means))
     overall_stderror_std = compute_stderror(len(farm_stds), farm_stds)
+    overall_stderror_fluc = compute_stderror(len(fluctuations), fluctuations)
 
     # print(overall_stderror_mean, compute_stderror(len(farm_means), farm_means))
+
+    # print(overall_fluctuation, overall_stderror_fluc)
 
     ks = []
     std_k_list = []
@@ -99,7 +105,7 @@ if __name__ == '__main__':
 
     # for testing
     # path = '../outputs/base_zero_yaw/eval_zero_24-11-24'
-    burnin = 4000  # in RL frames
+    burnin = 5100  # in RL frames
 
     # Compute metrics
     mean, std, mean_stderr, std_stderr = compute_power_mean(path, burnin)
