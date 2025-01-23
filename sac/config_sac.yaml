@@ -18,8 +18,10 @@ env:
   # reset_frames: 3000  # combined for eval
   initial_reset_frames: 50  # for debugging
   frame_stack: 5  # Number of frames to be stacked as agent input
+  reward_average_steps: 1  # Number of frames over which to average the reward
   penalty_scale: 0.5
   penalty_exp: 26
+  velocity_penalty_scale: 0.0
   random_reset: False  # If True, at each reset angles will be chosen randomly
   initial_angles: [0.0, 0.0, 0.0]
 

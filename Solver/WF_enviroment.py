@@ -24,6 +24,18 @@ from smartredis import Client
 import logging
 
 
+def ring_insert_shift(buffer: torch.Tensor, new_value: float) -> None:
+    """
+    Inserts `new_value` into `buffer` (size N) by shifting all elements left.
+    The oldest value (buffer[0]) is dropped; new_value goes to buffer[-1].
+    """
+    # Shift all elements to the left
+    buffer[:-1] = buffer[1:].clone()
+    # Insert the new value at the end
+    buffer[-1] = new_value
+    return buffer
+
+
 class TurbEnv(EnvBase):
     metadata = {}
     batch_locked = False
@@ -65,6 +77,8 @@ class TurbEnv(EnvBase):
             raise ValueError(f'Number of initial angles provided {len(self.initial_angles)}'
                              f'does not match number of number of turbines {self.n_turbs}')
         self.multi_agent = multi_agent  # If True, using multi agent, else use single agent
+        self.reward_average_steps = params["reward_average_steps"]
+        self.velocity_penalty_scale = params["velocity_penalty_scale"]
 
         # Create client
         self.client = Client(address=None, cluster=False)
@@ -128,13 +142,13 @@ class TurbEnv(EnvBase):
 
         # Process the outputs from the solver
         turbine_powers /= 1e06
-        farm_power = turbine_powers.mean(axis=-1)  # Compute mean over iterations many time steps
-        farm_power = np.broadcast_to(farm_power, (self.n_turbs,))  # repeat farm power for all turbines
+        # farm_power = turbine_powers.mean(axis=-1)  # Compute mean over turbines
+        # farm_power = np.broadcast_to(farm_power, (self.n_turbs,))  # repeat farm power for all turbines
         # farm_power = turbine_powers.mean(axis=-1)  # Compute mean over iterations many time steps
         # turbine_obs = turbine_obs.mean(axis=-1)  # Compute mean over iterations many time steps
 
         # Convert to Torch tensors
-        power = torch.tensor(farm_power, dtype=torch.float32).to(self.device)
+        power = torch.tensor(turbine_powers, dtype=torch.float32).to(self.device)
         observation = torch.tensor(turbine_obs, dtype=torch.float32).to(self.device)
 
         return power, observation
@@ -156,11 +170,32 @@ class TurbEnv(EnvBase):
         new_alpha = alpha + u * self.dt
         new_alpha = new_alpha.clamp(-self.max_angle, self.max_angle)
 
+        # Retrieve power and observations
         power, observation = self._communicate(new_alpha)
 
-        # Compute a penalty for large angles
-        angle_penalty = self.penalty_scale * (new_alpha.squeeze()/self.max_angle)**(self.penalty_exponent)
-        reward = power - angle_penalty
+        # Compute various penalty terms
+        angle_penalty = torch.mean(self.penalty_scale * (new_alpha.squeeze()/self.max_angle)**(self.penalty_exponent))
+        velocity_penalty = self.velocity_penalty_scale * torch.mean((u / self.max_speed)**2)
+        difference_penalty = 0.0  # need to compute the difference penalty here
+
+        # power contains the individual turbine powers
+        # take the mean over those to get the farm power (and keep scaling)
+        power = torch.mean(power, axis=-1)
+
+        # Compute instanteneous reward
+        reward = power - angle_penalty - velocity_penalty - difference_penalty
+
+        # reward now has the instanteneous reward
+        # Next, we average the reward over a certain number of steps in the past
+        reward_buffer = tensordict.get("reward_buffer")
+        reward_buffer = ring_insert_shift(reward_buffer, reward.item())
+        # compute mean but be careful in the beginning, when the buffer is filled with -1.0 as default value
+        time_averaged_reward = torch.mean(reward_buffer[reward_buffer != -1.0])
+        # expand the reward to be of shape (n_turbs,)
+        time_averaged_reward = torch.broadcast_to(time_averaged_reward, (self.n_turbs,))
+        power = torch.broadcast_to(power, (self.n_turbs,))
+        # forget the instanteneous reward and use the time average
+        reward = time_averaged_reward
 
         if len(reward.shape) < len(tensordict.shape) + 2:
             reward = reward.unsqueeze(dim=-1)
@@ -172,7 +207,7 @@ class TurbEnv(EnvBase):
         if self.multi_agent:
             out = self._make_tensordict_ma(done, new_alpha, observation, reward, power, pos_enc)
         else:
-            out = self._make_tensordict_sa(done, new_alpha, observation, reward, power, pos_enc)
+            out = self._make_tensordict_sa(done, new_alpha, observation, reward, power, pos_enc, reward_buffer)
 
         # print(f"Hello again. I am instance {self.instance} This is the time at END of step: {time.time():.4f}.")
 
@@ -210,35 +245,12 @@ class TurbEnv(EnvBase):
         alpha[:, 0] = torch.tensor(self.initial_angles)
         observation = torch.zeros((*self.batch_size, self.n_turbs, self.obs_per_turbine), device=self.device)
         pos_enc = self._position_encoding(self.n_turbs)
+        reward_buffer = -1.0 * torch.ones((*self.batch_size, self.reward_average_steps))
 
-        """
-        agent_tds = []
-        for i in range(self.n_turbs):
-            agent_out = TensorDict(
-                {
-                    "alpha": alpha[..., i, :],
-                    "observation": observation[..., i, :],
-                    "pos_enc": pos_enc[..., i, :],
-                },
-                ()  #self.batch_size,
-            )
-            agent_tds.append(agent_out)
-
-        # agent_tds = torch.stack(agent_tds, dim=1)
-        agent_tds = torch.stack(agent_tds)
-        agent_tds = agent_tds.to_tensordict()
-
-        out = TensorDict(
-            {
-                "agents": agent_tds,
-            },
-            batch_size=self.batch_size,
-        )
-        """
         if self.multi_agent:
-            out = self._make_tensordict_ma(None, alpha, observation, None, None, pos_enc)
+            out = self._make_tensordict_ma(None, alpha, observation, None, None, pos_enc, reward_buffer)
         else:
-            out = self._make_tensordict_sa(None, alpha, observation, None, None, pos_enc)
+            out = self._make_tensordict_sa(None, alpha, observation, None, None, pos_enc, reward_buffer)
 
         return out
 
@@ -347,6 +359,11 @@ class TurbEnv(EnvBase):
                     dtype=torch.float32,
                     device=self.device
                 ),
+                reward_buffer=UnboundedContinuousTensorSpec(
+                    shape=(*self.batch_size, self.reward_average_steps),
+                    dtype=torch.float32,
+                    device=self.device
+                ),
                 shape=(),
                 device=self.device
                 )
@@ -415,7 +432,7 @@ class TurbEnv(EnvBase):
 
         return out
     
-    def _make_tensordict_sa(self, done, new_alpha, observation, reward, power, pos_enc):
+    def _make_tensordict_sa(self, done, new_alpha, observation, reward, power, pos_enc, reward_buffer):
         source = {}
         batch_size = new_alpha.shape[:-2]
         if done is not None:
@@ -427,6 +444,7 @@ class TurbEnv(EnvBase):
         source.update({
             "alpha": new_alpha.view(*batch_size, -1),
             "observation": observation.view(*batch_size, -1),
+            "reward_buffer": reward_buffer.view(*batch_size, -1),
         })
         out = TensorDict(
             source=source,
