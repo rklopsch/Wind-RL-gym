@@ -99,7 +99,7 @@ if __name__ == '__main__':
 
     # for testing
     # path = '../outputs/base_zero_yaw/eval_zero_24-11-24'
-    burnin = 4000  # in RL frames
+    burnin = 5000  # in RL frames
 
     # Compute metrics
     mean, std, mean_stderr, std_stderr = compute_power_mean(path, burnin)
