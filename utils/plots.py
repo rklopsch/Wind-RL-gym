@@ -325,8 +325,8 @@ def main():
     ensemble.draw_yaw_psd(-1, axs[0, 1])
     ensemble.draw_yaw(-1, axs[0, 0])
     ensemble.draw_power_psd(-1, axs[1, 1])
-    fig.savefig(os.path.join(casename, 'ensemble_time_series.pdf'))
     ensemble.draw_power(-1, axs[1, 0])
+    fig.savefig(os.path.join(casename, 'ensemble_time_series.pdf'))
 
     plt.show()
 
