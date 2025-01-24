@@ -69,7 +69,7 @@ def launch_solver(experiment, instance, cfg):
                          control_freq=cfg.env.steps_per_frame,
                          probes_per_turbine=cfg.env.probes_per_turbine,
                          instance=instance)
-    case.setup_case(f"./{experiment.name}/WindFarm_{instance}")
+    case.setup_case(f"./{experiment.name}/WindFarm_{instance}", save_flow=cfg.eval.save_flow)
     # case.setup_precursor(f"./{experiment.name}/WindFarm_{instance}/precursor_{instance}")
 
     return producer
