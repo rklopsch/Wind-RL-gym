@@ -12,18 +12,19 @@ from pprint import pprint as pp
 
 defaults = {'gamma': 0.95,
             'alpha_init': 1,
-            'max_yaw_speed': 1.0,
+            # 'max_yaw_speed': 1.0,
             # 'frame_stack': 5,
             'max_episode_length': 500,
             'lr': 3e-4,
             'frames_per_batch': 256,
             'probes_per_turbine': 60}
+            # 'entropy_lr': 60}
 
 for field in defaults.keys():
     print(f'Plotting sweep of {field}')
 
-    fig, axs = plt.subplots(1, 1,
-                            figsize=(6, 3),
+    fig, axs = plt.subplots(2, 1,
+                            figsize=(6, 8),
                             constrained_layout=True,
                             sharex='col')
 
@@ -65,23 +66,41 @@ for field in defaults.keys():
 
         results.append(data)
 
-    means = [item["mean of power"] for item in results]
-    mean_error = [item["stderror of mean"] for item in results]
+    base_file = '../base_zero/mean_error.csv'
+    df = pd.read_csv(base_file)
+    base_data = dict(zip(df["Label"], df["Value"]))
+    base_mean = base_data["mean of power"]
+    base_std = base_data["std of power"]
 
-    # axs.errorbar(values, means, mean_error)
-    axs.errorbar(
-        values, means, mean_error,
-        fmt='o',  # Marker style
-        color='gray',  # Line and marker color
-        ecolor='k',  # Error bar color
-        elinewidth=1,  # Width of error bar lines
-        capsize=5,  # Error bar cap size
-        capthick=1,  # Cap thickness
-        markersize=8,  # Marker size
-        label='Data with errors'
-    )
-    axs.set_xlabel(field)
-    axs.set_ylabel('Mean Power (MW)')
+    means = [item["mean of power"]/base_mean for item in results]
+    mean_error = [item["stderror of mean"]/base_mean for item in results]
+    stds = [item["std of power"]/base_std for item in results]
+    stds_error = [item["stderror of std"]/base_std for item in results]
+
+    axs[0].errorbar(values, means, mean_error,
+                    fmt='o',  # Marker style
+                    color='gray',  # Line and marker color
+                    ecolor='k',  # Error bar color
+                    elinewidth=1,  # Width of error bar lines
+                    capsize=5,  # Error bar cap size
+                    capthick=1,  # Cap thickness
+                    markersize=8,  # Marker size
+                    )
+    axs[0].set_xlabel(field)
+    axs[0].set_ylabel('Mean Power / Base Power')
+
+    axs[1].errorbar(values, stds, stds_error,
+                    fmt='o',  # Marker style
+                    color='gray',  # Line and marker color
+                    ecolor='k',  # Error bar color
+                    elinewidth=1,  # Width of error bar lines
+                    capsize=5,  # Error bar cap size
+                    capthick=1,  # Cap thickness
+                    markersize=8,  # Marker size
+                    )
+    axs[1].set_xlabel(field)
+    axs[1].set_ylabel('Std Power / Base Std Power')
     fig.savefig(f"../sa_sac_array/evaluation/{field}.png")
-    axs.set_xscale('log')
+    axs[0].set_xscale('log')
+    axs[1].set_xscale('log')
     fig.savefig(f"../sa_sac_array/evaluation/{field}_log.png")
