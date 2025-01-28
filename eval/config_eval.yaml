@@ -7,6 +7,7 @@ eval:
   model_id: 515  # ID of model to be evaluated
   save_flow: False
   dummy_update: True
+  initial_reset_frames: 0  # should be 5000
 
 # Configure hydra
 hydra:

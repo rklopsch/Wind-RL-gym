@@ -129,15 +129,15 @@ def main(cfg: "DictConfig"):
     )
 
     # Initial reset to burn in simulation
-    logging.info(f'Initial reset: collecting {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
+    logging.info(f'Initial reset: collecting {(cfg.eval.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
     # Each reset is cfg.env.reset_frames, we want a total of cfg.env.initial_reset_frames many
     reset_td = eval_env.reset()
-    for i in range(cfg.env.initial_reset_frames // cfg.env.reset_frames):
+    for i in range(cfg.eval.initial_reset_frames // cfg.env.reset_frames):
         reset_td = eval_env.reset(reset_td)
         logging.info(f"{100*i/(cfg.env.initial_reset_frames // cfg.env.reset_frames)}% done with initial reset.")
     logging.info(f"100% done with initial reset.")
 
-    logging.info('Starting training...')
+    logging.info('Starting evaluation...')
 
     # Timing
     start_time = time.time()
@@ -165,13 +165,13 @@ def main(cfg: "DictConfig"):
             actions = data["agents", "action"].squeeze()
         else:
             episode_rewards = data["next", "episode_reward"][data["next", "done"]]
-            reward_shape = data.get_item_shape(("next", eval_env.reward_key))
+            reward_shape = data.get_item_shape(("next", "reward"))
             episode_rewards = episode_rewards.view(reward_shape[-1], reward_shape[0]).mean(dim=0)
             episode_length = data["next", "step_count"][data["next", "done"]]
             rewards = data["next", "reward"].squeeze()
             observations = data["next", "observation"]
-            alpha = data["next", "alpha"].squeeze()
-            actions = data["next", "action"].squeeze()
+            alpha = data["alpha"].squeeze()
+            actions = data[ "action"].squeeze()
             # Extract data
             has_power = ("next", "power") in data.keys(include_nested=True)
             if has_power:
