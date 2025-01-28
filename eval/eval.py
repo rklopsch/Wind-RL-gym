@@ -56,9 +56,9 @@ def main(cfg: "DictConfig"):
     device = "cpu"  # Run on CPU only
     logging.info(f'Running on device: {device}.')
 
-    if 'ppo' in cfg.eval.training_name:
+    if 'ppo' in cfg.eval.training_name.lower():
         from utils_ppo import make_parallel_env, load_model, save_model, log_metrics
-    elif 'sac' in cfg.eval.training_name:
+    elif 'sac' in cfg.eval.training_name.lower():
         from utils_sac import make_parallel_env, load_model, save_model, log_metrics
     else:
         raise Exception("Can not determine training algorithm")
@@ -96,6 +96,9 @@ def main(cfg: "DictConfig"):
         "penalty_exp": cfg.env.penalty_exp,
         "random_reset": cfg.env.random_reset,
         "initial_angles": cfg.env.initial_angles,
+        "reward_average_steps": cfg.env.reward_average_steps,
+        "velocity_penalty_scale": cfg.env.velocity_penalty_scale,
+        "difference_penalty_scale": cfg.env.difference_penalty_scale,
     }
 
     # Load the models to be evaluated
