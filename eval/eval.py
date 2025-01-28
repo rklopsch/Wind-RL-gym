@@ -167,8 +167,8 @@ def main(cfg: "DictConfig"):
             episode_length = data["next", "step_count"][data["next", "done"]]
             rewards = data["next", "reward"].squeeze()
             observations = data["next", "observation"]
-            alpha = data["next", "alpha"].squeeze()
-            actions = data["next", "action"].squeeze()
+            alpha = data["alpha"].squeeze()
+            actions = data["action"].squeeze()
             # Extract data
             has_power = ("next", "power") in data.keys(include_nested=True)
             if has_power:
