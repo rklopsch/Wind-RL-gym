@@ -125,13 +125,6 @@ def main(cfg: "DictConfig"):
         eval_only=True,
     )
 
-    """
-    # Create replay buffer to remember entire history
-    full_buffer = TensorDictReplayBuffer(
-        storage=LazyMemmapStorage(total_frames),
-    )
-    """
-
     # Initial reset to burn in simulation
     logging.info(f'Initial reset: collecting {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
     # Each reset is cfg.env.reset_frames, we want a total of cfg.env.initial_reset_frames many
@@ -174,8 +167,14 @@ def main(cfg: "DictConfig"):
             episode_length = data["next", "step_count"][data["next", "done"]]
             rewards = data["next", "reward"].squeeze()
             observations = data["next", "observation"]
-            alpha = data["alpha"].squeeze()
-            actions = data["action"].squeeze()
+            alpha = data["next", "alpha"].squeeze()
+            actions = data["next", "action"].squeeze()
+            # Extract data
+            has_power = ("next", "power") in data.keys(include_nested=True)
+            if has_power:
+                power = data.get(("next", "power")).squeeze()
+                episode_power = data.get(("next", "episode_power"))[data["next", "done"]]
+                episode_power = episode_power.view(reward_shape[-1], reward_shape[0]).mean(dim=0)
 
         if not len(episode_length) > 0:
             raise RuntimeWarning("The eval tensordict does not contain a finished episode.")
@@ -187,6 +186,9 @@ def main(cfg: "DictConfig"):
             logs[f"alphas_{i+1}"] = alpha[i].detach().cpu().numpy()
             logs[f"actions_{i+1}"] = actions[i].detach().cpu().numpy()
             logs[f"observations_{i+1}"] = observations[i].detach().cpu().numpy()
+            if has_power:
+                logs[f"episode_power_{i + 1}"] = episode_power[i].item()
+                logs[f"power_{i + 1}"] = power[i].detach().cpu().numpy()
 
     # End timing
     end_time = time.time()
