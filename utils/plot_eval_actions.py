@@ -18,17 +18,38 @@ if __name__ == '__main__':
     with open(filename, 'rb') as f:
         data = pickle.load(f)
 
-    for key, arr in data.items():
-        if not key.startswith('alpha'):
-            continue
-        env_number = key[-11]
-        episode_number = key[-1]
-        for turb in range(arr.shape[-1]):
-            plt.plot(arr[:, turb], label=f"Turbine {turb+1}")
-        plt.legend()
-        plt.savefig(os.path.dirname(filename) + f'/action_angle_plot_ENV{env_number}_EP{episode_number}.png')
-        print(os.path.dirname(filename) + f'/action_angle_plot_ENV{env_number}_EP{episode_number}.png')
-        plt.close()
+    dir_name = os.path.dirname(filename)
+    if len(dir_name) == 0:
+        dir_name = './'
+    pic_path = dir_name + '/yaw_action_plots/'
+    if not os.path.exists(pic_path):
+        os.makedirs(pic_path)
+
+    num_episodes = 1
+    num_envs = 5
+
+    for episode_number in range(1, num_episodes+1):
+        for env_number in range(1, num_envs+1):
+            fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+            alpha_arr = data[f'alphas_ENV_{env_number}_EPISODE_{episode_number}']
+            action_arr = data[f'actions_ENV_{env_number}_EPISODE_{episode_number}']
+            for turb in range(alpha_arr.shape[-1]):
+                axes[0].plot(alpha_arr[:, turb], label=f"Turbine {turb+1}")
+                axes[1].plot(action_arr[:, turb], label=f"Turbine {turb+1}")
+            axes[0].legend()
+            axes[1].legend()
+            axes[0].set_xlabel('RL frames')
+            axes[1].set_xlabel('RL frames')
+            axes[0].grid(True)
+            axes[1].grid(True)
+            axes[0].set_ylabel('Turbine yaw angles (degrees)')
+            axes[1].set_ylabel('Turbine actions')
+            fig.suptitle(f"Environment {env_number} | Episode {episode_number}")
+            plt.tight_layout()
+            plt.savefig(pic_path + f'action_angle_plot_ENV{env_number}_EP{episode_number}.png')
+            plt.close()
+
+    print(f"Saved plots to {os.path.abspath(pic_path)}.")
 
     
 

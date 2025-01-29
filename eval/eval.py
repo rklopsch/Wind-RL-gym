@@ -178,7 +178,7 @@ def main(cfg: "DictConfig"):
                 rewards = data["next", "reward"].squeeze()
                 observations = data["next", "observation"]
                 alpha = data["alpha"].squeeze()
-                actions = data[ "action"].squeeze()
+                actions = data["action"].squeeze()
                 power = data.get(("next", "power")).squeeze()
                 episode_power = data.get(("next", "episode_power"))[data["next", "done"]]
                 episode_power = episode_power.view(reward_shape[-1], reward_shape[0]).mean(dim=0)
