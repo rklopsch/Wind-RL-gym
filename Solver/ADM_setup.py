@@ -144,11 +144,13 @@ class ADMSimulation:
 
     def add_probes(self, directory):
         probes_per_turbine = self.probes_per_turbine
-        probe_spacing = self.farm.turbines[0].diam/2
-        nrows = probes_per_turbine // 5
+        probe_rows = 7
+        nrows = probes_per_turbine // probe_rows
         x, z = np.meshgrid(
-            np.linspace(-(nrows-1) / 2 * probe_spacing, (nrows-1) / 2 * probe_spacing, nrows),
-            np.linspace(-2 * probe_spacing, 2 * probe_spacing, 5))
+            np.linspace(-2, 3, nrows),
+            np.linspace(-1, 1, probe_rows))
+        x *= self.farm.turbines[0].diam
+        z *= self.farm.turbines[0].diam
         y = np.ones(probes_per_turbine) * self.farm.turbines[0].hub_height
 
         probe_locations = np.zeros((3, self.farm.n_turbines*probes_per_turbine))
