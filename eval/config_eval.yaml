@@ -1,12 +1,13 @@
 # Eval
 # These settings only apply when running eval.py (instead of ppo.py)
 eval:
-  episode_length: 200
-  n_parallel: 5  # Number of eval envs to be run in parallel
-  training_name: training_sac_dummy_test  # Path to stored model, relative to Wind-RL/
-  model_id: 515  # ID of model to be evaluated
-  save_flow: False
-  dummy_update: True
+  episode_length: 2000
+  initial_reset_frames: 5000
+  n_parallel: 16  # Number of eval envs to be run in parallel
+  training_name: training_sac_SA_step_mult_1  # Path to stored model, relative to Wind-RL/
+  model_id: 1000448  # ID of model to be evaluated
+  save_flow: False  # WARNING this will save HUGE amounts of data
+  dummy_update: False
 
 # Configure hydra
 hydra:

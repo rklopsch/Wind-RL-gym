@@ -126,15 +126,15 @@ def main(cfg: "DictConfig"):
     )
 
     # Initial reset to burn in simulation
-    logging.info(f'Initial reset: collecting {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
-    # Each reset is cfg.env.reset_frames, we want a total of cfg.env.initial_reset_frames many
+    logging.info(f'Initial reset: collecting {(cfg.eval.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
+    # Each reset is cfg.env.reset_frames, we want a total of cfg.eval.initial_reset_frames many
     reset_td = eval_env.reset()
-    for i in range(cfg.env.initial_reset_frames // cfg.env.reset_frames):
+    for i in range(cfg.eval.initial_reset_frames // cfg.env.reset_frames):
         reset_td = eval_env.reset(reset_td)
-        logging.info(f"{100*i/(cfg.env.initial_reset_frames // cfg.env.reset_frames)}% done with initial reset.")
+        logging.info(f"{100*i/(cfg.eval.initial_reset_frames // cfg.env.reset_frames)}% done with initial reset.")
     logging.info(f"100% done with initial reset.")
 
-    logging.info('Starting training...')
+    logging.info('Starting evaluation...')
 
     # Timing
     start_time = time.time()

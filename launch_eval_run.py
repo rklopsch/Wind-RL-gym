@@ -63,7 +63,7 @@ def launch_solver(experiment, instance, cfg):
     farm1.grid()
     simulation_steps = (cfg.env.steps_per_frame
                         * (cfg.env.reset_frames * 3
-                           + cfg.env.initial_reset_frames
+                           + cfg.eval.initial_reset_frames
                            + cfg.eval.episode_length))
     case = ADMSimulation(farm1, timesteps=math.ceil(simulation_steps),
                          control_freq=cfg.env.steps_per_frame,
