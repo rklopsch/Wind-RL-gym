@@ -64,7 +64,7 @@ class ADMSimulation:
 
         ly = 500
         lz = self.farm.lz + self.farm.offset[1] + self.farm.offset[1]
-        lx = lz*2
+        lx = lz*32
         nx, ny, nz = find_grid_dimensions(lx, ly, lz, self.gridsize)
         ny += 1
 
