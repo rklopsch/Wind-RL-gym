@@ -10,13 +10,11 @@ from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
 from hydra import initialize, compose
 from omegaconf import OmegaConf
-from datetime import datetime
 
-def launch_database(experiment, port):
-    if cfg.eval.dummy_update:
-        db = experiment.create_database(port=port, db_nodes=1, interface='lo')
-    else:
-        db = experiment.create_database(port=port, db_nodes=1, interface=['hsn0', 'hsn1'])
+
+def launch_database(experiment, port, dummy_update=False):
+    interface = ['hsn0', 'hsn1'] if not dummy_update else 'lo'
+    db = experiment.create_database(port=port, db_nodes=1, interface=interface)
 
     # generate directories for output files
     # pass in objects to make dirs for
@@ -61,15 +59,23 @@ def launch_solver(experiment, instance, cfg):
                  Turbine(cfg.env.turbine_diameter, cfg.env.turbine_height, yaw=0),
                  offset=[(cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter, (cfg.env.turbine_spacing_z-1)/2*cfg.env.turbine_diameter])
     farm1.grid()
+
     simulation_steps = (cfg.env.steps_per_frame
                         * (cfg.env.reset_frames * 3
                            + cfg.eval.initial_reset_frames
-                           + cfg.eval.episode_length))
+                           + cfg.eval.num_rollouts *
+                              (cfg.eval.episode_length
+                               + cfg.eval.inbetween_reset_frames
+                               + cfg.env.reset_frames
+                              )
+                          )
+                       )
+
     case = ADMSimulation(farm1, timesteps=math.ceil(simulation_steps),
                          control_freq=cfg.env.steps_per_frame,
                          probes_per_turbine=cfg.env.probes_per_turbine,
                          instance=instance)
-    case.setup_case(f"./{experiment.name}/WindFarm_{instance}", save_flow=cfg.eval.save_flow)
+    case.setup_case(f"./{experiment.name}/WindFarm_{instance}")
     # case.setup_precursor(f"./{experiment.name}/WindFarm_{instance}/precursor_{instance}")
 
     return producer
@@ -89,17 +95,13 @@ def launch_dummy_solver(experiment):
     return producer
 
 
-def launch_eval(experiment, cfg, config_modifiers):
-    if cfg.eval.dummy_update:
-        aprun = experiment.create_run_settings(exe="python", exe_args="eval.py " + " ".join(config_modifiers))
-        aprun.set_tasks(1)
-    else:
-        aprun = experiment.create_run_settings(exe="python", exe_args="eval.py " + " ".join(config_modifiers), run_command="srun")
-        aprun.set_tasks(1)
-        aprun.set_cpus_per_task(128)
-        aprun.set_nodes(1)
-        aprun.set_tasks_per_node(1)
-
+def launch_eval(experiment, cfg, config_modifiers, dummy_update=False):
+    run_command = "" if dummy_update else "srun"
+    aprun = experiment.create_run_settings(exe="python", exe_args="eval.py" + " ".join(config_modifiers), run_command=run_command)
+    aprun.set_tasks(1)
+    aprun.set_cpus_per_task(128)
+    aprun.set_nodes(1)
+    aprun.set_tasks_per_node(1)
     producer = experiment.create_model("eval", aprun)
 
     # create directories for the output files and copy
@@ -111,45 +113,51 @@ def launch_eval(experiment, cfg, config_modifiers):
     elif 'sac' in cfg.eval.training_name.lower():
         algo = 'sac'
     else:
-        raise ValueError("Could not determine algorithm")
+        raise ValueError(f"Could not determine algorithm.")
+    
     file_list += [f"./{algo}/utils_{algo}.py"]  # SAC files
     file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator
     file_list += [f"{cfg.eval.training_name}/{algo}/checkpoints/actor_{cfg.eval.model_id}.pkl"]
     file_list += [f"{cfg.eval.training_name}/{algo}/checkpoints/critic_{cfg.eval.model_id}.pkl"]
     producer.attach_generator_files(to_copy=file_list)
+
     experiment.generate(producer, overwrite=True)
 
+    if not os.path.exists(f"./{experiment.name}/eval/"):
+        os.makedirs(f"./{experiment.name}/eval/")
     OmegaConf.save(cfg, f"./{experiment.name}/eval/config_eval.yaml")
 
     return producer
 
 if __name__ == '__main__':
 
-    # Any arguments (space-separated) are taken to be modifiers for the config file
-    # We assume that the arguments are valid modifiers for the config; this is not tested here.
-    # An example of a valid modifier is "optim.gamma=0.9"
-    config_modifiers = list(sys.argv[1:]) if len(sys.argv) > 1 else [""]
-
     with initialize(config_path="eval", version_base="1.2"):
-        cfg_eval = compose(config_name="config_eval.yaml", overrides=config_modifiers)
+        cfg_eval = compose(config_name="config_eval.yaml")
 
     training_name = cfg_eval.eval.training_name
-    run_name = training_name.replace("training", "eval", 1)
-    run_name = training_name + "_eval_" + datetime.now().strftime("%Y-%m-%d_%H-%M")
+    # run_name = training_name.replace("training", "eval", 1)  # not good
+    run_name = training_name + "_eval"
+    dummy_update = cfg_eval.eval.dummy_update
 
+    print(f"Launching eval run at {run_name}.")
 
     if 'ppo' in run_name.lower():
         with initialize(config_path=f"{training_name}/ppo/outputs/hydra_logs", version_base="1.2"):
             cfg_train = compose(config_name="config.yaml")
     elif 'sac' in run_name.lower():
-        with initialize(config_path=f"{training_name}/sac/outputs/hydra_logs", version_base="1.2"):
-            cfg_train = compose(config_name="config.yaml")
+        with initialize(config_path=f"{training_name}/sac/", version_base="1.2"):
+            cfg_train = compose(config_name="config_sac.yaml")
     else:
-        raise Exception("Can not determine training algorithm")
+        raise Exception("Can not determine training algorithm. We expect to find the name of the algorithm in the directory name.")
 
     # Merge configurations
-    cfg = OmegaConf.create({**cfg_eval, **cfg_train})
-    # cfg = OmegaConf.merge(cfg_eval, cfg_train)  # Deep merge
+    cfg = {**cfg_eval, **cfg_train}
+    cfg = OmegaConf.create(cfg)
+
+    # Any arguments (space-separated) are taken to be modifiers for the config file
+    # We assume that the arguments are valid modifiers for the config; this is not tested here.
+    # An example of a valid modifier is "optim.gamma=0.9"
+    config_modifiers = list(sys.argv[1:]) if len(sys.argv) > 1 else [""]
 
     # Set up experiment
     exp = Experiment(run_name, launcher="auto")
@@ -159,15 +167,16 @@ if __name__ == '__main__':
 
     # Start database
     db_port = 6783
-    db = launch_database(exp, db_port)
+    db = launch_database(exp, db_port, dummy_update=dummy_update)
 
     # Start RL
-    rl_app = launch_eval(exp, cfg, config_modifiers)
+    rl_app = launch_eval(exp, cfg, config_modifiers, dummy_update=dummy_update)
 
     # Start simulations
     simulations = []
-    if cfg.eval.dummy_update:
-        simulations = [launch_dummy_solver(exp)]
+    if dummy_update:  # this is not how we want to decide whether to dummy update or not...
+        simulation = launch_dummy_solver(exp)
+        simulations.append(simulation)
     else:
         for i in range(1, n_environments+1):
             simulation = launch_solver(exp, instance=i, cfg=cfg)

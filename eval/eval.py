@@ -13,6 +13,7 @@ import hydra
 import numpy as np
 import shutil
 import pickle
+import math
 
 
 def adjust_tensor_shapes(data, env):
@@ -56,9 +57,9 @@ def main(cfg: "DictConfig"):
     device = "cpu"  # Run on CPU only
     logging.info(f'Running on device: {device}.')
 
-    if 'ppo' in cfg.eval.training_name:
+    if 'ppo' in cfg.eval.training_name.lower():
         from utils_ppo import make_parallel_env, load_model, save_model, log_metrics
-    elif 'sac' in cfg.eval.training_name:
+    elif 'sac' in cfg.eval.training_name.lower():
         from utils_sac import make_parallel_env, load_model, save_model, log_metrics
     else:
         raise Exception("Can not determine training algorithm")
@@ -96,6 +97,9 @@ def main(cfg: "DictConfig"):
         "penalty_exp": cfg.env.penalty_exp,
         "random_reset": cfg.env.random_reset,
         "initial_angles": cfg.env.initial_angles,
+        "reward_average_steps": cfg.env.reward_average_steps,
+        "velocity_penalty_scale": cfg.env.velocity_penalty_scale,
+        "difference_penalty_scale": cfg.env.difference_penalty_scale,
     }
 
     # Load the models to be evaluated
@@ -125,6 +129,10 @@ def main(cfg: "DictConfig"):
         eval_only=True,
     )
 
+    # Compute number of resets to be done in between eval runs
+    num_inbetween_resets = math.ceil(float(cfg.eval.inbetween_reset_frames) / cfg.env.reset_frames)
+    num_rollouts_per_env = cfg.eval.num_rollouts
+
     # Initial reset to burn in simulation
     logging.info(f'Initial reset: collecting {(cfg.eval.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
     # Each reset is cfg.env.reset_frames, we want a total of cfg.eval.initial_reset_frames many
@@ -141,54 +149,56 @@ def main(cfg: "DictConfig"):
     logs = {}
 
     with set_exploration_type(ExplorationType.MEAN), torch.no_grad():
-        data = eval_env.rollout(
-            max_steps=max_episode_length,
-            policy=actor,
-            auto_reset=True,
-        )
-        if cfg.multi_agent.use:
-            data = adjust_tensor_shapes(data, eval_env)
+        for k in range(num_rollouts_per_env):
+            logging.info(f"Commencing rollout #{k+1} across {n_environments} environments.")
 
-        # Get rewards and episode lengths
+            data = eval_env.rollout(
+                max_steps=max_episode_length,
+                policy=actor,
+                auto_reset=False,
+            )
+            if cfg.multi_agent.use:
+                data = adjust_tensor_shapes(data, eval_env)
 
-        # No "agents" in single agent
-        if cfg.multi_agent.use:
-            episode_rewards = data["next", "agents", "episode_reward"][data["next", "done"]]
-            reward_shape = data.get_item_shape(("next", eval_env.reward_key))
-            episode_rewards = episode_rewards.view(reward_shape[-2], reward_shape[0]).mean(dim=0)
-            episode_length = data["next", "step_count"][data["next", "done"].all(-2)]
-            rewards = data["next", "agents", "reward"].squeeze().mean(dim=-1)
-            alpha = data["agents", "alpha"].squeeze()
-            actions = data["agents", "action"].squeeze()
-        else:
-            episode_rewards = data["next", "episode_reward"][data["next", "done"]]
-            reward_shape = data.get_item_shape(("next", eval_env.reward_key))
-            episode_rewards = episode_rewards.view(reward_shape[-1], reward_shape[0]).mean(dim=0)
-            episode_length = data["next", "step_count"][data["next", "done"]]
-            rewards = data["next", "reward"].squeeze()
-            observations = data["next", "observation"]
-            alpha = data["alpha"].squeeze()
-            actions = data["action"].squeeze()
-            # Extract data
-            has_power = ("next", "power") in data.keys(include_nested=True)
-            if has_power:
+            # Get rewards and episode lengths
+            # No "agents" in single agent
+            if cfg.multi_agent.use:
+                episode_rewards = data["next", "agents", "episode_reward"][data["next", "done"]]
+                reward_shape = data.get_item_shape(("next", eval_env.reward_key))
+                episode_rewards = episode_rewards.view(reward_shape[-2], reward_shape[0]).mean(dim=0)
+                episode_length = data["next", "step_count"][data["next", "done"].all(-2)]
+                rewards = data["next", "agents", "reward"].squeeze().mean(dim=-1)
+                alpha = data["agents", "alpha"].squeeze()
+                actions = data["agents", "action"].squeeze()
+            else:
+                episode_rewards = data["next", "episode_reward"][data["next", "done"]]
+                reward_shape = data.get_item_shape(("next", "reward"))
+                episode_rewards = episode_rewards.view(reward_shape[-1], reward_shape[0]).mean(dim=0)
+                episode_length = data["next", "step_count"][data["next", "done"]]
+                rewards = data["next", "reward"].squeeze()
+                observations = data["next", "observation"]
+                alpha = data["alpha"].squeeze()
+                actions = data["action"].squeeze()
                 power = data.get(("next", "power")).squeeze()
                 episode_power = data.get(("next", "episode_power"))[data["next", "done"]]
                 episode_power = episode_power.view(reward_shape[-1], reward_shape[0]).mean(dim=0)
 
-        if not len(episode_length) > 0:
-            raise RuntimeWarning("The eval tensordict does not contain a finished episode.")
-        
-        for i in range(n_environments):
-            logs[f"episode_reward_{i+1}"] = episode_rewards[i].item()
-            logs[f"episode_length_{i+1}"] = episode_length[i].item()
-            logs[f"rewards_{i+1}"] = rewards[i].detach().cpu().numpy()
-            logs[f"alphas_{i+1}"] = alpha[i].detach().cpu().numpy()
-            logs[f"actions_{i+1}"] = actions[i].detach().cpu().numpy()
-            logs[f"observations_{i+1}"] = observations[i].detach().cpu().numpy()
-            if has_power:
-                logs[f"episode_power_{i + 1}"] = episode_power[i].item()
-                logs[f"power_{i + 1}"] = power[i].detach().cpu().numpy()
+            if not len(episode_length) > 0:
+                raise RuntimeWarning("The eval tensordict does not contain a finished episode.")
+            
+            for i in range(n_environments):
+                logs[f"episode_reward_ENV_{i+1}_EPISODE_{k+1}"] = episode_rewards[i].item()
+                logs[f"episode_length_ENV_{i+1}_EPISODE_{k+1}"] = episode_length[i].item()
+                logs[f"rewards_ENV_{i+1}_EPISODE_{k+1}"] = rewards[i].detach().cpu().numpy()
+                logs[f"alphas_ENV_{i+1}_EPISODE_{k+1}"] = alpha[i].detach().cpu().numpy()
+                logs[f"actions_ENV_{i+1}_EPISODE_{k+1}"] = actions[i].detach().cpu().numpy()
+                logs[f"observations_ENV_{i+1}_EPISODE_{k+1}"] = observations[i].detach().cpu().numpy()
+                logs[f"episode_power_ENV_{i+1}_EPISODE_{k+1}"] = episode_power[i].item()
+                logs[f"power_ENV_{i+1}_EPISODE_{k+1}"] = power[i].detach().cpu().numpy()
+            
+            # Reset environments before next episode
+            for _ in range(num_inbetween_resets):
+                eval_env.reset()
 
     # End timing
     end_time = time.time()
