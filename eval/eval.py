@@ -155,7 +155,7 @@ def main(cfg: "DictConfig"):
             data = eval_env.rollout(
                 max_steps=max_episode_length,
                 policy=actor,
-                auto_reset=False,
+                auto_reset=True,
             )
             if cfg.multi_agent.use:
                 data = adjust_tensor_shapes(data, eval_env)
