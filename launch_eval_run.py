@@ -59,7 +59,18 @@ def launch_solver(experiment, instance, cfg):
                  Turbine(cfg.env.turbine_diameter, cfg.env.turbine_height, yaw=0),
                  offset=[(cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter, (cfg.env.turbine_spacing_z-1)/2*cfg.env.turbine_diameter])
     farm1.grid()
-    simulation_steps = (cfg.env.steps_per_frame * (cfg.env.reset_frames + cfg.eval.episode_length))
+
+    simulation_steps = (cfg.env.steps_per_frame
+                        * (cfg.env.reset_frames * 3
+                           + cfg.eval.initial_reset_frames
+                           + cfg.eval.num_rollouts *
+                              (cfg.eval.episode_length
+                               + cfg.eval.inbetween_reset_frames
+                               + cfg.env.reset_frames
+                              )
+                          )
+                       )
+
     case = ADMSimulation(farm1, timesteps=math.ceil(simulation_steps),
                          control_freq=cfg.env.steps_per_frame,
                          probes_per_turbine=cfg.env.probes_per_turbine,

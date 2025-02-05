@@ -64,7 +64,7 @@ class ADMSimulation:
 
         ly = 500
         lz = self.farm.lz + self.farm.offset[1] + self.farm.offset[1]
-        lx = lz*2
+        lx = lz*32
         nx, ny, nz = find_grid_dimensions(lx, ly, lz, self.gridsize)
         ny += 1
 
@@ -144,10 +144,13 @@ class ADMSimulation:
 
     def add_probes(self, directory):
         probes_per_turbine = self.probes_per_turbine
-        probe_spacing = self.farm.turbines[0].diam/2
-        nrows = probes_per_turbine // 5
-        x, z = np.meshgrid(np.arange(-(nrows-1)*probe_spacing, probe_spacing, probe_spacing),
-                           np.arange(-2*probe_spacing, 2*probe_spacing+1, probe_spacing))
+        probe_rows = 7
+        nrows = probes_per_turbine // probe_rows
+        x, z = np.meshgrid(
+            np.linspace(-2, 3, nrows),
+            np.linspace(-1, 1, probe_rows))
+        x *= self.farm.turbines[0].diam
+        z *= self.farm.turbines[0].diam
         y = np.ones(probes_per_turbine) * self.farm.turbines[0].hub_height
 
         probe_locations = np.zeros((3, self.farm.n_turbines*probes_per_turbine))
