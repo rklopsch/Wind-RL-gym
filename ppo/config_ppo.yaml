@@ -15,11 +15,14 @@ env:
   max_yaw_angle: 40
   steps_per_frame: 50
   reset_frames: 150
-  # reset_frames: 3000  # combined for eval
-  initial_reset_frames: 10  # testing value
-  frame_stack: 5  # Number of frames to be stacked as agent input
+  # reset_frames: 5000  # combined for eval
+  initial_reset_frames: 5000
+  frame_stack: 1  # Number of frames to be stacked as agent input
+  reward_average_steps: 1  # Number of frames over which to average the reward
   penalty_scale: 0.5
   penalty_exp: 26
+  velocity_penalty_scale: 0.0
+  difference_penalty_scale: 0.0
   random_reset: False  # If True, at each reset angles will be chosen randomly
   initial_angles: [0.0, 0.0, 0.0]
 

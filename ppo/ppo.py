@@ -61,6 +61,9 @@ def main(cfg: "DictConfig"):
         "penalty_exp": cfg.env.penalty_exp,
         "random_reset": cfg.env.random_reset,
         "initial_angles": cfg.env.initial_angles,
+        "reward_average_steps": cfg.env.reward_average_steps,
+        "velocity_penalty_scale": cfg.env.velocity_penalty_scale,
+        "difference_penalty_scale": cfg.env.difference_penalty_scale,
     }
 
     # Create models
