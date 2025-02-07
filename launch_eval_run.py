@@ -10,6 +10,7 @@ from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
 from hydra import initialize, compose
 from omegaconf import OmegaConf
+from datetime import datetime
 
 
 def launch_database(experiment, port, dummy_update=False):
