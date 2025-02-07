@@ -75,7 +75,7 @@ def launch_solver(experiment, instance, cfg):
                          control_freq=cfg.env.steps_per_frame,
                          probes_per_turbine=cfg.env.probes_per_turbine,
                          instance=instance)
-    case.setup_case(f"./{experiment.name}/WindFarm_{instance}")
+    case.setup_case(f"./{experiment.name}/WindFarm_{instance}", save_flow=cfg.eval.save_flow)
     # case.setup_precursor(f"./{experiment.name}/WindFarm_{instance}/precursor_{instance}")
 
     return producer
@@ -131,12 +131,17 @@ def launch_eval(experiment, cfg, config_modifiers, dummy_update=False):
 
 if __name__ == '__main__':
 
+    # Any arguments (space-separated) are taken to be modifiers for the config file
+    # We assume that the arguments are valid modifiers for the config; this is not tested here.
+    # An example of a valid modifier is "optim.gamma=0.9"
+    config_modifiers = list(sys.argv[1:]) if len(sys.argv) > 1 else [""]
+
     with initialize(config_path="eval", version_base="1.2"):
-        cfg_eval = compose(config_name="config_eval.yaml")
+        cfg_eval = compose(config_name="config_eval.yaml", overrides=config_modifiers)
 
     training_name = cfg_eval.eval.training_name
     # run_name = training_name.replace("training", "eval", 1)  # not good
-    run_name = training_name + "_eval"
+    run_name = training_name + "_eval_" + datetime.now().strftime("%Y-%m-%d_%H-%M")
     dummy_update = cfg_eval.eval.dummy_update
 
     print(f"Launching eval run at {run_name}.")
@@ -145,19 +150,14 @@ if __name__ == '__main__':
         with initialize(config_path=f"{training_name}/ppo/outputs/hydra_logs", version_base="1.2"):
             cfg_train = compose(config_name="config.yaml")
     elif 'sac' in run_name.lower():
-        with initialize(config_path=f"{training_name}/sac/", version_base="1.2"):
-            cfg_train = compose(config_name="config_sac.yaml")
+        with initialize(config_path=f"{training_name}/sac/outputs/hydra_logs", version_base="1.2"):
+            cfg_train = compose(config_name="config.yaml")
     else:
         raise Exception("Can not determine training algorithm. We expect to find the name of the algorithm in the directory name.")
 
     # Merge configurations
     cfg = {**cfg_eval, **cfg_train}
     cfg = OmegaConf.create(cfg)
-
-    # Any arguments (space-separated) are taken to be modifiers for the config file
-    # We assume that the arguments are valid modifiers for the config; this is not tested here.
-    # An example of a valid modifier is "optim.gamma=0.9"
-    config_modifiers = list(sys.argv[1:]) if len(sys.argv) > 1 else [""]
 
     # Set up experiment
     exp = Experiment(run_name, launcher="auto")
