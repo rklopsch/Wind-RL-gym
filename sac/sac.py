@@ -132,7 +132,7 @@ def main(cfg: "DictConfig"):
     prb = cfg.replay_buffer.prb
 
     # Initial reset to burn in simulation
-    logging.info(f'Initial reset: collecting {(cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
+    logging.info(f'Initial reset: collecting {(1 + cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
     # Each reset is cfg.env.reset_frames, we want a total of cfg.env.initial_reset_frames many
     reset_td = collector.reset()
     for i in range(cfg.env.initial_reset_frames // cfg.env.reset_frames):
