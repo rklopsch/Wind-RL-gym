@@ -134,12 +134,12 @@ def main(cfg: "DictConfig"):
     num_rollouts_per_env = cfg.eval.num_rollouts
 
     # Initial reset to burn in simulation
-    logging.info(f'Initial reset: collecting {(cfg.eval.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames.')
+    logging.info(f'Initial reset: collecting {(1 + cfg.eval.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames ({1 + cfg.eval.initial_reset_frames // cfg.env.reset_frames} resets with {cfg.env.reset_frames} frames each.).')
     # Each reset is cfg.env.reset_frames, we want a total of cfg.eval.initial_reset_frames many
     reset_td = eval_env.reset()
     for i in range(cfg.eval.initial_reset_frames // cfg.env.reset_frames):
         reset_td = eval_env.reset(reset_td)
-        logging.info(f"{100*i/(cfg.eval.initial_reset_frames // cfg.env.reset_frames)}% done with initial reset.")
+        logging.info(f"{100*i/(cfg.eval.initial_reset_frames // cfg.env.reset_frames):.1f}% done with initial reset.")
     logging.info(f"100% done with initial reset.")
 
     logging.info('Starting evaluation...')
