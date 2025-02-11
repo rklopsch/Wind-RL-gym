@@ -78,6 +78,7 @@ if __name__ == '__main__':
     plt.ylabel("Normalised episode power")
     plt.xticks(x,x)
     plt.grid(True)
+    plt.legend()
     plt.savefig(pic_path + f'episode_power_by_episode_individual_envs.png')
     plt.close()
 
