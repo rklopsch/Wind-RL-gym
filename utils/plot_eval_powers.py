@@ -6,6 +6,10 @@ import matplotlib.pyplot as plt
 import re
 
 
+dt = 10  # 10 seconds per time step
+BASE_POWER = 3.223854866218793
+
+
 if __name__ == '__main__':
     # This script is designed to import the eval logs obtained from running the eval script
     # and plotting the angles and actions of those episodes
@@ -26,38 +30,69 @@ if __name__ == '__main__':
     if not os.path.exists(pic_path):
         os.makedirs(pic_path)
 
+    # detect the number of envs and episodes
     num_episodes = 0
+    num_envs = 0
     for key in data.keys():
-        match = re.search(r"EPISODE_(.+)", s)
+        match = re.search(r"EPISODE_(.+)", key)
         if match:
             episode_number = int(match.group(1))
             num_episodes = max(num_episodes, episode_number)
+        match = re.search(r"_ENV_(.+?)_EPISODE_", key)
+        if match:
+            env_number = int(match.group(1))
+            num_envs = max(num_envs, env_number)
 
-    num_episodes = 1
-    num_envs = 5
+    # find episode length
+    episode_length = data[f'episode_length_ENV_{num_envs}_EPISODE_{num_episodes}']
+    print(episode_length)
 
-    for episode_number in range(1, num_episodes+1):
-        for env_number in range(1, num_envs+1):
-            fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-            alpha_arr = data[f'alphas_ENV_{env_number}_EPISODE_{episode_number}']
-            action_arr = data[f'actions_ENV_{env_number}_EPISODE_{episode_number}']
-            for turb in range(alpha_arr.shape[-1]):
-                axes[0].plot(alpha_arr[:, turb], label=f"Turbine {turb+1}")
-                axes[1].plot(action_arr[:, turb], label=f"Turbine {turb+1}")
-            axes[0].legend()
-            axes[1].legend()
-            axes[0].set_xlabel('RL frames')
-            axes[1].set_xlabel('RL frames')
-            axes[0].grid(True)
-            axes[1].grid(True)
-            axes[0].set_ylabel('Turbine yaw angles (degrees)')
-            axes[1].set_ylabel('Turbine actions')
-            fig.suptitle(f"Environment {env_number} | Episode {episode_number}")
-            plt.tight_layout()
-            plt.savefig(pic_path + f'action_angle_plot_ENV{env_number}_EP{episode_number}.png')
-            plt.close()
+    # fit things into an array of shape [num envs x num episodes]
+    pows = np.zeros([num_envs, num_episodes])
+    for env_number in range(1, num_envs+1):
+        for episode_number in range(1, num_episodes+1):    
+            episode_power = data[f'episode_power_ENV_{env_number}_EPISODE_{episode_number}']
+            episode_power *= num_envs
+            episode_power /= (episode_length * dt)
+            episode_power /= BASE_POWER
+            pows[env_number-1, episode_number-1] = episode_power
+    
+    x = np.arange(1,num_episodes+1)
+    plt.plot(x, pows.mean(axis=0))
+    plt.fill_between(
+        x, 
+        pows.mean(axis=0)-1.96*pows.std(axis=0)/np.sqrt(num_envs),
+        pows.mean(axis=0)+1.96*pows.std(axis=0)/np.sqrt(num_envs),
+        alpha=0.3
+    )
+    plt.xlabel("Number of episodes")
+    plt.ylabel("Normalised episode power")
+    plt.xticks(x,x)
+    plt.grid(True)
+    plt.savefig(pic_path + f'episode_power_by_episode.png')
+    plt.close()
+
+    for env in range(num_envs):
+        plt.plot(x, pows[env,:], label=f"Env {env+1}")
+    plt.xlabel("Number of episodes")
+    plt.ylabel("Normalised episode power")
+    plt.xticks(x,x)
+    plt.grid(True)
+    plt.savefig(pic_path + f'episode_power_by_episode_individual_envs.png')
+    plt.close()
 
     print(f"Saved plots to {os.path.abspath(pic_path)}.")
+
+    # Compute overall mean
+    print(f"Overall mean relative power using {num_envs} envs and {num_episodes} episodes per env:")
+    print(f"{pows.mean():.5f} ({100*pows.std()/(np.sqrt(num_envs*num_episodes)*np.abs(pows.mean()))}% error)")
+    print('---------------')
+
+    # Compute standard error when we compute the mean using k samples out of n_envs x n_episodes
+    overall_std = np.std(pows)
+    print(f"Using __ samples yields stderror __")
+    for k in range(1, num_envs * num_episodes):
+        print(f"k={k} \t {overall_std/np.sqrt(k):.5f} ({100*overall_std/(np.sqrt(k)*np.abs(np.mean(pows))):.2f}% of mean relative power)")
 
     
 
