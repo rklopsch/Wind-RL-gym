@@ -95,7 +95,7 @@ if __name__ == '__main__':
     # Compute overall mean
     print('---------------')
     print(f"Overall mean relative power using {num_envs} envs and {num_episodes} episodes per env:")
-    print(f"{pows.mean():.5f} ({100*pows.std()/np.sqrt(num_envs*num_episodes):.5f}% stderror | {100*pows.std()/(np.sqrt(num_envs*num_episodes)*np.abs(pows.mean())):.5f}% relative error to mean power)")
+    print(f"{pows.mean():.5f} ({pows.std()/np.sqrt(num_envs*num_episodes):.5f} stderror | {100*pows.std()/(np.sqrt(num_envs*num_episodes)*np.abs(pows.mean())):.5f}% relative error to mean power)")
     print('---------------')
 
     # Compute standard error when we compute the mean using k samples out of n_envs x n_episodes
