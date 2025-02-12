@@ -72,15 +72,16 @@ if __name__ == '__main__':
         # Constants for normalisation
         episode_length = episode_ends[0][0] + 1  # num of RL frames in one episode
         dt = 10  # 10 seconds per time step
+        n_turbs = 3  # Number of turbines is fixed here.
 
         # We compute rewards as the MEAN across turbines, transform this back to a SUM across turbines
         # Episode reward is the sum of rewards in an episode, we want the mean across time
-        episode_reward *= num_envs
-        episode_reward /= (episode_length * dt)
+        episode_reward *= n_turbs
+        episode_reward /= episode_length
         episode_reward /= BASE_POWER
         if has_power:
-            episode_power *= num_envs
-            episode_power /= (episode_length * dt)
+            episode_power *= n_turbs
+            episode_power /= episode_length
             episode_power /= BASE_POWER
 
         # Take mean across environment dimension

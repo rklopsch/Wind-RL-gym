@@ -45,18 +45,26 @@ if __name__ == '__main__':
 
     # find episode length
     episode_length = data[f'episode_length_ENV_{num_envs}_EPISODE_{num_episodes}']
-    print(episode_length)
 
     # fit things into an array of shape [num envs x num episodes]
     pows = np.zeros([num_envs, num_episodes])
     for env_number in range(1, num_envs+1):
         for episode_number in range(1, num_episodes+1):    
             episode_power = data[f'episode_power_ENV_{env_number}_EPISODE_{episode_number}']
-            episode_power *= num_envs
-            episode_power /= (episode_length * dt)
+            episode_power *= 3
+            episode_power /= episode_length
             episode_power /= BASE_POWER
+
+            powers = data[f'power_ENV_{env_number}_EPISODE_{episode_number}']
+            episode_powers_2 = powers.mean()
+            episode_powers_2 *= 3
+            episode_powers_2 /= BASE_POWER
+
+            # Just to be sure, we compute the power in two different ways here and check they are reasonably similar
+            assert np.abs((episode_powers_2 - episode_power) / episode_power) < 0.001
+
             pows[env_number-1, episode_number-1] = episode_power
-    
+
     x = np.arange(1,num_episodes+1)
     plt.plot(x, pows.mean(axis=0))
     plt.fill_between(
@@ -85,14 +93,15 @@ if __name__ == '__main__':
     print(f"Saved plots to {os.path.abspath(pic_path)}.")
 
     # Compute overall mean
+    print('---------------')
     print(f"Overall mean relative power using {num_envs} envs and {num_episodes} episodes per env:")
-    print(f"{pows.mean():.5f} ({100*pows.std()/(np.sqrt(num_envs*num_episodes)*np.abs(pows.mean()))}% error)")
+    print(f"{pows.mean():.5f} ({100*pows.std()/np.sqrt(num_envs*num_episodes):.5f}% stderror | {100*pows.std()/(np.sqrt(num_envs*num_episodes)*np.abs(pows.mean())):.5f}% relative error to mean power)")
     print('---------------')
 
     # Compute standard error when we compute the mean using k samples out of n_envs x n_episodes
     overall_std = np.std(pows)
     print(f"Using __ samples yields stderror __")
-    for k in range(1, num_envs * num_episodes):
+    for k in range(1, num_envs * num_episodes, (num_envs * num_episodes)//10):
         print(f"k={k} \t {overall_std/np.sqrt(k):.5f} ({100*overall_std/(np.sqrt(k)*np.abs(np.mean(pows))):.2f}% of mean relative power)")
 
     
