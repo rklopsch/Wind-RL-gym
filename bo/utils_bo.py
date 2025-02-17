@@ -1,0 +1,231 @@
+import torch
+import numpy as np
+from botorch.models import SingleTaskGP
+from botorch.fit import fit_gpytorch_mll
+from botorch.acquisition import UpperConfidenceBound
+from botorch.optim import optimize_acqf
+from gpytorch.mlls import ExactMarginalLogLikelihood
+from pyDOE2 import lhs
+from tqdm import tqdm
+from src.plot.line_plot import line_plot_parameters
+from src.plot.vertical_plot import vertical_plot
+import pickle
+import warnings
+import logging
+
+from torchrl.envs import (
+    CatFrames,
+    RewardSum,
+    StepCounter,
+    InitTracker,
+    FiniteTensorDictCheck,
+    TransformedEnv,
+    ParallelEnv,
+    Compose,
+    ObservationNorm,
+)
+
+
+# ====================================================================
+# Environment utils
+# --------------------------------------------------------------------
+
+
+def transforms(cfg, eval_only=False):
+    multi_agent = cfg.multi_agent.use
+    observation_key = ("agents", "observation") if multi_agent else "observation"
+    alpha_key = ("agents", "alpha") if multi_agent else "alpha"
+    alpha_norm_key = ("agents", "alpha_normalised") if multi_agent else "alpha_normalised"
+    transform_list = [
+        InitTracker(),
+        RewardSum(in_keys=["reward", "power"], reset_keys=["_reset", "_reset"]),  # episodic reward and power
+        FiniteTensorDictCheck(),
+        CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[observation_key]),
+        ObservationNorm(
+            loc=0.,
+            scale=(4/cfg.env.max_yaw_angle),
+            in_keys=[alpha_key],
+            out_keys=[alpha_norm_key]
+        )
+    ]
+    if eval_only:
+        transform_list.append(StepCounter(cfg.eval.episode_length))
+    transforms = Compose(*transform_list)
+    return transforms
+
+
+def make_env(cfg, params, instance=None, save=False, device="cpu", add_transforms=True, eval_only=False):
+    from WF_enviroment import TurbEnv
+    env = TurbEnv(params, multi_agent=cfg.multi_agent.use, save=save, instance=instance, device=device)
+    if add_transforms:
+        env = TransformedEnv(env, transforms(cfg, eval_only))
+    if eval_only:
+        env.eval()
+    return env
+
+
+def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
+    function_list = [lambda i=i: make_env(cfg, params, instance=i, device=device, eval_only=eval_only) for i in
+                     range(num_envs)]
+    env = ParallelEnv(num_envs, function_list)
+    return env
+
+
+class BOTrainer:
+    def __init__(self, env, n_initial_samples, episode_steps, burnin_steps, beta, reset_iterations,
+                 save_directory_path=None):
+        self.N_DIMS = env.action_spec.shape[-1]
+        self.env = env
+        # TO-DO: figure out the lower and upper bounds for all the angles!
+        # Consider that the flaps cannot touch and cannot overextend
+        self.lower_bound = torch.tensor(env.action_space.low)
+        self.upper_bound = torch.tensor(env.action_space.high)
+        self.bounds_diff = self.upper_bound - self.lower_bound
+        self.episode_time = episode_steps
+        self.burnin_steps = burnin_steps
+        self.total_steps = self.episode_time + self.burnin_steps
+        self.beta = beta
+        self.n_initial_samples = n_initial_samples
+        self.save_directory = save_directory_path
+        self.reset_iterations = reset_iterations
+        if save_directory_path is None:
+            warnings.warn(f"save_directory_path parameter has not been specified. Results will not be saved.")
+
+        logging.info(
+            f'Using lower bounds {list(self.lower_bound.numpy())} and upper bounds {list(self.upper_bound.numpy())}.')
+
+    def initialize_observations(self, save=True, reset_env=True):
+        # Initialize observations
+        lhs_samples = lhs(self.N_DIMS, samples=self.n_initial_samples)
+        train_x = torch.tensor(lhs_samples, dtype=torch.double).mul(self.bounds_diff).add(self.lower_bound)
+        train_y = []
+        for i in range(train_x.shape[0]):
+            if (i % self.reset_iterations == 0) and reset_env:
+                logging.info(f"Resetting environment...")
+                self.env.reset()
+            angles = train_x[i]
+            new_y, info = self.experiment(angles)
+            train_y.append(new_y)
+            if save and self.save_directory is not None:
+                self.save(self.save_directory, train_x, train_y, info, user_warnings=False)
+
+            # Console logs
+            console_output = f"Iteration {i}: "
+            console_output += "Angles "
+            console_output += ' / '.join([f"{v:.3f}" for v in angles.numpy()])
+            console_output += ' | '
+            console_output += f"Value {float(train_y[-1]):.5f}"
+            logging.info(console_output)
+
+        train_y = torch.tensor(np.asarray(train_y)).unsqueeze(-1)
+
+        return train_x, train_y
+
+    def train_one_step(self, train_x, train_y):
+        scaled_y = (train_y - train_y.mean()) / (train_y.std())
+        scaled_x = (train_x - self.lower_bound) / self.bounds_diff
+
+        # The model seems to converge better when we don't scale train_y...
+        model = SingleTaskGP(scaled_x, train_y)  # scaled_y
+        mll = ExactMarginalLogLikelihood(model.likelihood, model)
+        fit_gpytorch_mll(mll)
+
+        # Define and optimise acquisition function
+        UCB = UpperConfidenceBound(model, beta=self.beta)
+        unit_bounds = torch.stack([torch.zeros(self.N_DIMS), torch.ones(self.N_DIMS)])
+        new_x_scaled, _ = optimize_acqf(
+            acq_function=UCB,
+            bounds=unit_bounds,
+            q=1,
+            num_restarts=10,
+            raw_samples=self.n_initial_samples,
+        )
+        # Run experiment
+        new_x = self.bounds_diff * new_x_scaled + self.lower_bound
+        new_y, info = self.experiment(new_x.flatten())
+        new_y = new_y.view([1, 1])
+        # Add to training data
+        new_train_x = torch.cat([train_x, new_x])
+        new_train_y = torch.cat([train_y, new_y])
+
+        return new_train_x, new_train_y, info
+
+    def train(self, init_train_x, init_train_y, optimisation_iterations, save=True):
+        train_x = init_train_x
+        train_y = init_train_y
+
+        # Bayesian Optimization loop
+        for i in range(optimisation_iterations):
+            if i % self.reset_iterations == 0:
+                self.env.reset()
+
+            train_x, train_y, info = self.train_one_step(train_x, train_y)
+            if save and self.save_directory is not None:
+                self.save(self.save_directory, train_x, train_y, info, user_warnings=False)
+
+            # Console logs
+            console_output = f"Iteration {i}: "
+            console_output += "Angles "
+            console_output += ' / '.join([f"{v:.3f}" for v in train_x[-1].numpy()])
+            console_output += ' | '
+            console_output += f"Value {float(train_y[-1]):.5f}"
+            logging.info(console_output)
+
+        return train_x, train_y
+
+    def experiment(self, angles):
+        # Take repeated env steps and save all data received
+        rewards = []
+        observations = []
+
+        for _ in range(self.total_steps):
+            observation, reward, done, _ = self.env.step(action=angles)
+            rewards.append(reward)
+            observations.append(observation)
+
+        # Discard the initial burn in steps
+        croppped_rewards = rewards[self.burnin_steps:]
+
+        # Extract mean (and an estimate of measurement noise?)
+        mean_reward = torch.tensor(np.mean(np.asarray(croppped_rewards)))
+
+        # Store any desired extra information in an info dictionary
+        info = {'rewards': rewards, 'observations': observations}
+
+        return mean_reward, info
+
+    @staticmethod
+    def save(path, train_x, train_y, info, user_warnings=True):
+        import os
+        if not (os.path.exists(path) and os.path.isdir(path)):
+            os.mkdir(path)
+            if user_warnings:
+                warnings.warn(f"Directory {path} did not exist. Created this directory.")
+
+        # Save angles and episodic rewards
+        filepath = os.path.join(path, "BO_output.pkl")
+        if user_warnings:
+            if os.path.exists(filepath) and os.path.isfile(filepath):
+                warnings.warn(f"{filepath} exists and will be overwritten.")
+        output_dict = {'train_x': train_x, 'train_y': train_y, 'info': info}
+
+        with open(filepath, 'wb') as f:
+            pickle.dump(output_dict, f)
+
+        # Save pressure observations
+        filepath = os.path.join(path, "pressure_logs.dat")
+        if user_warnings:
+            if os.path.exists(filepath) and os.path.isfile(filepath):
+                warnings.warn(f"{filepath} exists and will be overwritten.")
+        with open(filepath, 'ab') as f:
+            np.savetxt(f, info['observations'])
+
+        # Save rewards
+        filepath = os.path.join(path, "reward_logs.dat")
+        if user_warnings:
+            if os.path.exists(filepath) and os.path.isfile(filepath):
+                warnings.warn(f"{filepath} exists and will be overwritten.")
+        with open(filepath, 'ab') as f:
+            np.savetxt(f, info['rewards'])
+
+        return None
