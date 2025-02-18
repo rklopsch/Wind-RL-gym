@@ -15,7 +15,7 @@ import shutil
 import math
 
 
-@hydra.main(version_base="1.2", config_path="./", config_name="config_sac")
+@hydra.main(version_base="1.2", config_path="./", config_name="config_bo")
 def main(cfg: "DictConfig"):
     device = "cpu"  # Run on CPU only
     logging.info(f'Running on device: {device}.')
@@ -34,6 +34,8 @@ def main(cfg: "DictConfig"):
         "n_turbines": cfg.env.turbines,
         "n_procs": cfg.env.n_processors_per_env,
         "n_envs": cfg.env.n_parallel,
+        "probes_per_turbine": cfg.env.probes_per_turbine,
+        "flow_field_directions": cfg.env.flow_field_directions,
         "turbine_diameter": cfg.env.turbine_diameter,
         "turbine_spacing": cfg.env.turbine_spacing,
         "max_yaw_speed": cfg.env.max_yaw_speed,
@@ -41,23 +43,25 @@ def main(cfg: "DictConfig"):
         "dt": cfg.env.steps_per_frame * 0.2,
         "reset_frames": cfg.env.reset_frames,
         "run_steps": cfg.optim.episode_steps * cfg.env.steps_per_frame,
+        "penalty_scale": cfg.env.penalty_scale,
+        "penalty_exp": cfg.env.penalty_exp,
         "random_reset": cfg.env.random_reset,
         "initial_angles": cfg.env.initial_angles,
+        "reward_average_steps": cfg.env.reward_average_steps,
+        "velocity_penalty_scale": cfg.env.velocity_penalty_scale,
+        "difference_penalty_scale": cfg.env.difference_penalty_scale,
     }
 
     logging.info('Creating models')
     bo_env = make_parallel_env(cfg, params, cfg.env.n_parallel, device=device)
 
-    # Compute number of resets to be done in between eval runs
-    num_inbetween_resets = math.ceil(float(cfg.eval.inbetween_reset_frames) / cfg.env.reset_frames)
-
     # Initial reset to burn in simulation
-    logging.info(f'Initial reset: collecting {(1 + cfg.eval.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames ({1 + cfg.eval.initial_reset_frames // cfg.env.reset_frames} resets with {cfg.env.reset_frames} frames each.).')
-    # Each reset is cfg.env.reset_frames, we want a total of cfg.eval.initial_reset_frames many
+    logging.info(f'Initial reset: collecting {(1 + cfg.env.initial_reset_frames // cfg.env.reset_frames)*cfg.env.reset_frames} frames ({1 + cfg.env.initial_reset_frames // cfg.env.reset_frames} resets with {cfg.env.reset_frames} frames each.).')
+    # Each reset is cfg.env.reset_frames, we want a total of cfg.nv.initial_reset_frames many
     reset_td = bo_env.reset()
-    for i in range(cfg.eval.initial_reset_frames // cfg.env.reset_frames):
+    for i in range(cfg.env.initial_reset_frames // cfg.env.reset_frames):
         reset_td = bo_env.reset(reset_td)
-        logging.info(f"{100*i/(cfg.eval.initial_reset_frames // cfg.env.reset_frames):.1f}% done with initial reset.")
+        logging.info(f"{100*i/(cfg.env.initial_reset_frames // cfg.env.reset_frames):.1f}% done with initial reset.")
     logging.info(f"100% done with initial reset.")
 
     # Define BO trainer

@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from tensordict.tensordict import TensorDict, TensorDictBase
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
 from botorch.acquisition import UpperConfidenceBound
@@ -7,8 +8,6 @@ from botorch.optim import optimize_acqf
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from pyDOE2 import lhs
 from tqdm import tqdm
-from src.plot.line_plot import line_plot_parameters
-from src.plot.vertical_plot import vertical_plot
 import pickle
 import warnings
 import logging
@@ -32,15 +31,13 @@ from torchrl.envs import (
 
 
 def transforms(cfg, eval_only=False):
-    multi_agent = cfg.multi_agent.use
-    observation_key = ("agents", "observation") if multi_agent else "observation"
-    alpha_key = ("agents", "alpha") if multi_agent else "alpha"
-    alpha_norm_key = ("agents", "alpha_normalised") if multi_agent else "alpha_normalised"
+    observation_key = "observation"
+    alpha_key = "alpha"
+    alpha_norm_key = "alpha_normalised"
     transform_list = [
         InitTracker(),
         RewardSum(in_keys=["reward", "power"], reset_keys=["_reset", "_reset"]),  # episodic reward and power
         FiniteTensorDictCheck(),
-        CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[observation_key]),
         ObservationNorm(
             loc=0.,
             scale=(4/cfg.env.max_yaw_angle),
@@ -56,7 +53,7 @@ def transforms(cfg, eval_only=False):
 
 def make_env(cfg, params, instance=None, save=False, device="cpu", add_transforms=True, eval_only=False):
     from WF_enviroment import TurbEnv
-    env = TurbEnv(params, multi_agent=cfg.multi_agent.use, save=save, instance=instance, device=device)
+    env = TurbEnv(params, multi_agent=False, save=save, instance=instance, device=device)
     if add_transforms:
         env = TransformedEnv(env, transforms(cfg, eval_only))
     if eval_only:
@@ -73,13 +70,13 @@ def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
 
 class BOTrainer:
     def __init__(self, env, n_initial_samples, episode_steps, burnin_steps, beta, reset_iterations,
-                 save_directory_path=None):
+                 bound=40., save_directory_path=None):
         self.N_DIMS = env.action_spec.shape[-1]
         self.env = env
         # TO-DO: figure out the lower and upper bounds for all the angles!
         # Consider that the flaps cannot touch and cannot overextend
-        self.lower_bound = torch.tensor(env.action_space.low)
-        self.upper_bound = torch.tensor(env.action_space.high)
+        self.lower_bound = torch.zeros(self.N_DIMS)
+        self.upper_bound = torch.ones(self.N_DIMS) * bound
         self.bounds_diff = self.upper_bound - self.lower_bound
         self.episode_time = episode_steps
         self.burnin_steps = burnin_steps
@@ -97,7 +94,7 @@ class BOTrainer:
     def initialize_observations(self, save=True, reset_env=True):
         # Initialize observations
         lhs_samples = lhs(self.N_DIMS, samples=self.n_initial_samples)
-        train_x = torch.tensor(lhs_samples, dtype=torch.double).mul(self.bounds_diff).add(self.lower_bound)
+        train_x = torch.tensor(lhs_samples, dtype=torch.float32).mul(self.bounds_diff).add(self.lower_bound)
         train_y = []
         for i in range(train_x.shape[0]):
             if (i % self.reset_iterations == 0) and reset_env:
@@ -137,7 +134,7 @@ class BOTrainer:
             acq_function=UCB,
             bounds=unit_bounds,
             q=1,
-            num_restarts=10,
+            num_restarts=6,
             raw_samples=self.n_initial_samples,
         )
         # Run experiment
@@ -177,9 +174,16 @@ class BOTrainer:
         # Take repeated env steps and save all data received
         rewards = []
         observations = []
+        num_envs = self.env.batch_size[0]
 
         for _ in range(self.total_steps):
-            observation, reward, done, _ = self.env.step(action=angles)
+
+            actions = angles.expand(num_envs, -1)  # Shape: (num_envs, 3)
+            action_td = TensorDict({"action": actions}, batch_size=[num_envs])
+
+            next_td = self.env.step(action_td)
+            reward = next_td["next", "power"].mean()
+            observation = next_td["next", "observation"].mean(0)
             rewards.append(reward)
             observations.append(observation)
 

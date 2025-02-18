@@ -34,7 +34,7 @@ def launch_solver(experiment):
     experiment.generate(producer, overwrite=True)
     return producer
 
-def launch_bo(experiment, load_params, config_modifiers):
+def launch_bo(experiment, config_modifiers):
     aprun = experiment.create_run_settings(exe="python", exe_args="bo.py " + " ".join(config_modifiers))
     aprun.set_tasks(1)
     producer = experiment.create_model("bo", aprun)
@@ -50,21 +50,14 @@ def launch_bo(experiment, load_params, config_modifiers):
 
 if __name__ == '__main__':
     # Read PPO config
-    initialize(config_path="./sac/", version_base="1.2")
-    cfg = compose(config_name="config_sac.yaml")
-
-    # Load a checkpointed model?
-    load_params = {
-        'load_checkpoint': bool(cfg.checkpoint.load_from_checkpoint),
-        'checkpoint_id': cfg.checkpoint.model_checkpoint_id,
-        'checkpoint_path': cfg.checkpoint.model_checkpoint_path,
-    }
+    initialize(config_path="./bo/", version_base="1.2")
+    cfg = compose(config_name="config_bo.yaml")
 
     config_modifiers = list(sys.argv[1:]) if len(sys.argv) > 1 else [""]
 
     print("WARNING: The dummy solver mode is currently broken when using too many parallel envs. Since this is not really a relevant feature, it is recommended to use 5 parallel envs when using the dummy solver mode. This should be sufficient for all testing purposes.\n")
 
-    exp = Experiment("launch_dummy_SAC_run", launcher="auto")
+    exp = Experiment("launch_dummy_BO_run", launcher="auto")
 
     total_runtime = 240  # seconds, without including setup of orchestrator etc.
 
@@ -74,7 +67,7 @@ if __name__ == '__main__':
     solver_app = launch_solver(exp)
     exp.start(solver_app, block=False, summary=False)
 
-    bo_app = launch_bo(exp, load_params, config_modifiers)
+    bo_app = launch_bo(exp, config_modifiers)
     exp.start(bo_app, block=False, summary=False)
 
     # shutdown the database because we don't need it anymore
