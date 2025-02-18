@@ -178,8 +178,9 @@ class BOTrainer:
 
         for _ in range(self.total_steps):
 
-            actions = angles.expand(num_envs, -1)  # Shape: (num_envs, 3)
-            action_td = TensorDict({"action": actions}, batch_size=[num_envs])
+            all_angles = angles.expand(num_envs, -1)
+            actions = torch.zeros_like(all_angles)
+            action_td = TensorDict({"action": actions, "alpha": all_angles}, batch_size=[num_envs])
 
             next_td = self.env.step(action_td)
             reward = next_td["next", "power"].mean()
