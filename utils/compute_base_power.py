@@ -87,7 +87,9 @@ def compute_power_mean(base_directory, burnin):
     plt.xlabel(f"Number of environments used to compute mean")
     plt.savefig(base_directory + '/std_by_num_envs.png')
 
-    return overall_mean, overall_std, overall_stderror_mean, overall_stderror_std
+    info = {'individual_farm_means': farm_means, 'individual_farm_stds': farm_stds}
+
+    return overall_mean, overall_std, overall_stderror_mean, overall_stderror_std, info
 
 
 if __name__ == '__main__':
@@ -102,10 +104,18 @@ if __name__ == '__main__':
     burnin = 5100  # in RL frames
 
     # Compute metrics
-    mean, std, mean_stderr, std_stderr = compute_power_mean(path, burnin)
+    mean, std, mean_stderr, std_stderr, info = compute_power_mean(path, burnin)
 
     # Output and write to disk
     print(f"Using {burnin} RL frames as burn in. Check that this is correct!")
     print(f"Mean power {mean:.5f} MW (standard error {100*mean_stderr/mean:.2f}%) | Std of power {std:.5f} MW (standard error {100*std_stderr/std:.2f}%)")
-    df = pd.DataFrame({'Label': ['mean of power', 'std of power', 'stderror of mean', 'stderror of std'], 'Value': [mean, std, mean_stderr, std_stderr]})
+    labels = ['mean of power', 'std of power', 'stderror of mean', 'stderror of std']
+    labels += [f"mean_power_env_{i+1}" for i in range(len(info['individual_farm_means']))]
+    labels += [f"std_power_env_{i + 1}" for i in range(len(info['individual_farm_stds']))]
+    values = [mean, std, mean_stderr, std_stderr]
+    values += info['individual_farm_means']
+    values += info['individual_farm_stds']
+    df = pd.DataFrame({'Label': labels, 'Value': values})
     df.to_csv(path + '/mean_error.csv', index=False)
+
+
