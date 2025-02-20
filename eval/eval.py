@@ -47,9 +47,14 @@ def adjust_tensor_shapes(data, env):
     return data
 
 
-def make_constant_zero_policy(env):
-    return TensorDictModule(lambda x: torch.zeros(env.action_spec.shape[-1]),
-                            in_keys=[env.observation_key], out_keys=[env.action_key])
+def make_constant_zero_policy(cfg):
+    angles = torch.zeros([cfg.eval.n_parallel, cfg.env.turbines])
+    actor = TensorDictModule(
+        lambda x: angles,
+        in_keys=["observation"], 
+        out_keys=["action"]
+    )
+    return actor
 
 
 @hydra.main(config_path="./", config_name="config_eval.yaml", version_base="1.2")
@@ -102,24 +107,6 @@ def main(cfg: "DictConfig"):
         "difference_penalty_scale": cfg.env.difference_penalty_scale,
     }
 
-    # Load the models to be evaluated
-    # Copy the loaded models into the ppo/eval directory
-    if not os.path.exists('models'):
-        os.mkdir('models')
-    for arch in ['actor', 'critic']:
-        filename = f"{arch}_{cfg.eval.model_id}.pkl"
-        if os.path.exists(filename):
-            shutil.move(filename, "models")
-    # Load actor and critic
-    actor, critic = load_model(
-        cfg=cfg,
-        env_params=params,
-        id=cfg.eval.model_id,
-        path_to_model='models',
-        )
-    logging.info(f"Loaded actor_{cfg.eval.model_id}.pkl and critic_{cfg.eval.model_id}.pkl.")
-    actor, critic = actor.to(device), critic.to(device)
-
     # Create environments
     eval_env = make_parallel_env(
         cfg,
@@ -128,6 +115,30 @@ def main(cfg: "DictConfig"):
         device=device,
         eval_only=True,
     )
+
+    # Check if we want to use fixed angles throughout
+    if cfg.eval.use_fixed_angles:
+        actor = make_constant_zero_policy(cfg)
+        actor.to(device)
+        logging.info(f"Created actor which outputs constant angles {cfg.eval.fixed_angles}.")
+    else:
+        # Load the models to be evaluated
+        # Copy the loaded models into the ppo/eval directory
+        if not os.path.exists('models'):
+            os.mkdir('models')
+        for arch in ['actor', 'critic']:
+            filename = f"{arch}_{cfg.eval.model_id}.pkl"
+            if os.path.exists(filename):
+                shutil.move(filename, "models")
+        # Load actor and critic
+        actor, critic = load_model(
+            cfg=cfg,
+            env_params=params,
+            id=cfg.eval.model_id,
+            path_to_model='models',
+            )
+        logging.info(f"Loaded actor_{cfg.eval.model_id}.pkl and critic_{cfg.eval.model_id}.pkl.")
+        actor, critic = actor.to(device), critic.to(device)
 
     # Compute number of resets to be done in between eval runs
     num_inbetween_resets = math.ceil(float(cfg.eval.inbetween_reset_frames) / cfg.env.reset_frames)
