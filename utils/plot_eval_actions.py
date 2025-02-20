@@ -3,6 +3,7 @@ import pickle
 import sys
 import os
 import matplotlib.pyplot as plt
+import re
 
 
 if __name__ == '__main__':
@@ -25,8 +26,18 @@ if __name__ == '__main__':
     if not os.path.exists(pic_path):
         os.makedirs(pic_path)
 
-    num_episodes = 1
-    num_envs = 5
+    # detect the number of envs and episodes
+    num_episodes = 0
+    num_envs = 0
+    for key in data.keys():
+        match = re.search(r"EPISODE_(.+)", key)
+        if match:
+            episode_number = int(match.group(1))
+            num_episodes = max(num_episodes, episode_number)
+        match = re.search(r"_ENV_(.+?)_EPISODE_", key)
+        if match:
+            env_number = int(match.group(1))
+            num_envs = max(num_envs, env_number)
 
     for episode_number in range(1, num_episodes+1):
         for env_number in range(1, num_envs+1):
