@@ -30,6 +30,10 @@ def low_pass_filter(signal_data, cutoff_freq, sampling_rate, order=5):
 if __name__ == '__main__':
     # This script is designed to import the eval logs obtained from running the eval script
     # and plotting the angles and actions of those episodes
+    nyquist_freq = 0.05
+    freq_dict = {i: nyquist_freq/(2**i) for i in range(1, 8)}
+    idx = 7
+    cutoff_freq = freq_dict[idx]
 
     if len(sys.argv) != 2:
         print("Usage: python script.py <path_to_eval_logs>")
@@ -43,7 +47,10 @@ if __name__ == '__main__':
     dir_name = os.path.dirname(filename)
     if len(dir_name) == 0:
         dir_name = './'
-    pic_path = dir_name + '/yaw_action_plots_smoothed/'
+    dir_name += f'/{idx}/'
+    pic_path = dir_name + '/yaw_action_plots/'
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
     if not os.path.exists(pic_path):
         os.makedirs(pic_path)
 
@@ -62,25 +69,36 @@ if __name__ == '__main__':
 
     colours = ['red', 'green', 'blue']
 
+    # output the smoothed data here
+    data_smoothed = {}
+
     for episode_number in range(1, num_episodes+1):
         for env_number in range(1, num_envs+1):
             alpha_arr = data[f'alphas_ENV_{env_number}_EPISODE_{episode_number}']
             fig, axes = plt.subplots(1, 1, figsize=(12, 5))
-            cutoff_freq = 0.003
+            alpha_arr_smoothed = []
             for turb in range(alpha_arr.shape[-1]):
                 axes.plot(alpha_arr[:, turb], label=f"Turbine {turb+1}", alpha=0.5, color=colours[turb])
                 alpha_filtered = low_pass_filter(alpha_arr[:, turb], sampling_rate=0.1, cutoff_freq=cutoff_freq)
+                alpha_arr_smoothed.append(alpha_filtered)
                 axes.plot(alpha_filtered, label=f"Turbine {turb + 1} filtered", color=colours[turb])
+            alpha_arr_smoothed = np.asarray(alpha_arr_smoothed).T
+            data_smoothed[f'alphas_ENV_{env_number}_EPISODE_{episode_number}'] = alpha_arr_smoothed
             axes.legend()
             axes.set_xlabel('RL frames')
             axes.grid(True)
             axes.set_ylabel('Turbine yaw angles (degrees)')
-            fig.suptitle(f"Environment {env_number} | Episode {episode_number} | Sampling freq 0.1Hz | Filter freq {cutoff_freq}Hz")
+            fig.suptitle(f"Environment {env_number} | Episode {episode_number} | Sampling freq 0.1Hz | Low-pass filter freq {cutoff_freq}Hz (bottom {100*cutoff_freq/0.1:.1f}%)")
             plt.tight_layout()
             plt.savefig(pic_path + f'action_angle_plot_ENV{env_number}_EP{episode_number}.png')
             plt.close()
 
     print(f"Saved plots to {os.path.abspath(pic_path)}.")
+
+    with open(dir_name + '/eval_logs.pkl', 'wb') as f:
+        pickle.dump(data_smoothed, f)
+
+    print(f"Saved smoothed eval logs to {os.path.abspath(dir_name + f'/eval_logs.pkl')}")
 
     
 
