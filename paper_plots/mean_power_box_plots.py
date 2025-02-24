@@ -34,24 +34,47 @@ def extract_powers(data):
 
 if __name__ == '__main__':
     # Load best training run data
-    with open('../outputs/long_eval/long_eval_logs.pkl', 'rb') as f:
+    with open('final/evaluation/RL/eval_logs.pkl', 'rb') as f:
         rl_data = pickle.load(f)
-
     rl_powers = extract_powers(rl_data)
 
+    with open('final/evaluation/BO/eval_logs.pkl', 'rb') as f:
+        bo_data = pickle.load(f)
+    bo_powers = extract_powers(bo_data)
+
+    with open('final/evaluation/Zero/eval_logs.pkl', 'rb') as f:
+        zero_data = pickle.load(f)
+    zero_powers = extract_powers(zero_data)
+
     # Create the box plot
-    fig, ax = plt.subplots(figsize=(6, 3))
+    fig, ax = plt.subplots(figsize=(6, 3), constrained_layout=True)
     fig.set_figwidth(6)
-    plt.boxplot([rl_powers, rl_powers, rl_powers], tick_labels=["Greedy", "Static BO", "RL"])
-    plt.grid(True)
+    # ax.boxplot([zero_powers, bo_powers, rl_powers], tick_labels=["Greedy", "Static BO", "RL"])
+    vp = ax.violinplot([zero_powers, bo_powers, rl_powers], showmeans=True, showmedians=False, quantiles=[[0.25, 0.75], [0.25, 0.75], [0.25, 0.75]], showextrema=True)
+    ax.yaxis.grid(True)
+    ax.set_xticks([1, 2, 3], labels=["Greedy", "Static BO", "RL"])
+    ax.set_ylabel("Mean farm power (MW)")
+    vp['cquantiles'].set_alpha(0.2)
+    vp['cmins'].set_alpha(0.2)
+    vp['cmaxes'].set_alpha(0.2)
+    # vp['cbars'].set_color('k')
+    # vp['cmeans'].set_color('k')
+    # vp['cquantiles'].set_color('k')
+    # plt.grid(True)
+
+    for i, data in enumerate([zero_powers, bo_powers, rl_powers]):
+        mean = np.mean(data)
+        ax.text(i+1.02, mean, f'{mean:.2f} MW', ha='left', va='bottom', fontsize=12)
+
 
     # Labels and title
     # plt.xlabel("Datasets")
-    plt.ylabel("Mean farm power (MW)")
+    # plt.ylabel("Mean farm power (MW)")
 
     # Add legend
     # plt.legend(["Zero yaw", "Static BO", "RL"], loc="upper right")
 
     # Show the plot
-    plt.savefig('mean_power_box_plots.png')
+    fig.savefig('mean_power_box_plots.pdf')
+    fig.savefig('mean_power_box_plots.png', dpi=400)
 
