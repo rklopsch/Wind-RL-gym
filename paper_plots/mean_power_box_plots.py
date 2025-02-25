@@ -159,6 +159,7 @@ if __name__ == '__main__':
 
     ax2.set_xlim(1.8, 6)  # Set x-axis limits
     ax2.set_xlabel("Instantaneous Power Output (MW)", labelpad=-0.5)
+    ax2.set_ylabel("Density")
     ax2.legend()
 
     # Save combined figure
