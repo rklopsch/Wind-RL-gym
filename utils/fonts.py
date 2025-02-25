@@ -4,7 +4,8 @@ from matplotlib import pyplot as plt
 
 print('Using fonts from imported file')
 
-plt.style.use('seaborn-v0_8-paper')
+# plt.style.use('seaborn-v0_8-paper')
+plt.style.use('ggplot')
 # plt.style.use('seaborn-v0_8-pastel')
 
 plt.rcParams.update({
