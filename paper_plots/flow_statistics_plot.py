@@ -41,7 +41,7 @@ def plot_slice(t, casename, ax, height=90):
         a.set_ylabel(r'$y \; (km)$')
 
 
-def collect_data(casename):
+def collect_data(casename, slice_height=90):
     path = casename
 
     u_all_timesteps = []
@@ -55,35 +55,50 @@ def collect_data(casename):
         filew = os.path.join(path, f'data/uz-{t}.bin')
         # filep = os.path.join(path, f'data/pp-{t}.bin')
 
-        # Select only the first half of y 
+        lx, ly, lz = 2394.0, 500.0, 882.0
         nx, ny, nz = 193, 41, 72
-        ny_new = ny // 2
-        indices = []
-        for k in range(nz):  # Iterate over z
-            for j in range(ny_new):  # Only the first half of y
-                for i in range(nx):  # Iterate over x
-                    idx = i + j * nx + k * (nx * ny)  # Fortran-style index calculation
-                    indices.append(idx)
-        indices = np.array(indices)
 
-        u = np.fromfile(fileu, dtype=np.float64)[indices]
-        v = np.fromfile(filev, dtype=np.float64)[indices]
-        w = np.fromfile(filew, dtype=np.float64)[indices]
+        u = np.fromfile(fileu, dtype=np.float64)
+        v = np.fromfile(filev, dtype=np.float64)
+        w = np.fromfile(filew, dtype=np.float64)
 
-        # ur = u.reshape((nx, ny, nz), order='F')
+        u = u.reshape(nx, ny, nz, order='F')
+        v = v.reshape(nx, ny, nz, order='F')
+        w = w.reshape(nx, ny, nz, order='F')
+
+        slice_loc = int(slice_height / ly * ny)
+        u = u[:, slice_loc, :]
+        v = v[:, slice_loc, :]
+        w = w[:, slice_loc, :]
 
         u_all_timesteps.append(u)
         v_all_timesteps.append(v)
         w_all_timesteps.append(w)
 
     # Stack to create a combined data matrix
-    u_matrix = np.column_stack(u_all_timesteps)
-    v_matrix = np.column_stack(v_all_timesteps)
-    w_matrix = np.column_stack(w_all_timesteps)
-    data_matrix = np.vstack((u_matrix, v_matrix, w_matrix))
+    data_matrix = np.stack((u_all_timesteps, v_all_timesteps, w_all_timesteps))
 
     return data_matrix
     # return u_matrix
+
+
+def calculate_stats(data):
+    # mean = np.mean(data, axis=-1)[:, np.newaxis]
+    data_mean = np.mean(data, axis=1)[:, np.newaxis, :, :]
+    data_prime = data - data_mean
+
+    # R = np.tensordot(data, data, axes=(0, 0))
+
+    uu = np.mean(data_prime[0] * data_prime[0], axis=0)
+    vv = np.mean(data_prime[1] * data_prime[1], axis=0)
+    ww = np.mean(data_prime[2] * data_prime[2], axis=0)
+    uv = np.mean(data_prime[0] * data_prime[1], axis=0)
+    uw = np.mean(data_prime[0] * data_prime[2], axis=0)
+    vw = np.mean(data_prime[1] * data_prime[2], axis=0)
+
+    data_prime_2_mean = np.stack((uu, vv, ww, uv, uw, vw))
+
+    return data_mean, data_prime_2_mean
 
 
 # Add turbine locations from plotting.py
@@ -96,78 +111,40 @@ def plot_turbine(ax, xc, zc, diam=126.0, yaw=0):
     ax.scatter(xc, zc, c='k', edgecolor='none')
 
 
-def main():
+def create_figure(mean, p2m, u_base=7.5, figure_name='flow_stats', diff=False):
 
-    if len(sys.argv) != 2:
-        print("Usage: python pod_plot.py <path/to/windfarm/directory>")
-        sys.exit(1)
-
-    casename = sys.argv[1]
-    # data = collect_data('./POD_zero_2')
-    # data = collect_data('./sa_sac_array_2/evaluation/saved/training_sasac_array_8_eval_2025-02-26_15-02/WindFarm_1')
-    data = collect_data(casename)
-    print(np.shape(data))
-
-
-    slice_height = 90
     lx, ly, lz = 2394.0, 500.0, 882.0
     nx, ny, nz = 193, 41, 72
-    ny = ny//2
-    ly = ly/2
     num_grid_points = nx * ny * nz
-    gridx = np.linspace(0, lx, nx)
-    gridy = np.linspace(0, ly, ny)
-    gridz = np.linspace(0, lz, nz)
-
-    # Extract u, v, w components of the mean and reshape to original grid dimensions
-    nt = np.shape(data)[-1]
-    u = data[:num_grid_points, :].reshape(nx, ny, nz, nt, order='F')  # Reshape to (Nx, Ny, Nz)
-    v = data[num_grid_points:2 * num_grid_points, :].reshape(nx, ny, nz, nt, order='F')
-    w = data[2 * num_grid_points:, :].reshape(nx, ny, nz, nt, order='F')
-
-    slice_loc = int(slice_height / ly * ny)
-
-    u = u[:, slice_loc, :, :]
-    v = v[:, slice_loc, :, :]
-    w = w[:, slice_loc, :, :]
-
-    # mean = np.mean(data, axis=-1)[:, np.newaxis]
-    u_mean = np.mean(u, axis=-1)[:, :, np.newaxis]
-    v_mean = np.mean(v, axis=-1)[:, :, np.newaxis]
-    w_mean = np.mean(w, axis=-1)[:, :, np.newaxis]
-
-    u_prime = u - u_mean
-    v_prime = v - v_mean
-    w_prime = w - w_mean
-
-    uu = np.mean(u_prime * u_prime, axis=-1)
-    vv = np.mean(v_prime * v_prime, axis=-1)
-    ww = np.mean(w_prime * w_prime, axis=-1)
-    uv = np.mean(u_prime * v_prime, axis=-1)
-    uw = np.mean(u_prime * w_prime, axis=-1)
-    vw = np.mean(v_prime * w_prime, axis=-1)
-
-
 
     fig, axs = plt.subplots(3, 3,
                             figsize=(6, 4),
                             constrained_layout=True,)
     axs = axs.ravel()
 
-    cmaps = ['Blues_r', 'RdBu', 'RdBu', 'plasma', 'plasma', 'plasma', 'plasma', 'plasma', 'plasma']
-    labels = [r'$\overline{u}$', r'$\overline{v}$', r'$\overline{w}$',
-              r'$\overline{uu}$', r'$\overline{vv}$', r'$\overline{ww}$',
-              r'$\overline{uv}$', r'$\overline{uw}$', r'$\overline{vw}$']
-    for dir, dat in enumerate([u_mean, v_mean, w_mean, uu, vv, ww, uv, uw, vw]):
+    gridx = np.linspace(0, lx, nx)
+    gridy = np.linspace(0, ly, ny)
+    gridz = np.linspace(0, lz, nz)
+
+    labels = [r"$\overline{u}/U_0$", r"$\overline{v}/U_0$", r"$\overline{w}/U_0$",
+              r"$\overline{u'u'}/U_0^2$", r"$\overline{v'v'}/U_0^2$", r"$\overline{w'w'}/U_0^2$",
+              r"$\overline{u'v'}/U_0^2$", r"$\overline{u'w'}/U_0^2$", r"$\overline{v'w'}/U_0^2$"]
+    if not diff:
+        cmaps = ['Blues_r', 'RdBu', 'RdBu', 'plasma', 'plasma', 'plasma', 'plasma', 'plasma', 'plasma']
+    else:
+        cmaps = ['RdBu']*len(labels)
+    for dir, dat in enumerate([mean[0]/u_base, mean[1]/u_base, mean[2]/u_base,
+                               p2m[0]/u_base**2, p2m[1]/u_base**2, p2m[2]/u_base**2,
+                               p2m[3]/u_base**2, p2m[4]/u_base**2, p2m[5]/u_base**2]):
         # axs[mean].contourf(u_mean[:, slice_loc, :], cmap='viridis')
-        data_min = min(dat.min(), -dat.max()) if (dir==1 or dir==2) else dat.min() 
+        data_min = min(dat.min(), -dat.max()) if (dir==1 or dir==2 or diff) else dat.min() 
         data_max = max(-dat.min(), dat.max())
         contour = axs[dir].contourf(gridx / 1000, gridz / 1000, dat.squeeze().T,
                                cmap=cmaps[dir], levels=100,
                                vmin=data_min, vmax=data_max)
         # axs[dir].colorbar()
         cbar = fig.colorbar(contour, location='top')
-        cbar.locator = ticker.MaxNLocator(nbins=5)
+        cbar.locator = ticker.MaxNLocator(nbins=4)
         cbar.update_ticks()
         cbar.ax.set_xlabel(labels[dir])
         axs[dir].set_xlabel(r'$x \; (km)$')
@@ -182,7 +159,37 @@ def main():
 
 
     fig.subplots_adjust(hspace=0, wspace=0)
-    fig.savefig('flow_stats_zero.png', dpi=400)
+    fig.savefig(f'{figure_name}.png', dpi=400)
+
+
+def main():
+
+    # if len(sys.argv) != 3:
+    #     print("Usage: python pod_plot.py <path/to/windfarm/directory>")
+    #     sys.exit(1)
+
+    casename_zero = sys.argv[1]
+    casename_rl = sys.argv[2]
+    # data = collect_data('./POD_zero_2')
+    # data = collect_data('./sa_sac_array_2/evaluation/saved/training_sasac_array_8_eval_2025-02-26_15-02/WindFarm_1')
+
+    slice_height = 90
+
+    zero_data = collect_data(casename_zero, slice_height=slice_height)
+    zero_mean, zero_p2m = calculate_stats(zero_data)
+
+    rl_data = collect_data(casename_rl, slice_height=slice_height)
+    rl_mean, rl_p2m = calculate_stats(rl_data)
+
+    diff_mean = rl_mean - zero_mean
+    diff_p2m = rl_p2m - zero_p2m
+
+    u_base = np.mean(zero_mean[0, 0, 0, :])
+    print(f'{u_base=}')
+
+    create_figure(zero_mean, zero_p2m, u_base, 'zero_stats_slice')
+    create_figure(rl_mean, rl_p2m, u_base, 'rl_stats_slice')
+    create_figure(diff_mean, diff_p2m, u_base, 'diff_stats_slice', diff=True)
 
 
 if __name__ == '__main__':
