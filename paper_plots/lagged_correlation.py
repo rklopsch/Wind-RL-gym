@@ -6,6 +6,7 @@ import pickle
 from scipy.signal import welch
 import seaborn as sns
 import pandas as pd
+import scipy
 
 
 def find_num_eps_envs(data):
@@ -27,22 +28,22 @@ def find_num_eps_envs(data):
 def extract_angles(data, shift=1, turbine=1):
     angles = []
     n_eps, n_envs = find_num_eps_envs(data)
-    for ep in range(1, n_eps+1):
-        for ev in range(1, n_envs+1):
-    # for ep in range(1, 2):
-        # for ev in range(1, 4):
+    for ep in range(1, n_eps + 1):
+        for ev in range(1, n_envs + 1):
+            # for ep in range(1, 2):
+            # for ev in range(1, 4):
             yaws = data[f"alphas_ENV_{ev}_EPISODE_{ep}"]
             if turbine == 1:
-                if shift>0:
+                if shift > 0:
                     yaws_shifted = [yaws[shift:, 0], yaws[:-shift, 1], yaws[:-shift, 2]]
-                elif shift==0:
+                elif shift == 0:
                     yaws_shifted = [yaws[:, 0], yaws[:, 1], yaws[:, 2]]
                 else:
                     yaws_shifted = [yaws[:shift, 0], yaws[-shift:, 1], yaws[-shift:, 2]]
             elif turbine == 2:
-                if shift>0:
+                if shift > 0:
                     yaws_shifted = [yaws[:-shift, 0], yaws[shift:, 1], yaws[:-shift, 2]]
-                elif shift==0:
+                elif shift == 0:
                     yaws_shifted = [yaws[:, 0], yaws[:, 1], yaws[:, 2]]
                 else:
                     yaws_shifted = [yaws[-shift:, 0], yaws[:shift, 1], yaws[-shift:, 2]]
@@ -57,74 +58,81 @@ def extract_angles(data, shift=1, turbine=1):
 if __name__ == '__main__':
 
     # Load data
-    with open(f'./final/evaluation/RL/eval_logs.pkl', 'rb') as f:
+    with open(f'./long_evals_final/RL/eval_logs.pkl', 'rb') as f:
         rl_data = pickle.load(f)
 
     fig, axs = plt.subplots(1, 3,
-                            figsize=(6, 2),
-                            constrained_layout=True,)
+                            figsize=(8, 3),
+                            constrained_layout=True, )
 
     compute_CI = False
-    bootstrap_iters = 1000
     best_shift = []
     best_shift_value = []
+    best_shift_pvalue = []
+    correlation_type = 'kendall'
+    assert correlation_type in ['spearman', 'pearson', 'kendall']
 
-    for i, pair in enumerate([(1,2), (1,3), (2,3)]):
+    for i, pair in enumerate([(1, 2), (1, 3), (2, 3)]):
         assert pair[0] < pair[1]
-        correlations= []
+        correlations = []
+        pvalues = []
         bootstrap_stderror = []
         x = range(-50, 50)
         for shift in x:
             angles = extract_angles(rl_data, shift, pair[0])
             angles_A = angles[f'Angle {pair[0]}']
             angles_B = angles[f'Angle {pair[1]}']
-            cor = np.corrcoef(angles_A, angles_B)
-            correlations.append(cor[0][1])
-
-            if compute_CI:
-                bootstrap_cors = []
-                N = angles['Angle 1'].shape[0]
-                for _ in range(bootstrap_iters):
-                    idxs = np.random.choice(N, N, replace=True)
-                    cor = np.corrcoef(angles_A[idxs], angles_B[idxs])
-                    cor = cor[0][1]
-                    bootstrap_cors.append(cor)
-                bootstrap_stderror.append(np.std(bootstrap_cors))
+            if correlation_type == 'pearson':
+                cor = scipy.stats.pearsonr(angles_A, angles_B)
+            elif correlation_type == 'spearman':
+                cor = scipy.stats.spearmanr(angles_A, angles_B)
+            elif correlation_type == 'kendall':
+                cor = scipy.stats.kendalltau(angles_A, angles_B)
+            p_value = cor.pvalue
+            cor = cor.statistic
+            correlations.append(cor)
+            pvalues.append(p_value)
 
         correlations = np.asarray(correlations)
         bootstrap_stderror = np.asarray(bootstrap_stderror)
-        axs[i].plot(np.asarray(x)*10, correlations)
+        axs[i].plot(np.asarray(x) * 10, correlations)
         if compute_CI:
-            axs[i].fill_between(x, correlations-1.96*bootstrap_stderror, correlations+1.96*bootstrap_stderror, alpha=0.3)
-        turbs = pair[1]-pair[0]
-        axs[i].axvline(-126*5*turbs/7.5, color='k', linestyle=':')
+            axs[i].fill_between(x, correlations - 1.96 * bootstrap_stderror, correlations + 1.96 * bootstrap_stderror,
+                                alpha=0.3)
+        turbs = pair[1] - pair[0]
+        axs[i].axvline(-126 * 5 * turbs / 7.5, color='k', linestyle=':')
         best_shift.append(x[np.argmax(np.abs(correlations))])
         best_shift_value.append(correlations[np.argmax(np.abs(correlations))])
-        axs[i].axvline(best_shift[-1]*10, linestyle='--')
+        best_shift_pvalue.append(pvalues[np.argmax(np.abs(correlations))])
+        axs[i].axvline(best_shift[-1] * 10, linestyle='--')
         axs[i].set_title(f'Turbine {pair[0]} - Turbine {pair[1]}')
         axs[i].set_xlabel('Time lag (s)')
         axs[i].set_ylabel('Angle Correlation')
         # axs[i].grid(axis='x')
         axs[i].grid(alpha=0.3, linestyle=':')
 
-    fig.savefig("cross_correlation.png", dpi=400)
-    fig.savefig("cross_correlation.pdf")
+    fig.savefig(f"cross_correlation_{correlation_type}.png", dpi=400)
+    fig.savefig(f"cross_correlation_{correlation_type}.pdf")
     plt.close(fig)
 
+    for i in range(3):
+        pair = [(1, 2), (1, 3), (2, 3)][i]
+        output = f"PAIR {pair} | LAG {best_shift[i]} | CORRELATION {best_shift_value[i]} | PVALUE {best_shift_pvalue[i]}"
+        print(output)
 
     # Plot correlations with shifted data
     fig, axes = plt.subplots(1, 3, figsize=(6, 2),
-                            constrained_layout=True,)
+                             constrained_layout=True, )
 
-    for i, pair in enumerate([(1,2), (1,3), (2,3)]):
-
+    for i, pair in enumerate([(1, 2), (1, 3), (2, 3)]):
         axes[i].set_aspect('equal')
         print(f'extracted shift of {best_shift[i]}')
         print(f'with correlation of {best_shift_value[i]:.3f}')
         shifted_angles = extract_angles(rl_data, best_shift[i], pair[0])
-        print(f'plotting kde {i+1}')
+        print(f'plotting kde {i + 1}')
         # sns.kdeplot(data=shifted_angles, x=f"Angle {pair[0]}", y=f"Angle {pair[1]}", ax=axes[i], color='k')
-        sns.kdeplot(data=shifted_angles, x=f"Angle {pair[0]}", y=f"Angle {pair[1]}", ax=axes[i], fill=True, cmap='Greys', levels=100)
+        sns.kdeplot(data=shifted_angles, x=f"Angle {pair[0]}", y=f"Angle {pair[1]}", ax=axes[i], fill=True,
+                    cmap='Greys', levels=100)
         axes[i].set_xlim(-40, 40)
         axes[i].set_ylim(-40, 40)
         axes[i].grid(alpha=0.3, linestyle=':')
@@ -143,4 +151,3 @@ if __name__ == '__main__':
     fig.savefig("shifted_correlation.png", dpi=400)
     fig.savefig("shifted_correlation.pdf")
     # plt.show()
-
