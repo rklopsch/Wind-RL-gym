@@ -1,6 +1,15 @@
 # Wind-RL
-Reinforcement Learning for Wind Farm Control
+## Reinforcement Learning for Active Wind Farm Control
 
+This repository contains code that integrates reinforcement learning with wind farm simulations to develop an active wake steering control strategy. Wake steering aims to optimise turbine yaw angles to redirect wakes and maximise the overall power production of the wind farm.
+
+Our approach uses reinforcement learning to train control policies that adapt dynamically to varying wind conditions. By coupling an RL controller with a high-fidelity wind farm simulation environment, this framework learns optimal wake control strategies that dynamically adjust based on the wind conditions and increases the power output of the wind farm.
+
+![Diagram showing the RL process](assets/RLWindFarm.png)
+
+
+
+![Diagram showing coupling between the RL and the Wind Farm Simulation](assets/Coupling.png)
 ## How to install
 
 Smartsim is used to interface the RL code here with wind farm environments simulated using [Xcompact3d](https://www.incompact3d.com/).
