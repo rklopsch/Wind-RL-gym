@@ -24,8 +24,13 @@ elif os.path.isdir('../sac'):
     training = True
     algo = 'sac'
     logging.info('Running dummy solver in training mode (SAC).')
+elif os.path.isdir('../bo'):
+    config_dir = '../bo'
+    training = True
+    algo = 'bo'
+    logging.info('Running dummy solver in training mode (BO).')
 else:
-    raise RuntimeError(f"Did not find either ppo, sac or eval directory.")
+    raise RuntimeError(f"Did not find either ppo, sac, bo or eval directory.")
 
 initialize(config_path=config_dir, version_base="1.2")
 cfg = compose(config_name=f"config_{algo}.yaml")
