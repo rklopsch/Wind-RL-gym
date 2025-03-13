@@ -5,11 +5,10 @@ This repository contains code that integrates reinforcement learning with wind f
 
 Our approach uses reinforcement learning to train control policies that adapt dynamically to varying wind conditions. By coupling an RL controller with a high-fidelity wind farm simulation environment, this framework learns optimal wake control strategies that dynamically adjust based on the wind conditions and increases the power output of the wind farm.
 
-![Diagram showing the RL process](assets/RLWindFarm.png)
+<img src="assets/RLWindFarm.png" alt="Diagram showing the RL process" width="50%">
 
+<img src="assets/Coupling.png" alt="Diagram showing coupling between the RL and the Wind Farm Simulation" width="50%">
 
-
-![Diagram showing coupling between the RL and the Wind Farm Simulation](assets/Coupling.png)
 ## How to install
 
 Smartsim is used to interface the RL code here with wind farm environments simulated using [Xcompact3d](https://www.incompact3d.com/).
