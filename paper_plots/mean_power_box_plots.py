@@ -50,27 +50,28 @@ def extract_raw_powers(data):
 
 if __name__ == '__main__':
     # Load best training run data
-    with open('long_evals_final/RL/eval_logs.pkl', 'rb') as f:
+    with open('final/evaluation/RL/eval_logs.pkl', 'rb') as f:
         rl_data = pickle.load(f)
     rl_powers = extract_mean_powers(rl_data)
 
-    with open('long_evals_final/BO/eval_logs.pkl', 'rb') as f:
+    with open('final/evaluation/BO/eval_logs_2.pkl', 'rb') as f:
         bo_data = pickle.load(f)
     bo_powers = extract_mean_powers(bo_data)
 
-    with open('long_evals_final/zero/eval_logs.pkl', 'rb') as f:
+    with open('final/evaluation/Zero/eval_logs.pkl', 'rb') as f:
         zero_data = pickle.load(f)
     zero_powers = extract_mean_powers(zero_data)
 
     # Create the figure with two subplots
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4), constrained_layout=True)
+    fig, axes = plt.subplots(1, 2, figsize=(6, 2.5), constrained_layout=True)
     palette = sns.color_palette()
 
     # First subplot: Violin plot
     ax1 = axes[0]
+    ax1.yaxis.grid(linestyle=':', alpha=0.5)
+    ax1.set_axisbelow(True)
     vp = ax1.violinplot([zero_powers, bo_powers, rl_powers], showmeans=False, showmedians=True,
                         quantiles=[[0.25, 0.75], [0.25, 0.75], [0.25, 0.75]], showextrema=True)
-    ax1.yaxis.grid(True)
     ax1.set_xticks([1, 2, 3], labels=["Greedy", "Static BO", "RL"])
     ax1.set_ylabel("Mean farm power (MW)")
     ax1.set_xlim(0.5, 3.5)  # Expand x-axis limits to prevent text overflow
@@ -102,8 +103,13 @@ if __name__ == '__main__':
 
     # Add median text labels
     for i, data in enumerate([zero_powers, bo_powers, rl_powers]):
-        value = np.median(data)
-        ax1.text(i + 1.02, value, f'{value:.2f} MW', ha='left', va='bottom', fontsize=12)
+        median = np.median(data)
+        mean = np.mean(data)
+        print(f'{mean = }')
+        print(f'{median = }')
+        offset = 0.3
+        ax1.text(i+1+offset, median, f'{median:.2f}', ha='left', va='center', fontsize=10)
+    ax1.set_xlim(0.5, 3.75)
 
     # Second subplot: KDE plot
     ax2 = axes[1]
@@ -126,7 +132,7 @@ if __name__ == '__main__':
         kde = gaussian_kde(data)
         x_vals = np.linspace(min(data), max(data), 1000)
         kde_vals = kde(x_vals)
-        scale_factor = mean_value / np.trapezoid(kde_vals, x_vals)  # Scale integral to match mean
+        scale_factor = mean_value / np.trapz(kde_vals, x_vals)  # Scale integral to match mean
         return x_vals, kde_vals * scale_factor, scale_factor
 
     # Compute KDE curves manually to extract y-values at median locations
@@ -157,7 +163,8 @@ if __name__ == '__main__':
     ax2.vlines(bo_median, ymin=0, ymax=bo_median_y, color=palette[1], linestyle='dashed', linewidth=1.3)
     ax2.vlines(zero_median, ymin=0, ymax=zero_median_y, color=palette[2], linestyle='dashed', linewidth=1.3)
 
-    ax2.set_xlim(1.8, 6)  # Set x-axis limits
+    ax2.set_xlim(1.8, 6)
+    ax2.set_ylim(0)
     ax2.set_xlabel("Instantaneous Power Output (MW)", labelpad=-0.5)
     ax2.set_ylabel("Density")
     ax2.legend()
