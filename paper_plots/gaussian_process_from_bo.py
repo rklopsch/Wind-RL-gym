@@ -20,3 +20,10 @@ if __name__ == '__main__':
     model = SingleTaskGP(scaled_x, train_y)
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
+
+    predictions = model.posterior(scaled_x).mean
+    L1_error = torch.mean(torch.abs(predictions - train_y))
+    print(f"Relative L1 error {100 * L1_error / torch.mean(train_y):.2f}%")
+
+
+
