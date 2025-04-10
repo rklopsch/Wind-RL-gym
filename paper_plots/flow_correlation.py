@@ -69,13 +69,13 @@ def extract_flow(data, shift=0, turbine=1, sensor=25):
             obs = data[f"observations_ENV_{ev}_EPISODE_{ep}"]
             observations.append(obs)
     observations = np.asarray(observations).transpose(0, 2, 1)
-    observation_range = sensor + 77*(turbine-1)
+    observation_range = sensor + 77*(turbine)
     observations = observations[:, observation_range, :] * 6. + 6.
     observations = observations.reshape(-1)
     return observations
 
 
-def extract_barycenter(data, shift=0, turbine=1):
+def extract_barycenter(data, shift=0, turbine=0):
     observations = []
     n_eps, n_envs = find_num_eps_envs(data)
     for ep in range(1, n_eps + 1):
@@ -83,15 +83,30 @@ def extract_barycenter(data, shift=0, turbine=1):
             obs = data[f"observations_ENV_{ev}_EPISODE_{ep}"]
             observations.append(obs)
     observations = np.asarray(observations).transpose(0, 2, 1)
+    print(f'{observations.shape=}')
     # observation_range = range(4+77*(turbine-1), 77+77*(turbine-1), 11)
-    indices = np.concatenate([np.arange(11, 16),
-                              np.arange(22, 27),
-                              np.arange(44, 49),
-                              np.arange(55, 60),
-                              ]) + 77*(turbine-1)
+    indices = np.concatenate([np.arange(1, 3),
+                              np.arange(12, 14),
+                              np.arange(23, 25),
+                              np.arange(34, 36),
+                              np.arange(45, 47),
+                              np.arange(56, 58),
+                              np.arange(67, 69),
+                              ]) + 77*(turbine)
+    # indices = np.concatenate([[0], [11], [22], [33], [44], [55], [66]]) + 77*(turbine)
+    print(f'{indices=}')
     observations = observations[:, indices, :] * 6. + 6.
-    observations = observations.reshape(-1, 5*4)
-    probe_locations = np.repeat(np.linspace(-1, 1, 7)[1:-1], 4)
+    print(f'{observations.shape=}')
+    observations = np.asarray(observations).transpose(0, 2, 1)
+    observations = observations.reshape(-1, 7*2)
+    # observations = observations.reshape(-1, 7*1)
+    # probe_locations = np.repeat(np.linspace(-1, 1, 7)[1:-1], 2)
+    probe_locations = np.repeat(np.linspace(-1, 1, 7), 2)
+    # probe_locations = np.repeat(np.linspace(-1, 1, 7), 1)
+
+    print(f'{probe_locations=}')
+    print(f'{probe_locations.shape=}')
+    print(f'{observations.shape=}')
 
     weighted_sums = np.sum(observations * probe_locations, axis=1)
     total_weights = np.sum(observations, axis=1)
@@ -107,14 +122,47 @@ if __name__ == '__main__':
     with open(f'./final/evaluation/RL/eval_logs.pkl', 'rb') as f:
         rl_data = pickle.load(f)
 
-    barycenters = extract_barycenter(rl_data)
+    barycenters = extract_barycenter(rl_data, turbine=0)
 
-    fig, axs = plt.subplots(1, 1,
-                            figsize=(8, 3),
+    fig, axs = plt.subplots(1, 1, figsize=(8, 3),
                             constrained_layout=True, )
 
     axs.plot(barycenters)
     fig.savefig('barycenters.pdf')
+    mm = 1/25.4  # millimeters in inches
+    fig, axes = plt.subplots(1, 3, figsize=(183*mm, 55*mm),
+                             constrained_layout=True, )
+    palette = sns.color_palette()
+
+    angles = extract_angles(rl_data)
+    x = np.arange(-40, 41, 1)
+    for turb in range(3):
+        barycenters = extract_barycenter(rl_data, turbine=turb)
+        print(f'Plotting KDE for turbine {turb+1} barycenter')
+        sns.kdeplot(x=barycenters, y=angles[f"Angle {turb+1}"],
+                    ax=axes[turb], fill=True, cmap='Greys', levels=100)
+        # sns.histplot(x=angles[f"Angle {turb+1}"], y=barycenters,
+        #              ax=axes[turb], cmap='Greys', bins=100, pthresh=0.05, cbar=False)
+        axes[turb].set_ylim(-40, 40)
+        # axes[turb].set_xlabel(fr'Barycenter {turb+1}, $\left<z\right>_u(x_{turb+1})/D$')
+        axes[turb].set_xlabel(f'Barycenter {turb+1}')
+        axes[turb].set_ylabel(fr'Angle {turb+1} $(^\circ)$')
+        # axes[turb].set_ylabel(fr'Angle {turb+1}, $\alpha_{turb+1}$')
+        # axes[turb].grid(alpha=0.3, linestyle=':')
+        axes[turb].set_yticks([-40, -20, 0, 20, 40])
+        # axes[turb].set_xlim(-0.2, 0.2)
+    axes[0].set_xlim(-0.1, 0.1)
+    axes[0].set_aspect(1./400)
+    axes[1].set_xlim(-0.2, 0.2)
+    axes[1].set_aspect(1./200)
+    axes[2].set_xlim(-0.2, 0.2)
+    axes[2].set_aspect(1./200)
+
+
+    fig.savefig("barycenter_correlation.png")
+    fig.savefig("barycenter_correlation.pdf")
+    plt.close()
+
 
     fig, axes = plt.subplots(1, 3, figsize=(6, 2),
                              constrained_layout=True, )
@@ -127,39 +175,43 @@ if __name__ == '__main__':
         print(f'Plotting KDE for turbine {turb+1} barycenter')
         # sns.kdeplot(x=angles[f"Angle {turb+1}"], y=barycenters,
         #             ax=axes[turb], fill=True, cmap='Greys', levels=100)
-        sns.histplot(x=angles[f"Angle {turb+1}"], y=barycenters,
-                     ax=axes[turb], cmap='Greys', bins=100, pthresh=0.05, cbar=False)
-        axes[turb].set_xlim(-40, 40)
-        axes[turb].set_ylabel(f'Barycenter {turb}')
-        axes[turb].grid(alpha=0.3, linestyle=':')
-        axes[turb].set_xticks([-40, -20, 0, 20, 40])
+        sns.histplot(x=barycenters,
+                     ax=axes[turb], bins=100, pthresh=0.05, cbar=False)
+        axes[turb].set_xlabel(f'Barycenter {turb+1}')
+        # axes[turb].grid(alpha=0.3, linestyle=':')
 
 
-    fig.savefig("barycenter_correlation.png", dpi=400)
-    fig.savefig("barycenter_correlation.pdf")
+    fig.savefig("barycenter_distribution.png", dpi=400)
+    fig.savefig("barycenter_distribution.pdf")
     plt.close()
 
-    fig, axes = plt.subplots(7, 3, figsize=(6, 14),
-                             constrained_layout=True, )
-    palette = sns.color_palette()
 
-    angles = extract_angles(rl_data)
-    x = np.arange(-40, 41, 1)
-    for i, sensor in enumerate(range(3,77,11)):
+    All_Sensors = False
+
+    if All_Sensors:
+
         for turb in range(3):
-            barycenters = extract_flow(rl_data, turbine=turb, sensor=sensor)
-            print(f'Plotting KDE for turbine {turb+1} sensor {sensor}')
-            # sns.kdeplot(x=angles[f"Angle {turb+1}"], y=barycenters,
-            #             ax=axes[turb], fill=True, cmap='Greys', levels=100)
-            sns.histplot(x=angles[f"Angle {turb+1}"], y=barycenters,
-                         ax=axes[i, turb], cmap='Greys', bins=100, pthresh=0.05, cbar=False)
-            axes[i, turb].set_xlim(-40, 40)
-            axes[i, turb].set_ylabel(f'Sensor {sensor}')
-            axes[i, turb].grid(alpha=0.3, linestyle=':')
-            axes[i, turb].set_xticks([-40, -20, 0, 20, 40])
+            fig, axes = plt.subplots(7, 11, figsize=(18, 14),
+                                     constrained_layout=True, )
+            palette = sns.color_palette()
+
+            angles = extract_angles(rl_data)
+            x = np.arange(-40, 41, 1)
+            for i, sensor in enumerate(range(0,77,11)):
+                for j in range(11):
+                    flow = extract_flow(rl_data, turbine=turb, sensor=sensor+j)
+                    print(f'Plotting KDE for turbine {turb+1} sensor {sensor+j}')
+                    # sns.kdeplot(x=angles[f"Angle {turb+1}"], y=barycenters,
+                    #             ax=axes[turb], fill=True, cmap='Greys', levels=100)
+                    sns.histplot(x=angles[f"Angle {turb+1}"], y=flow,
+                                 ax=axes[i, j], cmap='Greys', bins=100, pthresh=0.05, cbar=False)
+                    axes[i, j].set_xlim(-40, 40)
+                    axes[i, j].set_ylabel(f'Sensor {sensor+j}')
+                    # axes[i, j].grid(alpha=0.3, linestyle=':')
+                    axes[i, j].set_xticks([-40, -20, 0, 20, 40])
 
 
-    fig.savefig("flow_correlation.png", dpi=400)
-    fig.savefig("flow_correlation.pdf")
-    plt.close()
-    # plt.show()
+            fig.savefig(f"flow_correlation_turbine_{turb}.png", dpi=400)
+            fig.savefig(f"flow_correlation_turbine_{turb}.pdf")
+            plt.close()
+
