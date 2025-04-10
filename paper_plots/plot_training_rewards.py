@@ -2,6 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import matplotlib.ticker as mtick
+import tqdm
+import matplotlib.animation as ani
+from functools import partial
+# from utils import fonts_video
 from utils import fonts
 import pickle
 
@@ -9,11 +13,30 @@ import pickle
 # We define the base power output here
 BASE_POWER = 3.21075
 
+def update_plot(it, ax, x, mean_episode_power, std_episode_power):
+
+    ax.clear()
+    ax.plot(x[:it], mean_episode_power[:it])
+    ax.fill_between(
+            x[:it],
+            mean_episode_power[:it] - 1.98 * std_episode_power[:it] / np.sqrt(num_envs),
+            mean_episode_power[:it] + 1.98 * std_episode_power[:it] / np.sqrt(num_envs),
+        alpha=0.3
+    )
+    ax.axhline(y=0, color='k', linestyle='--', linewidth=1)
+    ax.set_xlabel('Episode number')
+    ax.set_ylabel('Normalised farm power')
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=100, decimals=0))
+    ax.grid(linestyle=':', alpha=0.5)
+    ax.set_xlim(min(x), max(x))
+    ax.set_ylim(-25, 5)
 
 if __name__ == '__main__':
 
-    fig, axes = plt.subplots(1, 2,
-                            figsize=(10, 4),
+    animation = False
+
+    fig, axes = plt.subplots(1, 1,
+                            figsize=(3, 2),
                             constrained_layout=True,)
     # Load replay buffer
     # replay_buffer = load_buffer(filename)
@@ -53,27 +76,18 @@ if __name__ == '__main__':
     # Plot mean with 95% confidence band
     # POWER
     x = num_envs * np.arange(1, episode_power.shape[0] + 1)
-    axes[0].plot(x, mean_episode_power)
-    axes[0].fill_between(
-        x,
-        mean_episode_power - 1.98 * std_episode_power / np.sqrt(num_envs),
-        mean_episode_power + 1.98 * std_episode_power / np.sqrt(num_envs),
-        alpha=0.3
-    )
-    axes[0].axhline(y=0, color='k', linestyle='--', linewidth=1)
-    axes[0].set_xlabel('Episode number')
-    axes[0].set_ylabel('Normalised farm power')
-    axes[0].yaxis.set_major_formatter(mtick.PercentFormatter(xmax=100, decimals=0))
-
-    axes[1].plot(entropy+3)
-    # axes[1].plot(alpha_loss, label="alpha l")
-    # axes[1].plot(np.abs(q_loss), label="q l")
-    # axes[1].plot(np.abs(a_loss), label="a l")
-    axes[1].set_xlabel('Training steps')
-    axes[1].set_ylabel('Normalised entropy')
-    #axes[1].set_yscale('symlog')
 
 
+    print('Plotting Figure...')
+    update_plot(it=episode_power.shape[0], ax=axes, x=x, mean_episode_power=mean_episode_power, std_episode_power=std_episode_power)
     fig.savefig('training_reward.png')
-    plt.close()
+    fig.savefig('training_reward.pdf')
+
+    if animation:
+
+        print('Creating Animation...')
+        iters = tqdm.tqdm(range(0, len(x)), desc="Iteration", position=0)
+        anim = ani.FuncAnimation(fig, partial(update_plot, ax=axes, x=x, mean_episode_power=mean_episode_power, std_episode_power=std_episode_power), frames=iters)
+        anim.save(f'animations/training.mp4', fps=3, dpi=400)  # codec='h263p')
+
 
