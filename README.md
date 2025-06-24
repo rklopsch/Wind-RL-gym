@@ -6,9 +6,9 @@ This repository contains code that integrates reinforcement learning with wind f
 Our approach uses reinforcement learning to train control policies that adapt dynamically to varying wind conditions. By coupling an RL controller with a high-fidelity wind farm simulation environment, this framework learns optimal wake control strategies that dynamically adjust based on the wind conditions and increases the power output of the wind farm.
 
 <p align="center">
-<img src="assets/RLWindFarm.png" alt="Diagram showing the RL process" width="50%">
+<img src="assets/RLWindFarm.png" alt="Diagram showing the RL process" width="49%">
 
-<img src="assets/Coupling.png" alt="Diagram showing coupling between the RL and the Wind Farm Simulation" width="50%">
+<img src="assets/Coupling.png" alt="Diagram showing coupling between the RL and the Wind Farm Simulation" width="49%">
 </p>
 
 ## How to install
@@ -73,7 +73,7 @@ This will install torch 2.0.1 (CPU only).
 pip install tqdm matplotlib hydra-core wandb f90nml
 ```
 
-6. Install Numpy 1.x (who knows why, I've stopped caring a long time ago)
+6. Install Numpy 1.x for compatability
 ```bash
 pip install numpy==1.26.4
 ```
@@ -83,17 +83,28 @@ Happy times.
 
 ## Running
 
+The launch scripts can be used to launch RL training, BO runs and evaluation runs.
+For example to run an SAC RL training run: 
+
 ```bash
 SR_LOG_FILE=./log.sr
 SR_LOG_LEVEL=QUIET
-python launch_run.py
+python launch_sac_run.py
 ```
+
+When running on HPC (ARCHER2) a submission script can be used:
 
 ### Running on Archer
 Launch with submission script
 
 ```bash
-sbatch submit_run.sh
+sbatch submit_sac.sh
+```
+
+To change parameters either modify the relevent config files or override the config with: eg.
+
+```bash
+python launch_sac_run.py <case_name> env.turbines=10
 ```
 
 
