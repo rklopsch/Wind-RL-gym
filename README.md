@@ -5,6 +5,10 @@ This repository contains code that integrates reinforcement learning with wind f
 
 Our approach uses reinforcement learning to train control policies that adapt dynamically to varying wind conditions. By coupling an RL controller with a high-fidelity wind farm simulation environment, this framework learns optimal wake control strategies that dynamically adjust based on the wind conditions and increases the power output of the wind farm.
 
+### Paper
+
+[Reinforcement learning increases wind farm power production by enabling closed-loop collaborative control, Andrew Mole, Max Weissenbacher, Georgios Rigas & Sylvain Laizet, Communications Engineering, volume 5, Article number: 129 (2026)](https://doi.org/10.1038/s44172-026-00667-8)
+
 <p align="center">
 <img src="assets/RLWindFarm.png" alt="Diagram showing the RL process" width="49%">
 
