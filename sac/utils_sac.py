@@ -1,449 +1,368 @@
-import tempfile
-from contextlib import nullcontext
 import hydra
-import pickle
-import torch
 import math
-from tensordict.nn import InteractionType, TensorDictModule, TensorDictSequential
-from tensordict.nn.distributions import NormalParamExtractor
-from torch import nn, optim
-from torchrl.collectors import SyncDataCollector
-from torchrl.data import TensorDictPrioritizedReplayBuffer, TensorDictReplayBuffer
-from torchrl.data.replay_buffers.storages import LazyMemmapStorage, LazyTensorStorage
-from torchrl.modules import MLP, ProbabilisticActor, ValueOperator
-from torchrl.modules.distributions import TanhNormal
-from torchrl.objectives import SoftUpdate, SACLoss
-from tensordict.nn import TensorDictModule, TensorDictSequential
-from tensordict.nn.distributions import NormalParamExtractor
-from torchrl.envs import (
-    ClipTransform,
-    DoubleToFloat,
-    CatFrames,
-    ExplorationType,
-    RewardSum,
-    StepCounter,
-    InitTracker,
-    FiniteTensorDictCheck,
-    TransformedEnv,
-    # VecNorm,  # currently broken
-    ParallelEnv,
-    Compose,
-    ObservationNorm,
-    EnvCreator,
-)
-from torchrl.modules import MLP, ProbabilisticActor, TanhNormal, ValueOperator
-from torchrl.modules.models.multiagent import MultiAgentMLP
+import os
+import pickle
+from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
+
+import numpy as np
+import torch
+from torch import nn
 
 
-# ====================================================================
-# Environment utils
-# --------------------------------------------------------------------
+def stack_obs_dict(obs_list):
+    keys = obs_list[0].keys()
+    out = {}
+    for key in keys:
+        values = [item[key] for item in obs_list]
+        first = values[0]
+        if isinstance(first, dict):
+            out[key] = stack_obs_dict(values)
+        else:
+            tensors = [torch.as_tensor(v) for v in values]
+            out[key] = torch.stack(tensors, dim=0)
+    return out
 
 
-def transforms(cfg, eval_only=False):
-    multi_agent = cfg.multi_agent.use
-    observation_key = ("agents", "observation") if multi_agent else "observation"
-    alpha_key = ("agents", "alpha") if multi_agent else "alpha"
-    alpha_norm_key = ("agents", "alpha_normalised") if multi_agent else "alpha_normalised"
-    transform_list = [
-        InitTracker(),
-        RewardSum(in_keys=["reward", "power"], reset_keys=["_reset", "_reset"]),  # episodic reward and power
-        FiniteTensorDictCheck(),
-        CatFrames(N=cfg.env.frame_stack, dim=-1, in_keys=[observation_key]),
-        ObservationNorm(
-            loc=0.,
-            scale=(4/cfg.env.max_yaw_angle),
-            in_keys=[alpha_key],
-            out_keys=[alpha_norm_key]
+class ParallelGymEnv:
+    def __init__(self, env_fns):
+        self.envs = [fn() for fn in env_fns]
+        self.num_envs = len(self.envs)
+        self.action_space = self.envs[0].action_space
+        self.observation_space = self.envs[0].observation_space
+        self._executor = ThreadPoolExecutor(max_workers=self.num_envs)
+
+    def reset(self):
+        results = list(self._executor.map(lambda env: env.reset(), self.envs))
+        obs_list = [obs for obs, _ in results]
+        infos = [info for _, info in results]
+        return stack_obs_dict(obs_list), infos
+
+    def step(self, actions):
+        actions = torch.as_tensor(actions)
+        if actions.dim() == 1:
+            actions = actions.unsqueeze(0)
+        if actions.shape[0] != self.num_envs:
+            raise ValueError(f"Expected actions for {self.num_envs} envs, got shape {tuple(actions.shape)}")
+        def _step_one(args):
+            env, action = args
+            obs, reward, term, trunc, info = env.step(action)
+            final_obs = obs
+            if term or trunc:
+                reset_obs, reset_info = env.reset()
+                info = dict(info)
+                info["final_observation"] = final_obs
+                info["final_info"] = reset_info
+                obs = reset_obs
+            return obs, reward, term, trunc, info
+
+        results = list(self._executor.map(_step_one, zip(self.envs, actions)))
+        obs_list = [obs for obs, _, _, _, _ in results]
+        rewards = [torch.as_tensor(reward).reshape(1) for _, reward, _, _, _ in results]
+        terminated = [torch.as_tensor(term, dtype=torch.bool).reshape(1) for _, _, term, _, _ in results]
+        truncated = [torch.as_tensor(trunc, dtype=torch.bool).reshape(1) for _, _, _, trunc, _ in results]
+        infos = [info for _, _, _, _, info in results]
+
+        return (
+            stack_obs_dict(obs_list),
+            torch.stack(rewards, dim=0),
+            torch.stack(terminated, dim=0),
+            torch.stack(truncated, dim=0),
+            infos,
         )
-    ]
-    if eval_only:
-        transform_list.append(StepCounter(cfg.eval.episode_length))
-    transforms = Compose(*transform_list)
-    return transforms
+
+    def close(self):
+        for env in self.envs:
+            close = getattr(env, "close", None)
+            if callable(close):
+                close()
+        self._executor.shutdown(wait=True)
 
 
-def make_env(cfg, params, instance=None, save=False, device="cpu", add_transforms=True, eval_only=False):
+def make_env(cfg, params, instance=None, save=False, device="cpu", eval_only=False):
     from WF_enviroment import TurbEnv
-    env = TurbEnv(params, multi_agent=cfg.multi_agent.use, save=save, instance=instance, device=device)
-    if add_transforms:
-        env = TransformedEnv(env, transforms(cfg, eval_only))
-    if eval_only:
-        env.eval()
-    return env
+
+    return TurbEnv(params, multi_agent=cfg.multi_agent.use, save=save, instance=instance, device=device)
 
 
 def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
-    function_list = [lambda i=i: make_env(cfg, params, instance=i, device=device, eval_only=eval_only) for i in
-                     range(num_envs)]
-    env = ParallelEnv(num_envs, function_list)
-    return env
+    env_fns = [
+        lambda i=i: make_env(cfg, params, instance=i, device=device, eval_only=eval_only)
+        for i in range(num_envs)
+    ]
+    return ParallelGymEnv(env_fns)
 
 
-# ====================================================================
-# Collector and replay buffer
-# ---------------------------
-def make_collector(cfg, train_env, actor, device):
-    """Make collector."""
-    collector = SyncDataCollector(
-        train_env,
-        actor,
-        init_random_frames=cfg.collector.init_random_frames,
-        frames_per_batch=cfg.collector.frames_per_batch,
-        total_frames=cfg.collector.total_frames,
-        device=device,
-        max_frames_per_traj=cfg.collector.max_episode_length,
-    )
-    return collector
+def _flatten_batch(x: torch.Tensor) -> torch.Tensor:
+    if x.dim() == 0:
+        return x.view(1, 1)
+    if x.dim() == 1:
+        return x.unsqueeze(0)
+    return x.reshape(x.shape[0], -1)
 
 
-def make_replay_buffer(cfg, prefetch=3):
-    batch_size = cfg.optim.batch_size
-    buffer_size = cfg.replay_buffer.size
-    device = torch.device(cfg.collector.device)
-    if cfg.replay_buffer.prb:
-        replay_buffer = TensorDictPrioritizedReplayBuffer(
-            alpha=0.7,
-            beta=0.5,
-            pin_memory=False,
-            prefetch=prefetch,
-            storage=LazyMemmapStorage(
-                buffer_size,
-                device=device,
-            ),
-            batch_size=batch_size,
-        )
-    else:
-        replay_buffer = TensorDictReplayBuffer(
-            pin_memory=False,
-            prefetch=prefetch,
-            storage=LazyMemmapStorage(
-                buffer_size,
-                device=device,
-            ),
-            batch_size=batch_size,
-        )
-    return replay_buffer
+def build_state(obs):
+    observation = torch.as_tensor(obs["observation"], dtype=torch.float32)
+    alpha = torch.as_tensor(obs["alpha_normalised"], dtype=torch.float32)
+    obs_flat = _flatten_batch(observation)
+    alpha_flat = _flatten_batch(alpha)
+    return torch.cat([obs_flat, alpha_flat], dim=-1)
 
 
-def make_saving_replay_buffer(cfg):
-    buffer_size = math.ceil(cfg.collector.total_frames/cfg.env.n_parallel)
-    device = torch.device(cfg.collector.device)
-    replay_buffer = TensorDictReplayBuffer(
-        storage=LazyTensorStorage(
-            buffer_size,
-            device=device,
-        ),
-    )
-    return replay_buffer
+class MLP(nn.Module):
+    def __init__(self, input_dim, hidden_depth, hidden_size, output_dim, activation=nn.ReLU):
+        super().__init__()
+        layers = []
+        in_dim = input_dim
+        for _ in range(hidden_depth):
+            layers.append(nn.Linear(in_dim, hidden_size))
+            layers.append(activation())
+            in_dim = hidden_size
+        layers.append(nn.Linear(in_dim, output_dim))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
 
 
-# ====================================================================
-# Model
-# -----
+class SACActor(nn.Module):
+    def __init__(
+        self,
+        state_dim,
+        action_dim,
+        hidden_depth,
+        hidden_size,
+        action_low,
+        action_high,
+        log_std_min=-5.0,
+        log_std_max=2.0,
+    ):
+        super().__init__()
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.backbone = MLP(state_dim, hidden_depth, hidden_size, 2 * action_dim, activation=nn.ReLU)
+        self.log_std_min = log_std_min
+        self.log_std_max = log_std_max
+        action_low = torch.as_tensor(action_low, dtype=torch.float32)
+        action_high = torch.as_tensor(action_high, dtype=torch.float32)
+        self.register_buffer("action_scale", (action_high - action_low) / 2.0)
+        self.register_buffer("action_bias", (action_high + action_low) / 2.0)
+
+    def forward(self, state):
+        mean_log_std = self.backbone(state)
+        mean, log_std = mean_log_std.chunk(2, dim=-1)
+        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
+        return mean, log_std
+
+    def sample(self, state, deterministic=False):
+        mean, log_std = self.forward(state)
+        if deterministic:
+            pre_tanh = mean
+        else:
+            std = log_std.exp()
+            pre_tanh = mean + std * torch.randn_like(mean)
+
+        squashed = torch.tanh(pre_tanh)
+        action = squashed * self.action_scale + self.action_bias
+
+        log_prob = None
+        if not deterministic:
+            std = log_std.exp()
+            normal = torch.distributions.Normal(mean, std)
+            log_prob = normal.log_prob(pre_tanh)
+            log_prob = log_prob - torch.log(1 - squashed.pow(2) + 1e-6)
+            log_prob = log_prob.sum(dim=-1, keepdim=True)
+        return action, log_prob
+
+
+class SACCritic(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_depth, hidden_size):
+        super().__init__()
+        self.q = MLP(state_dim + action_dim, hidden_depth, hidden_size, 1, activation=nn.ReLU)
+
+    def forward(self, state, action):
+        x = torch.cat([state, action], dim=-1)
+        return self.q(x)
+
+
+class ReplayBuffer:
+    def __init__(self, capacity, state_dim, action_dim):
+        self.capacity = int(capacity)
+        self.state = torch.zeros((self.capacity, state_dim), dtype=torch.float32)
+        self.action = torch.zeros((self.capacity, action_dim), dtype=torch.float32)
+        self.reward = torch.zeros((self.capacity, 1), dtype=torch.float32)
+        self.next_state = torch.zeros((self.capacity, state_dim), dtype=torch.float32)
+        self.done = torch.zeros((self.capacity, 1), dtype=torch.bool)
+        self.index = 0
+        self.size = 0
+
+    def _store_one(self, state, action, reward, next_state, done):
+        self.state[self.index] = state
+        self.action[self.index] = action
+        self.reward[self.index] = reward
+        self.next_state[self.index] = next_state
+        self.done[self.index] = done
+        self.index = (self.index + 1) % self.capacity
+        self.size = min(self.size + 1, self.capacity)
+
+    def add(self, state, action, reward, next_state, done):
+        state = torch.as_tensor(state, dtype=torch.float32).detach().cpu()
+        action = torch.as_tensor(action, dtype=torch.float32).detach().cpu()
+        reward = torch.as_tensor(reward, dtype=torch.float32).detach().cpu()
+        next_state = torch.as_tensor(next_state, dtype=torch.float32).detach().cpu()
+        done = torch.as_tensor(done, dtype=torch.bool).detach().cpu()
+
+        state = _flatten_batch(state)
+        action = _flatten_batch(action)
+        reward = reward.reshape(reward.shape[0], -1) if reward.dim() > 1 else reward.unsqueeze(-1)
+        next_state = _flatten_batch(next_state)
+        done = done.reshape(done.shape[0], -1) if done.dim() > 1 else done.unsqueeze(-1)
+
+        for i in range(state.shape[0]):
+            self._store_one(state[i], action[i], reward[i], next_state[i], done[i])
+
+    def sample(self, batch_size, device="cpu"):
+        if self.size == 0:
+            raise RuntimeError("Replay buffer is empty.")
+        idx = torch.randint(0, self.size, (batch_size,))
+        return {
+            "state": self.state[idx].to(device),
+            "action": self.action[idx].to(device),
+            "reward": self.reward[idx].to(device),
+            "next_state": self.next_state[idx].to(device),
+            "done": self.done[idx].to(device),
+        }
+
+    def state_dict(self):
+        return {
+            "capacity": self.capacity,
+            "state": self.state[: self.size].clone(),
+            "action": self.action[: self.size].clone(),
+            "reward": self.reward[: self.size].clone(),
+            "next_state": self.next_state[: self.size].clone(),
+            "done": self.done[: self.size].clone(),
+            "index": self.index,
+            "size": self.size,
+        }
+
+    def load_state_dict(self, state_dict):
+        n = min(state_dict["size"], self.capacity)
+        self.state[:n] = state_dict["state"][:n]
+        self.action[:n] = state_dict["action"][:n]
+        self.reward[:n] = state_dict["reward"][:n]
+        self.next_state[:n] = state_dict["next_state"][:n]
+        self.done[:n] = state_dict["done"][:n]
+        self.index = int(state_dict.get("index", n) % self.capacity)
+        self.size = int(n)
+
+
+def soft_update(target, source, tau):
+    with torch.no_grad():
+        for target_param, source_param in zip(target.parameters(), source.parameters()):
+            target_param.data.mul_(tau).add_(source_param.data, alpha=1.0 - tau)
+
+
 def make_sa_sac_agent(cfg, params):
-    # Single agent SAC
     if cfg.multi_agent.use:
-        raise RuntimeError(f"cfg.multi_agent.use is set to True, but we are calling the single agent creator function.")
+        raise NotImplementedError("Plain PyTorch SAC currently supports single-agent mode only.")
 
-    device = "cpu"
-    proof_environment = make_env(cfg, params, device=device)
+    state_dim = params["n_turbines"] * params["probes_per_turbine"] * len(params["flow_field_directions"]) + params["n_turbines"]
+    action_dim = params["n_turbines"]
 
-    # Define input shape
-    input_size = proof_environment.observation_spec["observation"].shape[-1] + proof_environment.observation_spec["alpha_normalised"].shape[-1]
-    
-    # Define Actor Network
-    action_spec = proof_environment.action_spec
-    num_outputs = action_spec.shape[-1]
-    
-    in_keys_actor = ["observation", "alpha_normalised"]
-    out_keys_actor = ["_actor_net_out"]
-
-    activation = nn.ReLU
-    actor_net = MLP(
-        in_features=input_size,
-        depth=cfg.network.actor_hidden_depth,
-        num_cells=cfg.network.actor_hidden_size,
-        out_features=2*num_outputs,
-        activation_class=activation,
+    actor = SACActor(
+        state_dim=state_dim,
+        action_dim=action_dim,
+        hidden_depth=cfg.network.actor_hidden_depth,
+        hidden_size=cfg.network.actor_hidden_size,
+        action_low=-1.0,
+        action_high=1.0,
     )
-    actor_net = TensorDictModule(
-        actor_net,
-        in_keys=in_keys_actor,
-        out_keys=out_keys_actor,
+    critic1 = SACCritic(
+        state_dim=state_dim,
+        action_dim=action_dim,
+        hidden_depth=cfg.network.critic_hidden_depth,
+        hidden_size=cfg.network.critic_hidden_size,
     )
-    actor_extractor = TensorDictModule(
-        NormalParamExtractor(
-            scale_mapping=f"biased_softplus_{cfg.network.default_policy_scale}",
-            scale_lb=cfg.network.scale_lb,
-        ),
-        in_keys=out_keys_actor,
-        out_keys=["loc", "scale"],
+    critic2 = SACCritic(
+        state_dim=state_dim,
+        action_dim=action_dim,
+        hidden_depth=cfg.network.critic_hidden_depth,
+        hidden_size=cfg.network.critic_hidden_size,
     )
+    return actor, critic1, critic2
 
-    actor_module = TensorDictSequential(actor_net, actor_extractor)
 
-    actor = ProbabilisticActor(
-        spec=action_spec,
-        in_keys=["loc", "scale"],
-        module=actor_module,
-        distribution_class=TanhNormal,
-        distribution_kwargs={
-            "min": action_spec.space.low,
-            "max": action_spec.space.high,
-            "tanh_loc": False,  # can be omitted since this is default value
-        },
-        default_interaction_type=InteractionType.RANDOM,
-        return_log_prob=False,
-    )
+def save_model(cfg, actor, critic, filepath, id):
+    os.makedirs(filepath, exist_ok=True)
+    torch.save(actor.state_dict(), os.path.join(filepath, f"actor_{id}.pkl"))
+    torch.save(critic.state_dict(), os.path.join(filepath, f"critic_{id}.pkl"))
+    return True
 
-    # Define Critic Network
-    qvalue_net_kwargs = {
-        "in_features": input_size + num_outputs,
-        "depth": cfg.network.critic_hidden_depth,
-        "num_cells": cfg.network.critic_hidden_size,
-        "out_features": 1,
-        "activation_class": activation,
+
+def load_model(cfg, env_params, path_to_model, id):
+    actor, critic1, _ = make_sa_sac_agent(cfg, env_params)
+    actor_path = os.path.join(path_to_model, f"actor_{id}.pkl")
+    critic_path = os.path.join(path_to_model, f"critic_{id}.pkl")
+    if not os.path.exists(actor_path) or not os.path.exists(critic_path):
+        raise FileNotFoundError(f"Missing checkpoint files: {actor_path} or {critic_path}")
+    actor.load_state_dict(torch.load(actor_path, map_location="cpu"))
+    critic1.load_state_dict(torch.load(critic_path, map_location="cpu"))
+    return actor, critic1
+
+
+def save_sac_checkpoint(cfg, actor, critic1, critic2, log_alpha, filepath, id, replay_buffer=None):
+    os.makedirs(filepath, exist_ok=True)
+    checkpoint = {
+        "actor": actor.state_dict(),
+        "critic1": critic1.state_dict(),
+        "critic2": critic2.state_dict(),
+        "log_alpha": log_alpha.detach().cpu(),
     }
-    qvalue_net = MLP(
-        **qvalue_net_kwargs,
-    )
-
-    critic = ValueOperator(
-        in_keys=[proof_environment.action_key] + in_keys_actor,
-        module=qvalue_net,
-    )
-
-    actor, critic = actor.to(device), critic.to(device)
-
-    return actor, critic
+    torch.save(checkpoint, os.path.join(filepath, f"sac_checkpoint_{id}.pt"))
+    torch.save(actor.state_dict(), os.path.join(filepath, f"actor_{id}.pkl"))
+    torch.save(critic1.state_dict(), os.path.join(filepath, f"critic_{id}.pkl"))
+    torch.save(critic2.state_dict(), os.path.join(filepath, f"critic2_{id}.pkl"))
+    if replay_buffer is not None:
+        torch.save(replay_buffer.state_dict(), os.path.join(filepath, f"replay_buffer_{id}.pt"))
 
 
-def make_ma_sac_agents(cfg, params):
-    device = "cpu"
-    proof_environment = make_env(cfg, params, device=device)
+def load_sac_checkpoint(cfg, env_params, path_to_model, id):
+    actor, critic1, critic2 = make_sa_sac_agent(cfg, env_params)
+    checkpoint_path = os.path.join(path_to_model, f"sac_checkpoint_{id}.pt")
+    if os.path.exists(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        actor.load_state_dict(checkpoint["actor"])
+        critic1.load_state_dict(checkpoint["critic1"])
+        critic2.load_state_dict(checkpoint["critic2"])
+        log_alpha = torch.nn.Parameter(checkpoint["log_alpha"].clone().detach().float())
+        return actor, critic1, critic2, log_alpha
 
-    # Make actor network
-    activation = nn.ReLU
-    actor_module = TensorDictModule(
-        MultiAgentMLP(
-            n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1] + 2,
-            n_agent_outputs=2 * proof_environment.action_spec.shape[-1],
-            n_agents=proof_environment.n_turbs,
-            centralised=False,
-            share_params=False,
-            depth=cfg.network.actor_hidden_depth,
-            num_cells=cfg.network.actor_hidden_size,
-            activation_class=activation,
-        ),
-        in_keys=[("agents", "observation"), ("agents", "alpha_normalised"), ("agents", "pos_enc")],
-        out_keys=[("agents", "actor_net_output")],
-    )
-    actor_extractor = TensorDictModule(
-        NormalParamExtractor(
-            scale_mapping=f"biased_softplus_{cfg.network.default_policy_scale}",
-            scale_lb=cfg.network.scale_lb,
-        ),
-        in_keys=[("agents", "actor_net_output")],
-        out_keys=[("agents", "loc"), ("agents", "scale")],
-    )
-    policy_module = TensorDictSequential(actor_module, actor_extractor)
-
-    actor = ProbabilisticActor(
-        spec=proof_environment.action_spec,
-        in_keys=[("agents", "loc"), ("agents", "scale")],
-        module=policy_module,
-        distribution_class=TanhNormal,
-        distribution_kwargs={
-            "min": proof_environment.action_spec.space.low,
-            "max": proof_environment.action_spec.space.high,
-            "tanh_loc": False,  # can be omitted since this is default value
-        },
-        default_interaction_type=InteractionType.RANDOM,
-        return_log_prob=False,
-    )
-
-    # Make critic
-    module = MultiAgentMLP(
-        n_agent_inputs=proof_environment.observation_spec["agents", "observation"].shape[-1] + proof_environment.action_spec.shape[-1] + 2,
-        n_agent_outputs=1,
-        n_agents=proof_environment.n_turbs,
-        centralised=True,
-        share_params=True,
-        depth=cfg.network.critic_hidden_depth,
-        num_cells=cfg.network.critic_hidden_size,
-        activation_class=activation,
-    )
-    value_module = ValueOperator(
-        module=module,
-        in_keys=[proof_environment.action_key, ("agents", "observation"), ("agents", "alpha_normalised"), ("agents", "pos_enc")],
-        out_keys=[("agents", "state_action_value")]
-    )
-
-    return actor, value_module
-    
-
-def make_loss_module(cfg, params, actor, critic):
-    """Make loss module and target network updater."""
-    proof_env = make_env(cfg, params, device="cpu")
-    # Create SAC loss
-    loss_module = SACLoss(
-        actor_network=actor,
-        qvalue_network=critic,
-        num_qvalue_nets=2,
-        loss_function="l2",
-        delay_actor=False,
-        delay_qvalue=True,
-        alpha_init=cfg.optim.alpha_init,
-        action_spec=proof_env.action_spec,  # this is necessary so the loss module finds the correct action key
-    )
-    loss_module.make_value_estimator(gamma=cfg.optim.gamma)
-
-    if cfg.multi_agent.use:
-        loss_module.set_keys(  # We have to tell the loss where to find the keys
-            reward=proof_env.reward_key,
-            action=proof_env.action_key,
-            # sample_log_prob=("agents", "sample_log_prob"),
-            state_action_value=("agents", "state_action_value"),
-            # These last 2 keys will be expanded to match the reward shape
-            done=("agents", "done"),
-            terminated=("agents", "terminated"),
-        )
-
-    # Define Target Network Updater
-    target_net_updater = SoftUpdate(loss_module, eps=cfg.optim.target_update_polyak)
-    return loss_module, target_net_updater
-
-
-def make_sac_optimizer(cfg, loss_module):
-    critic_params = list(loss_module.qvalue_network_params.flatten_keys().values())
-    actor_params = list(loss_module.actor_network_params.flatten_keys().values())
-
-    trainable_actor_params = [p for p in actor_params if p.requires_grad]
-    trainable_critic_params = [p for p in critic_params if p.requires_grad]
-
-    optimizer_actor = optim.Adam(
-        trainable_actor_params,
-        lr=float(cfg.optim.lr)/cfg.optim.step_mult,
-        weight_decay=cfg.optim.weight_decay,
-        eps=cfg.optim.adam_eps,
-    )
-    optimizer_critic = optim.Adam(
-        trainable_critic_params,
-        lr=float(cfg.optim.lr)/cfg.optim.step_mult,
-        weight_decay=cfg.optim.weight_decay,
-        eps=cfg.optim.adam_eps,
-    )
-    optimizer_alpha = optim.Adam(
-        [loss_module.log_alpha],
-        lr=float(cfg.optim.entropy_lr)/cfg.optim.step_mult,
-    )
-    return optimizer_actor, optimizer_critic, optimizer_alpha
-
-
-# ====================================================================
-# Logging utils
-# --------------------------------------------------------------------
+    actor_path = os.path.join(path_to_model, f"actor_{id}.pkl")
+    critic_path = os.path.join(path_to_model, f"critic_{id}.pkl")
+    critic2_path = os.path.join(path_to_model, f"critic2_{id}.pkl")
+    if not os.path.exists(actor_path) or not os.path.exists(critic_path):
+        raise FileNotFoundError(f"Missing checkpoint files: {actor_path} or {critic_path}")
+    actor.load_state_dict(torch.load(actor_path, map_location="cpu"))
+    critic1.load_state_dict(torch.load(critic_path, map_location="cpu"))
+    if os.path.exists(critic2_path):
+        critic2.load_state_dict(torch.load(critic2_path, map_location="cpu"))
+    else:
+        critic2.load_state_dict(deepcopy(critic1.state_dict()))
+    log_alpha = torch.nn.Parameter(torch.tensor(math.log(float(cfg.optim.alpha_init)), dtype=torch.float32))
+    return actor, critic1, critic2, log_alpha
 
 
 def log_metrics(logs, metrics):
     for metric_name, metric_value in metrics.items():
-        if metric_name in logs.keys():
-            logs[metric_name].append(metric_value)
-        else:
-            logs[metric_name] = [metric_value]
-    # Save logs to disk
-    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + '/'
+        logs.setdefault(metric_name, []).append(metric_value)
+    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + "/"
     with open(output_dir + "logs.pkl", "wb") as f:
         pickle.dump(logs, f)
 
 
 def should_log_now(cfg, frames, num_console_updates):
-    return True  # always log
-    return frames % (cfg.collector.total_frames // (num_console_updates) + 1) == 0  # log a total of num_console_updates times
-
-
-def load_model(cfg, env_params, path_to_model, id):
-    try:
-        # Filenames
-        actor_path = path_to_model + '/actor' + f"_{id}" + '.pkl'
-        critic_path = path_to_model + '/critic' + f"_{id}" + '.pkl'
-        # Load model parameters
-        with open(actor_path, 'rb') as file:
-            actor_params = torch.load(file)
-        with open(critic_path, 'rb') as file:
-            critic_params = torch.load(file)
-    except FileNotFoundError:
-        print(f"File {actor_path} or {critic_path} has not been found.")
-        return False
-
-    device = "cpu" if not torch.cuda.device_count() else "cuda"
-    # Instantiating the model with random params
-    if cfg.multi_agent.use:
-        actor, critic = make_ma_sac_agents(cfg, env_params)
-    else:
-        actor, critic = make_sa_sac_agent(cfg, env_params)
-
-    actor, critic = actor.to(device), critic.to(device)
-    # Inserting the loaded parameters
-    actor.load_state_dict(actor_params)
-    critic.load_state_dict(critic_params)
-
-    return actor, critic
-
-
-def save_model(cfg, actor, critic, filepath, id):
-    # Read out loc and scale used in ObservationNorm, if used
-    transform_list = transforms(cfg)
-    obs_norm_transform = next((t for t in transform_list if isinstance(t, ObservationNorm)), None)
-    if obs_norm_transform:
-        norm_dict = {
-            'loc': obs_norm_transform.loc,
-            'scale': obs_norm_transform.scale,
-        }
-        # Save env transforms
-        with open(filepath + 'env_transforms' + f"_{id}" + '.pkl', 'wb') as file:
-            pickle.dump(norm_dict, file)
-    # Save model
-    with open(filepath + 'actor' + f"_{id}" + '.pkl', 'wb') as file:
-        torch.save(actor.state_dict(), file)
-    with open(filepath + 'critic' + f"_{id}" + '.pkl', 'wb') as file:
-        torch.save(critic.state_dict(), file)
-
     return True
 
 
-# ====================================================================
-# Data shape updater
-# --------------------------------------------------------------------
-
-
 def update_data_shapes(train_env, data):
-    data.set(
-        ("next", "agents", "done"),
-        data.get(("next", "done"))
-        .unsqueeze(-1)
-        .expand(data.get_item_shape(("next", train_env.reward_key))),
-    )
-    data.set(
-        ("next", "agents", "terminated"),
-        data.get(("next", "terminated"))
-        .unsqueeze(-1)
-        .expand(data.get_item_shape(("next", train_env.reward_key))),
-    )
-    data.set(
-        ("next", "done"),
-        data.get(("next", "done"))
-        .unsqueeze(-1)
-        .expand(data.get_item_shape(("next", train_env.reward_key))),
-    )
-    data.set(
-        ("next", "terminated"),
-        data.get(("next", "terminated"))
-        .unsqueeze(-1)
-        .expand(data.get_item_shape(("next", train_env.reward_key))),
-    )
-    # We need to expand the done and terminated to match the reward shape (this is expected by the value estimator)
     return data
-
-

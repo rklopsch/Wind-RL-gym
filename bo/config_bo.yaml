@@ -24,6 +24,7 @@ env:
   difference_penalty_scale: 0.0
   random_reset: False  # If True, at each reset angles will be chosen randomly
   initial_angles: [0.0, 0.0, 0.0]
+  precursor_root: "/media/roman/Disk 1/windRL_precursor"
 
 optim:
   init_num_obs: 6
@@ -42,4 +43,3 @@ hydra:
   run:
     dir: outputs
   output_subdir: hydra_logs
-

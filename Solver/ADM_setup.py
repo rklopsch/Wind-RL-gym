@@ -89,7 +89,7 @@ class ADMSimulation:
         f90nml.patch(os.path.join(directory, 'old_input.i3d'),
                      patch_nml, os.path.join(directory, 'input.i3d'))
 
-    def setup_case(self, directory, save_flow=False):
+    def setup_case(self, directory, save_flow=False, precursor_root=None):
 
         lx = self.farm.lx + self.farm.offset[0] + 7*self.diameter
         ly = 500
@@ -101,6 +101,22 @@ class ADMSimulation:
             save_interval = self.control_freq
         else:
             save_interval = self.total_timesteps
+
+        precursor_dir = os.path.join(os.path.dirname(directory), f'precursor_{self.instance}')
+        source_precursor_dir = None
+        if precursor_root:
+            source_precursor_dir = os.path.join(os.path.abspath(os.path.expanduser(str(precursor_root))),
+                                               f'precursor_{self.instance}')
+
+        inflow_dir = None
+        if source_precursor_dir is not None:
+            inflow_dir = os.path.join(source_precursor_dir, 'out')
+        else:
+            inflow_dir = os.path.join(precursor_dir, 'out')
+
+        has_precursor_inflow = os.path.isdir(inflow_dir) and any(
+            'inflow' in name.lower() for name in os.listdir(inflow_dir)
+        )
 
         self.add_probes(directory)
         # Set-up ADM turbine parameters
@@ -121,15 +137,16 @@ class ADMSimulation:
             'nx': nx,
             'ny': ny,
             'nz': nz,
+            'iin': 3 if has_precursor_inflow else 1,
             },
             'InOutParam': {
                 'irestart': 0,
                 'icheckpoint': self.total_timesteps,
                 'ioutput': save_interval,
                 'ilist': self.total_timesteps // 1000,
-                'inflowpath': f'precursor_{self.instance}/out/',
+                'inflowpath': f'{inflow_dir}/' if has_precursor_inflow else '',
                 'ntimesteps': 5000,
-                'ninflows': self.total_timesteps // 5000,
+                'ninflows': self.total_timesteps // 5000 if has_precursor_inflow else 1,
                 'nprobes': self.probes_per_turbine * self.farm.n_turbines
             },
             'ADMParam': {
@@ -139,6 +156,8 @@ class ADMSimulation:
                 'icontrolfreq': self.control_freq
             }
         }
+        if not has_precursor_inflow:
+            print(f"No precursor inflow found for instance {self.instance}; falling back to built-in inflow profile.")
         f90nml.patch(os.path.join(directory, 'old_input.i3d'),
                      patch_nml, os.path.join(directory, 'input.i3d'))
 

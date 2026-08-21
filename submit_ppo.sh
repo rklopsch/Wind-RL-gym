@@ -19,6 +19,8 @@ source /work/e809/e809/amole-e809/smartsim_venv/bin/activate
 
 # Set environment variables
 # export OMP_NUM_THREADS=1
+export GIT_PYTHON_GIT_EXECUTABLE=$(which git || echo /usr/bin/git)
+export PATH="$(dirname "$GIT_PYTHON_GIT_EXECUTABLE"):$PATH"
 export SMARTSIM_LOG_LEVEL=DEBUG
 export SMARTSIM_WLM_TRIALS=50  # default 10 stopped working  
 # export SR_LOG_LEVEL=DEBUG

@@ -25,6 +25,7 @@ env:
   difference_penalty_scale: 0.0
   random_reset: False  # If True, at each reset angles will be chosen randomly
   initial_angles: [0.0, 0.0, 0.0]
+  precursor_root: "/media/roman/Disk 1/windRL_precursor"
 
 # Multi-agent or single-agent training?
 multi_agent:

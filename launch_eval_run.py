@@ -1,20 +1,46 @@
+import os
+import shutil
 import numpy as np
+
+git_bin = shutil.which("git") or "/usr/bin/git"
+os.environ.setdefault("GIT_PYTHON_GIT_EXECUTABLE", git_bin)
+os.environ["PATH"] = os.path.dirname(git_bin) + os.pathsep + os.environ.get("PATH", "")
+
+PYTHON_BIN = "/home/roman/.pyenv/versions/windRL/bin/python"
+if not os.path.exists(PYTHON_BIN):
+    PYTHON_BIN = shutil.which("python") or "python"
+
+WORKSPACE_ROOT = os.path.abspath(os.path.dirname(__file__))
+INCOMPACT3D_ROOT = os.path.abspath(os.path.join(WORKSPACE_ROOT, "..", "Incompact3d"))
+LOCAL_INCOMPACT_BIN = os.path.join(INCOMPACT3D_ROOT, "build", "bin")
+LOCAL_SMARTREDIS_LIB = os.path.join(INCOMPACT3D_ROOT, "build", "smartredis-build", "smartredis", "install", "lib")
+LOCAL_PRECURSOR_BASE = os.path.join(WORKSPACE_ROOT, "Solver", "ADM", "precursor_Base")
+
+if shutil.which("srun"):
+    LAUNCHER = "auto"
+    RUN_COMMAND = "srun"
+    SOLVER_TASKS = 128
+else:
+    LAUNCHER = "local"
+    RUN_COMMAND = None
+    SOLVER_TASKS = 1
+
 from smartsim import Experiment
 from smartsim.status import SmartSimStatus
 import time
-import os
 import math
 import sys
 from smartredis import Client
 from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
+from Solver.precursor_utils import ensure_precursor
 from hydra import initialize, compose
 from omegaconf import OmegaConf
 from datetime import datetime
 
 
 def launch_database(experiment, port, dummy_update=False):
-    interface = ['hsn0', 'hsn1'] if not dummy_update else 'lo'
+    interface = ['hsn0', 'hsn1'] if (not dummy_update and shutil.which("srun")) else 'lo'
     db = experiment.create_database(port=port, db_nodes=1, interface=interface)
 
     # generate directories for output files
@@ -36,20 +62,24 @@ def launch_database(experiment, port, dummy_update=False):
 
 
 def launch_solver(experiment, instance, cfg):
-    os.environ['LD_LIBRARY_PATH'] = "/work/e809/e809/amole-e809/Incompact3d-smartredis/Incompact3d/build/smartredis-build/smartredis/install/lib:" + os.environ.get('LD_LIBRARY_PATH', "")
-    os.environ['PATH'] = os.environ['PATH'] + ":/work/e809/e809/amole-e809/Incompact3d-smartredis/Incompact3d/build/bin"
+    if os.path.isdir(LOCAL_SMARTREDIS_LIB):
+        os.environ['LD_LIBRARY_PATH'] = LOCAL_SMARTREDIS_LIB + os.pathsep + os.environ.get('LD_LIBRARY_PATH', "")
+    if os.path.isdir(LOCAL_INCOMPACT_BIN):
+        os.environ['PATH'] = LOCAL_INCOMPACT_BIN + os.pathsep + os.environ.get('PATH', "")
     # TODO: probably (definitely) want a better way to set these
 
-    aprun = experiment.create_run_settings(exe="xcompact3d", run_command="srun")
-    aprun.set_tasks(128)
+    aprun = experiment.create_run_settings(exe="xcompact3d")
+    if RUN_COMMAND is not None:
+        aprun.set_run_command(RUN_COMMAND)
+    aprun.set_tasks(SOLVER_TASKS)
     aprun.set_cpus_per_task(1)
     aprun.set_nodes(1)
-    aprun.set_tasks_per_node(128)
+    aprun.set_tasks_per_node(SOLVER_TASKS)
     print(aprun.format_run_args())
     producer = experiment.create_model(f"WindFarm_{instance}", aprun)
     files = ["./Solver/ADM/Base"]
-    precursor_files = [f"./Solver/ADM/precursor_{instance}"]
-    producer.attach_generator_files(to_copy=files, to_symlink=precursor_files)
+    precursor_dir = ensure_precursor(instance, cfg)
+    producer.attach_generator_files(to_copy=files, to_symlink=[precursor_dir])
     experiment.generate(producer, overwrite=True)
 
     # Configure case
@@ -76,7 +106,7 @@ def launch_solver(experiment, instance, cfg):
                          control_freq=cfg.env.steps_per_frame,
                          probes_per_turbine=cfg.env.probes_per_turbine,
                          instance=instance)
-    case.setup_case(f"./{experiment.name}/WindFarm_{instance}", save_flow=cfg.eval.save_flow)
+    case.setup_case(f"./{experiment.name}/WindFarm_{instance}", save_flow=cfg.eval.save_flow, precursor_root=cfg.env.precursor_root)
     # case.setup_precursor(f"./{experiment.name}/WindFarm_{instance}/precursor_{instance}")
 
     return producer
@@ -97,8 +127,10 @@ def launch_dummy_solver(experiment):
 
 
 def launch_eval(experiment, cfg, dummy_update=False):
-    run_command = "" if dummy_update else "srun"
-    aprun = experiment.create_run_settings(exe="python", exe_args="eval.py", run_command=run_command)
+    run_command = "" if dummy_update else RUN_COMMAND
+    aprun = experiment.create_run_settings(exe=PYTHON_BIN, exe_args="eval.py")
+    if run_command:
+        aprun.set_run_command(run_command)
     aprun.set_tasks(1)
     aprun.set_cpus_per_task(128)
     aprun.set_nodes(1)
@@ -161,7 +193,7 @@ if __name__ == '__main__':
     cfg = OmegaConf.create(cfg)
 
     # Set up experiment
-    exp = Experiment(run_name, launcher="auto")
+    exp = Experiment(run_name, launcher=LAUNCHER)
 
     # Runtime parameters
     n_environments = cfg.eval.n_parallel

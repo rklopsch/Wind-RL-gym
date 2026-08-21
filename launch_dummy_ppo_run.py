@@ -1,3 +1,13 @@
+import os
+import shutil
+
+git_bin = shutil.which("git") or "/usr/bin/git"
+os.environ.setdefault("GIT_PYTHON_GIT_EXECUTABLE", git_bin)
+os.environ["PATH"] = os.path.dirname(git_bin) + os.pathsep + os.environ.get("PATH", "")
+
+RUN_COMMAND = "srun" if shutil.which("srun") else "local"
+LAUNCHER = "auto" if shutil.which("srun") else "local"
+
 from smartsim import Experiment
 import time
 from hydra import initialize, compose
@@ -67,7 +77,7 @@ if __name__ == '__main__':
 
     print("WARNING: The dummy solver mode is currently broken when using too many parallel envs. Since this is not really a relevant feature, it is recommended to use 5 parallel envs when using the dummy solver mode. This should be sufficient for all testing purposes.\n")
 
-    exp = Experiment("launch_dummy_PPO_run", launcher="auto")
+    exp = Experiment("launch_dummy_PPO_run", launcher=LAUNCHER)
 
     total_runtime = 240  # seconds, without including setup of orchestrator etc.
 
