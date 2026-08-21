@@ -67,9 +67,8 @@ def launch_solver(experiment, instance, cfg):
         os.environ['PATH'] = LOCAL_INCOMPACT_BIN + os.pathsep + os.environ.get('PATH', "")
     # TODO: probably (definitely) want a better way to set these
 
-    aprun = experiment.create_run_settings(exe="xcompact3d")
-    if RUN_COMMAND is not None:
-        aprun.set_run_command(RUN_COMMAND)
+    kwargs = {"run_command": RUN_COMMAND} if RUN_COMMAND is not None else {}
+    aprun = experiment.create_run_settings(exe="xcompact3d", **kwargs)
     aprun.set_tasks(SOLVER_TASKS)
     aprun.set_cpus_per_task(1)
     aprun.set_nodes(1)
@@ -105,9 +104,8 @@ def launch_solver(experiment, instance, cfg):
 
 
 def launch_sac(experiment, cfg, config_modifiers):
-    aprun = experiment.create_run_settings(exe=PYTHON_BIN, exe_args="sac.py " + " ".join(config_modifiers))
-    if RUN_COMMAND is not None:
-        aprun.set_run_command(RUN_COMMAND)
+    kwargs = {"run_command": RUN_COMMAND} if RUN_COMMAND is not None else {}
+    aprun = experiment.create_run_settings(exe=PYTHON_BIN, exe_args="sac.py " + " ".join(config_modifiers), **kwargs)
     aprun.set_tasks(1)
     aprun.set_cpus_per_task(128)
     aprun.set_nodes(1)
