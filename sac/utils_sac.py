@@ -67,9 +67,10 @@ class ParallelGymEnv:
                     "process": proc,
                     "conn": parent_conn,
                     "instance": instance if instance is not None else len(self._workers),
+                    "buffer": {},
                 }
             )
-        self.action_space = self._call_single_worker("get_spaces")
+        self.action_space = self._call_single_worker("get_action_space")
         self.observation_space = self._call_single_worker("get_observation_space")
 
     def _call_single_worker(self, command):
@@ -81,6 +82,16 @@ class ParallelGymEnv:
 
     def _recv_for_worker(self, worker, request_id, timeout_s, operation_name):
         conn = worker["conn"]
+        buffer = worker["buffer"]
+        if request_id in buffer:
+            message = buffer.pop(request_id)
+            if message.get("status") == "error":
+                tb = message.get("traceback", "")
+                raise RuntimeError(
+                    f"Worker instance {worker['instance']} failed during {operation_name}: "
+                    f"{message.get('error')}\n{tb}"
+                )
+            return message
         deadline = time.monotonic() + timeout_s
         errors = []
         while True:
@@ -98,6 +109,9 @@ class ParallelGymEnv:
             except EOFError as exc:
                 raise RuntimeError(f"Worker instance {worker['instance']} terminated unexpectedly during {operation_name}") from exc
             if message.get("request_id") != request_id:
+                msg_req = message.get("request_id")
+                if msg_req is not None:
+                    buffer[msg_req] = message
                 continue
             if message.get("status") == "error":
                 tb = message.get("traceback", "")
@@ -113,6 +127,24 @@ class ParallelGymEnv:
         worker_errors = []
         deadline = time.monotonic() + timeout_s
         while pending:
+            buffered_progress = False
+            for worker_idx in sorted(list(pending)):
+                worker = self._workers[worker_idx]
+                buffer = worker["buffer"]
+                if request_id not in buffer:
+                    continue
+                message = buffer.pop(request_id)
+                pending.remove(worker_idx)
+                buffered_progress = True
+                if message.get("status") == "error":
+                    worker_errors.append(
+                        f"instance {worker['instance']}: {message.get('error')}\n{message.get('traceback', '')}"
+                    )
+                else:
+                    results[worker_idx] = message["value"]
+            if buffered_progress:
+                continue
+
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 unfinished = [self._workers[idx]["instance"] for idx in sorted(pending)]
@@ -143,6 +175,9 @@ class ParallelGymEnv:
                     pending.remove(worker_idx)
                     continue
                 if message.get("request_id") != request_id:
+                    msg_req = message.get("request_id")
+                    if msg_req is not None:
+                        worker["buffer"][msg_req] = message
                     continue
                 pending.remove(worker_idx)
                 if message.get("status") == "error":
@@ -267,6 +302,7 @@ def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
 
 def _env_worker_main(conn, env_ctor, env_kwargs):
     env = None
+    current_request_id = None
     try:
         ctor_kwargs = dict(env_kwargs)
         ctor_kwargs.pop("instance_label", None)
@@ -274,14 +310,14 @@ def _env_worker_main(conn, env_ctor, env_kwargs):
         while True:
             message = conn.recv()
             command = message.get("command")
-            request_id = message.get("request_id")
-            if command == "get_spaces":
-                conn.send({"status": "ok", "request_id": request_id, "value": env.action_space})
+            current_request_id = message.get("request_id")
+            if command == "get_action_space":
+                conn.send({"status": "ok", "request_id": current_request_id, "value": env.action_space})
             elif command == "get_observation_space":
-                conn.send({"status": "ok", "request_id": request_id, "value": env.observation_space})
+                conn.send({"status": "ok", "request_id": current_request_id, "value": env.observation_space})
             elif command == "reset":
                 value = env.reset()
-                conn.send({"status": "ok", "request_id": request_id, "value": value})
+                conn.send({"status": "ok", "request_id": current_request_id, "value": value})
             elif command == "step":
                 obs, reward, term, trunc, info = env.step(message.get("action"))
                 final_obs = obs
@@ -294,7 +330,7 @@ def _env_worker_main(conn, env_ctor, env_kwargs):
                 conn.send(
                     {
                         "status": "ok",
-                        "request_id": request_id,
+                        "request_id": current_request_id,
                         "value": (obs, reward, term, trunc, info),
                     }
                 )
@@ -302,7 +338,7 @@ def _env_worker_main(conn, env_ctor, env_kwargs):
                 close_fn = getattr(env, "close", None)
                 if callable(close_fn):
                     close_fn()
-                conn.send({"status": "ok", "request_id": request_id, "value": None})
+                conn.send({"status": "ok", "request_id": current_request_id, "value": None})
                 break
             else:
                 raise ValueError(f"Unknown worker command: {command}")
@@ -312,7 +348,7 @@ def _env_worker_main(conn, env_ctor, env_kwargs):
             conn.send(
                 {
                     "status": "error",
-                    "request_id": message.get("request_id") if "message" in locals() else None,
+                    "request_id": current_request_id,
                     "error": repr(exc),
                     "traceback": tb,
                 }

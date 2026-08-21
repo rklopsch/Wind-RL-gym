@@ -3,8 +3,9 @@ import sys
 import time
 import unittest
 import importlib.util
+from pathlib import Path
 
-REPO_ROOT = "/home/runner/work/Wind-RL-gym/Wind-RL-gym"
+REPO_ROOT = str(Path(__file__).resolve().parents[1])
 SAC_DIR = os.path.join(REPO_ROOT, "sac")
 SOLVER_DIR = os.path.join(REPO_ROOT, "Solver")
 if SAC_DIR not in sys.path:
