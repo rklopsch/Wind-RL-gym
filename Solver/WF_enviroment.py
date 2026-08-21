@@ -1,5 +1,6 @@
 import logging
 import math
+import time
 from typing import Any, Dict as TypingDict, Optional, Tuple
 
 import numpy as np
@@ -93,6 +94,15 @@ class TurbEnv(gym.Env):
         self.reward_average_steps = int(params["reward_average_steps"])
         self.velocity_penalty_scale = params["velocity_penalty_scale"]
         self.difference_penalty_scale = params["difference_penalty_scale"]
+        self.communication_timeout_s = float(params.get("communication_timeout_s", 600.0))
+        self.communication_poll_interval_s = float(params.get("communication_poll_interval_s", 0.05))
+        self.communication_slow_log_s = float(params.get("communication_slow_log_s", 10.0))
+        if self.communication_timeout_s <= 0:
+            raise ValueError("communication_timeout_s must be > 0")
+        if self.communication_poll_interval_s <= 0:
+            raise ValueError("communication_poll_interval_s must be > 0")
+        if self.communication_slow_log_s < 0:
+            raise ValueError("communication_slow_log_s must be >= 0")
 
         self.client = Client(address=None, cluster=False)
         self.client.put_tensor(f"{self.instance}_yaws_done", np.array([0]))
@@ -133,26 +143,63 @@ class TurbEnv(gym.Env):
         idxs = (torch.pi / 2) * idxs / (n_turbs - 1)
         return torch.sin(idxs)
 
+    def _safe_flag_value(self, key: str) -> Optional[int]:
+        try:
+            if not self.client.poll_key(key, 1, 1):
+                return None
+            value = self.client.get_tensor(key)
+            if np.size(value) == 0:
+                return None
+            return int(value[0])
+        except Exception:
+            return None
+
     def _communicate(self, new_alpha: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        total_start = time.monotonic()
+        wait_start = total_start
         self.client.put_tensor(f"{self.instance}_yaws", new_alpha.detach().cpu().numpy().squeeze().astype(np.float64))
         self.client.put_tensor(f"{self.instance}_yaws_done", np.ones(1))
 
-        while not self.client.poll_key(f"{self.instance}_sim_done", 100, 10) or not bool(
-            self.client.get_tensor(f"{self.instance}_sim_done")[0]
-        ):
-            continue
+        phase = f"{self.instance}_sim_done"
+        while True:
+            sim_done = self._safe_flag_value(phase)
+            if sim_done is not None and bool(sim_done):
+                break
+            elapsed_wait = time.monotonic() - wait_start
+            if elapsed_wait >= self.communication_timeout_s:
+                yaws_done = self._safe_flag_value(f"{self.instance}_yaws_done")
+                sim_done_value = self._safe_flag_value(phase)
+                msg = (
+                    f"SmartRedis timeout for environment instance={self.instance} after {elapsed_wait:.2f}s "
+                    f"waiting on phase={phase}. yaws_done={yaws_done}, sim_done={sim_done_value}"
+                )
+                logging.error(msg)
+                raise TimeoutError(msg)
+            time.sleep(min(self.communication_poll_interval_s, 0.2))
 
+        wait_elapsed = time.monotonic() - wait_start
         self.client.put_tensor(f"{self.instance}_sim_done", np.array([0]))
 
+        read_start = time.monotonic()
         turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")
         turbine_obs = np.zeros((self.total_probes, self.obs_per_probe))
         for i in range(self.total_probes):
             probe = self.client.get_tensor(f"{self.instance}_probe_{i + 1}")
             turbine_obs[i] = self._normalise_probe_data(probe)[self.obs_idxs]
+        read_elapsed = time.monotonic() - read_start
 
         turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)
         turbine_powers = torch.tensor(turbine_powers / 1e06, dtype=torch.float32, device=self.device)
         observation = torch.tensor(turbine_obs, dtype=torch.float32, device=self.device)
+        total_elapsed = time.monotonic() - total_start
+        if total_elapsed >= self.communication_slow_log_s:
+            logging.info(
+                "Environment %d slow communicate: wait_for_sim_done=%.2fs read_outputs=%.2fs total=%.2fs",
+                self.instance,
+                wait_elapsed,
+                read_elapsed,
+                total_elapsed,
+            )
         return turbine_powers, observation
 
     def _make_obs(self, alpha: torch.Tensor, observation: torch.Tensor, power: torch.Tensor) -> TypingDict[str, torch.Tensor]:
@@ -181,7 +228,8 @@ class TurbEnv(gym.Env):
 
     def reset(self, seed: Optional[int] = None, options: Optional[TypingDict[str, Any]] = None):
         super().reset(seed=seed)
-        logging.info("Resetting now")
+        reset_start = time.monotonic()
+        logging.info("Environment %d reset started", self.instance)
 
         if self.random_reset:
             reset_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs], device=self.device) - 1)
@@ -196,6 +244,11 @@ class TurbEnv(gym.Env):
 
         observation = torch.zeros((self.total_obs,), dtype=torch.float32, device=self.device)
         power = torch.zeros((self.n_turbs,), dtype=torch.float32, device=self.device)
+        logging.info(
+            "Environment %d reset completed in %.2fs",
+            self.instance,
+            time.monotonic() - reset_start,
+        )
         return self._make_obs(self._alpha, observation, power), {"reset_angles": reset_angles.detach().cpu().numpy()}
 
     def step(self, action):
