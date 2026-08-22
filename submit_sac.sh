@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=RL3-sac
+#SBATCH --job-name=RL3-sac-test
 #SBATCH --nodes=34
 #SBATCH --ntasks-per-node=128
 #SBATCH --cpus-per-task=1
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 
-#SBATCH --account=e809-MOLE
+#SBATCH --account=e01-ICL-Laizet
 #SBATCH --partition=standard
 #SBATCH --qos=standard
 
@@ -15,7 +15,7 @@ module swap PrgEnv-cray PrgEnv-gnu
 module load cray-python
 
 # load python environment
-source /work/e809/e809/amole-e809/smartsim_venv/bin/activate
+source /work/e01/e01/klop1/wind/venv-windrl-gym/bin/activate
 
 # Set environment variables
 # export OMP_NUM_THREADS=1
@@ -30,4 +30,4 @@ export SR_SOCKET_TIMEOUT=300000
 export D4RL_DATASET_DIR=./.cache/torchrl/data/d4rl/datasets
 
 # Launch script
-python launch_sac_run.py 
+python launch_sac_run.py
