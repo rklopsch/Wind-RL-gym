@@ -276,8 +276,56 @@ def make_env(cfg, params, instance=None, save=False, device="cpu", eval_only=Fal
     return TurbEnv(params, multi_agent=cfg.multi_agent.use, save=save, instance=instance, device=device)
 
 
+class DummyTurbEnv:
+    def __init__(self, params, multi_agent=False, save=False, instance=None, device="cpu"):
+        self.instance = 0 if instance is None else int(instance)
+        self.n_turbines = int(params["n_turbines"])
+        probes_per_turbine = int(params["probes_per_turbine"])
+        self.obs_size = int(self.n_turbines * probes_per_turbine * len(params["flow_field_directions"]))
+        self.episode_length = int(params.get("episode_length", 200))
+        self._step = 0
+        self.action_space = {"shape": (self.n_turbines,), "low": -1.0, "high": 1.0}
+        self.observation_space = {
+            "alpha": {"shape": (self.n_turbines,)},
+            "alpha_normalised": {"shape": (self.n_turbines,)},
+            "observation": {"shape": (self.obs_size,)},
+            "reward_buffer": {"shape": (1,)},
+            "power": {"shape": (1,)},
+        }
+
+    def _obs(self):
+        alpha = np.zeros((self.n_turbines,), dtype=np.float32)
+        return {
+            "alpha": alpha,
+            "alpha_normalised": alpha,
+            "observation": np.full((self.obs_size,), float(self.instance + self._step), dtype=np.float32),
+            "reward_buffer": np.array([float(self._step)], dtype=np.float32),
+            "power": np.array([float(self.instance)], dtype=np.float32),
+        }
+
+    def reset(self, seed=None, options=None):
+        self._step = 0
+        return self._obs(), {"dummy": True, "instance": self.instance}
+
+    def step(self, action):
+        self._step += 1
+        reward = float(self.n_turbines) - float(np.mean(np.abs(np.asarray(action, dtype=np.float32))))
+        terminated = False
+        truncated = self._step >= self.episode_length
+        return self._obs(), reward, terminated, truncated, {"dummy": True, "instance": self.instance}
+
+    def close(self):
+        return None
+
+
 def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
-    from WF_enviroment import TurbEnv
+    use_dummy_env = bool(getattr(cfg.env, "dummy_update", False))
+    if use_dummy_env:
+        env_ctor = DummyTurbEnv
+    else:
+        from WF_enviroment import TurbEnv
+
+        env_ctor = TurbEnv
 
     env_kwargs_list = [
         {
@@ -291,7 +339,7 @@ def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
         for i in range(num_envs)
     ]
     return ParallelGymEnv(
-        env_ctor=TurbEnv,
+        env_ctor=env_ctor,
         env_kwargs_list=env_kwargs_list,
         worker_timeout_s=float(getattr(cfg.env, "worker_timeout_s", 1200.0)),
         start_method=str(getattr(cfg.env, "worker_start_method", "spawn")),

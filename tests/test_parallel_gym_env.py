@@ -20,7 +20,7 @@ HAS_RUNTIME_DEPS = all(
 if HAS_RUNTIME_DEPS:
     import numpy as np  # noqa: E402
     import torch  # noqa: E402
-    from utils_sac import ParallelGymEnv  # noqa: E402
+    from utils_sac import ParallelGymEnv, make_parallel_env  # noqa: E402
     try:
         from WF_enviroment import TurbEnv  # noqa: E402
 
@@ -84,6 +84,35 @@ class DummyEnv:
 
 @unittest.skipUnless(HAS_RUNTIME_DEPS, "Requires numpy, torch, and hydra dependencies")
 class ParallelGymEnvTests(unittest.TestCase):
+    def test_make_parallel_env_dummy_update(self):
+        class Cfg:
+            class env:
+                dummy_update = True
+                worker_timeout_s = 2.0
+                worker_start_method = "spawn"
+                worker_poll_interval_s = 0.01
+                worker_close_timeout_s = 0.1
+
+            class multi_agent:
+                use = False
+
+        params = {
+            "n_turbines": 2,
+            "probes_per_turbine": 3,
+            "flow_field_directions": ["ux"],
+            "episode_length": 3,
+        }
+        env = make_parallel_env(Cfg, params, 2, device="cpu")
+        try:
+            obs, infos = env.reset()
+            self.assertEqual(obs["observation"].shape, (2, 6))
+            self.assertTrue(all(info["dummy"] for info in infos))
+            _, rewards, _, _, infos = env.step(torch.zeros((2, 2), dtype=torch.float32))
+            self.assertEqual(rewards.shape, (2, 1))
+            self.assertTrue(all(info["dummy"] for info in infos))
+        finally:
+            env.close()
+
     def test_reset_and_step_stacking_and_autoreset(self):
         env = ParallelGymEnv(
             env_ctor=DummyEnv,

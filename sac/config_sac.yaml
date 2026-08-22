@@ -2,7 +2,7 @@
 env:
   n_parallel: 2
   n_processors_per_env: 32
-  dummy_update: False
+  dummy_update: False  # Use a lightweight in-process dummy CFD environment for quick SAC/worker smoke tests
   env_name: WindFarm
   turbines: 3
   probes_per_turbine: 77
