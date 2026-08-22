@@ -2,7 +2,7 @@
 env:
   n_parallel: 2
   n_processors_per_env: 32
-  dummy_update: False
+  dummy_update: False  # Use a lightweight in-process dummy CFD environment for quick SAC/worker smoke tests
   env_name: WindFarm
   turbines: 3
   probes_per_turbine: 77
@@ -26,6 +26,13 @@ env:
   random_reset: False  # If True, at each reset angles will be chosen randomly
   initial_angles: [0.0, 0.0, 0.0]
   precursor_root: "/media/roman/Disk 1/windRL_precursor"
+  communication_timeout_s: 600.0  # Max wait for SmartRedis CFD handshake (`sim_done`) per environment call
+  communication_poll_interval_s: 0.05  # Poll sleep interval while waiting for SmartRedis flags
+  communication_slow_log_s: 10.0  # Log communication timing when a call takes longer than this threshold
+  worker_timeout_s: 1200.0  # Parent-side timeout for synchronized reset/step collection across env workers
+  worker_poll_interval_s: 0.1  # Parent wait granularity while collecting worker responses
+  worker_close_timeout_s: 5.0  # Grace period for worker close before force terminate
+  worker_start_method: "spawn"  # Use process isolation for SmartRedis-connected environments
 
 # Multi-agent or single-agent training?
 multi_agent:

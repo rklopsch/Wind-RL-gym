@@ -68,6 +68,9 @@ def main(cfg: "DictConfig"):
         "velocity_penalty_scale": cfg.env.velocity_penalty_scale,
         "difference_penalty_scale": cfg.env.difference_penalty_scale,
         "episode_length": cfg.collector.max_episode_length,
+        "communication_timeout_s": cfg.env.communication_timeout_s,
+        "communication_poll_interval_s": cfg.env.communication_poll_interval_s,
+        "communication_slow_log_s": cfg.env.communication_slow_log_s,
     }
 
     logging.info("Creating models")
