@@ -2,11 +2,8 @@ import hydra
 import math
 import os
 import pickle
-import multiprocessing as mp
-import time
-import traceback
-from multiprocessing.connection import wait
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import torch
@@ -28,175 +25,15 @@ def stack_obs_dict(obs_list):
 
 
 class ParallelGymEnv:
-    """Process-based vector environment.
-
-    Each SmartRedis-connected environment must live in its own process to avoid
-    shared-client/thread synchronization stalls.
-    """
-
-    def __init__(
-        self,
-        env_ctor,
-        env_kwargs_list,
-        worker_timeout_s=1200.0,
-        start_method="spawn",
-        parent_poll_interval_s=0.1,
-        close_timeout_s=5.0,
-    ):
-        self.num_envs = len(env_kwargs_list)
-        self.worker_timeout_s = float(worker_timeout_s)
-        self.parent_poll_interval_s = float(parent_poll_interval_s)
-        self.close_timeout_s = float(close_timeout_s)
-        if self.num_envs <= 0:
-            raise ValueError("ParallelGymEnv requires at least one environment")
-        self._ctx = mp.get_context(start_method)
-        self._workers = []
-        self._closed = False
-        for env_kwargs in env_kwargs_list:
-            parent_conn, child_conn = self._ctx.Pipe(duplex=True)
-            proc = self._ctx.Process(
-                target=_env_worker_main,
-                args=(child_conn, env_ctor, env_kwargs),
-            )
-            proc.daemon = True
-            proc.start()
-            child_conn.close()
-            instance = env_kwargs.get("instance_label", env_kwargs.get("instance", len(self._workers)))
-            self._workers.append(
-                {
-                    "process": proc,
-                    "conn": parent_conn,
-                    "instance": instance if instance is not None else len(self._workers),
-                    "buffer": {},
-                }
-            )
-        self.action_space = self._call_single_worker("get_action_space")
-        self.observation_space = self._call_single_worker("get_observation_space")
-
-    def _call_single_worker(self, command):
-        worker = self._workers[0]
-        req_id = f"{command}-{time.monotonic_ns()}"
-        worker["conn"].send({"command": command, "request_id": req_id})
-        msg = self._recv_for_worker(worker, req_id, self.worker_timeout_s, command)
-        return msg["value"]
-
-    def _recv_for_worker(self, worker, request_id, timeout_s, operation_name):
-        conn = worker["conn"]
-        buffer = worker["buffer"]
-        if request_id in buffer:
-            message = buffer.pop(request_id)
-            if message.get("status") == "error":
-                tb = message.get("traceback", "")
-                raise RuntimeError(
-                    f"Worker instance {worker['instance']} failed during {operation_name}: "
-                    f"{message.get('error')}\n{tb}"
-                )
-            return message
-        deadline = time.monotonic() + timeout_s
-        errors = []
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                detail = f"worker instance {worker['instance']} did not respond to {operation_name} within {timeout_s:.2f}s"
-                if errors:
-                    detail += f"; errors: {' | '.join(errors)}"
-                raise TimeoutError(detail)
-            ready = wait([conn], timeout=min(self.parent_poll_interval_s, remaining))
-            if not ready:
-                continue
-            try:
-                message = conn.recv()
-            except EOFError as exc:
-                raise RuntimeError(f"Worker instance {worker['instance']} terminated unexpectedly during {operation_name}") from exc
-            if message.get("request_id") != request_id:
-                msg_req = message.get("request_id")
-                if msg_req is not None:
-                    buffer[msg_req] = message
-                continue
-            if message.get("status") == "error":
-                tb = message.get("traceback", "")
-                raise RuntimeError(
-                    f"Worker instance {worker['instance']} failed during {operation_name}: "
-                    f"{message.get('error')}\n{tb}"
-                )
-            return message
-
-    def _collect_batch_results(self, request_id, operation_name, timeout_s):
-        pending = {idx for idx in range(self.num_envs)}
-        results = {}
-        worker_errors = []
-        deadline = time.monotonic() + timeout_s
-        while pending:
-            buffered_progress = False
-            for worker_idx in sorted(list(pending)):
-                worker = self._workers[worker_idx]
-                buffer = worker["buffer"]
-                if request_id not in buffer:
-                    continue
-                message = buffer.pop(request_id)
-                pending.remove(worker_idx)
-                buffered_progress = True
-                if message.get("status") == "error":
-                    worker_errors.append(
-                        f"instance {worker['instance']}: {message.get('error')}\n{message.get('traceback', '')}"
-                    )
-                else:
-                    results[worker_idx] = message["value"]
-            if buffered_progress:
-                continue
-
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                unfinished = [self._workers[idx]["instance"] for idx in sorted(pending)]
-                details = (
-                    f"Timed out waiting for {operation_name} after {timeout_s:.2f}s. "
-                    f"Unfinished environment instances: {unfinished}."
-                )
-                if worker_errors:
-                    details += f" Worker errors already received: {' | '.join(worker_errors)}"
-                raise TimeoutError(details)
-            ready_conns = wait(
-                [self._workers[idx]["conn"] for idx in sorted(pending)],
-                timeout=min(self.parent_poll_interval_s, remaining),
-            )
-            if not ready_conns:
-                continue
-            for conn in ready_conns:
-                worker_idx = next(
-                    idx for idx in pending if self._workers[idx]["conn"] is conn
-                )
-                worker = self._workers[worker_idx]
-                try:
-                    message = conn.recv()
-                except EOFError:
-                    worker_errors.append(
-                        f"instance {worker['instance']} connection closed unexpectedly during {operation_name}"
-                    )
-                    pending.remove(worker_idx)
-                    continue
-                if message.get("request_id") != request_id:
-                    msg_req = message.get("request_id")
-                    if msg_req is not None:
-                        worker["buffer"][msg_req] = message
-                    continue
-                pending.remove(worker_idx)
-                if message.get("status") == "error":
-                    worker_errors.append(
-                        f"instance {worker['instance']}: {message.get('error')}\n{message.get('traceback', '')}"
-                    )
-                    continue
-                results[worker_idx] = message["value"]
-        if worker_errors:
-            raise RuntimeError(
-                f"Worker errors during {operation_name}: {' | '.join(worker_errors)}"
-            )
-        return [results[idx] for idx in range(self.num_envs)]
+    def __init__(self, env_fns):
+        self.envs = [fn() for fn in env_fns]
+        self.num_envs = len(self.envs)
+        self.action_space = self.envs[0].action_space
+        self.observation_space = self.envs[0].observation_space
+        self._executor = ThreadPoolExecutor(max_workers=self.num_envs)
 
     def reset(self):
-        request_id = f"reset-{time.monotonic_ns()}"
-        for worker in self._workers:
-            worker["conn"].send({"command": "reset", "request_id": request_id})
-        results = self._collect_batch_results(request_id, "reset", self.worker_timeout_s)
+        results = list(self._executor.map(lambda env: env.reset(), self.envs))
         obs_list = [obs for obs, _ in results]
         infos = [info for _, info in results]
         return stack_obs_dict(obs_list), infos
@@ -207,16 +44,19 @@ class ParallelGymEnv:
             actions = actions.unsqueeze(0)
         if actions.shape[0] != self.num_envs:
             raise ValueError(f"Expected actions for {self.num_envs} envs, got shape {tuple(actions.shape)}")
-        request_id = f"step-{time.monotonic_ns()}"
-        for idx, worker in enumerate(self._workers):
-            worker["conn"].send(
-                {
-                    "command": "step",
-                    "request_id": request_id,
-                    "action": actions[idx].detach().cpu(),
-                }
-            )
-        results = self._collect_batch_results(request_id, "step", self.worker_timeout_s)
+        def _step_one(args):
+            env, action = args
+            obs, reward, term, trunc, info = env.step(action)
+            final_obs = obs
+            if term or trunc:
+                reset_obs, reset_info = env.reset()
+                info = dict(info)
+                info["final_observation"] = final_obs
+                info["final_info"] = reset_info
+                obs = reset_obs
+            return obs, reward, term, trunc, info
+
+        results = list(self._executor.map(_step_one, zip(self.envs, actions)))
         obs_list = [obs for obs, _, _, _, _ in results]
         rewards = [torch.as_tensor(reward).reshape(1) for _, reward, _, _, _ in results]
         terminated = [torch.as_tensor(term, dtype=torch.bool).reshape(1) for _, _, term, _, _ in results]
@@ -232,42 +72,11 @@ class ParallelGymEnv:
         )
 
     def close(self):
-        if self._closed:
-            return None
-        self._closed = True
-        request_id = f"close-{time.monotonic_ns()}"
-        for worker in self._workers:
-            if worker["process"].is_alive():
-                try:
-                    worker["conn"].send({"command": "close", "request_id": request_id})
-                except (BrokenPipeError, EOFError):
-                    pass
-
-        deadline = time.monotonic() + self.close_timeout_s
-        pending = {idx for idx, worker in enumerate(self._workers) if worker["process"].is_alive()}
-        while pending and time.monotonic() < deadline:
-            ready_conns = wait(
-                [self._workers[idx]["conn"] for idx in sorted(pending)],
-                timeout=self.parent_poll_interval_s,
-            )
-            for conn in ready_conns:
-                idx = next(i for i in pending if self._workers[i]["conn"] is conn)
-                try:
-                    message = conn.recv()
-                except EOFError:
-                    pending.remove(idx)
-                    continue
-                if message.get("request_id") == request_id:
-                    pending.remove(idx)
-
-        for worker in self._workers:
-            proc = worker["process"]
-            proc.join(timeout=0.2)
-            if proc.is_alive():
-                proc.terminate()
-                proc.join(timeout=1.0)
-            worker["conn"].close()
-        return None
+        for env in self.envs:
+            close = getattr(env, "close", None)
+            if callable(close):
+                close()
+        self._executor.shutdown(wait=True)
 
 
 def make_env(cfg, params, instance=None, save=False, device="cpu", eval_only=False):
@@ -276,145 +85,12 @@ def make_env(cfg, params, instance=None, save=False, device="cpu", eval_only=Fal
     return TurbEnv(params, multi_agent=cfg.multi_agent.use, save=save, instance=instance, device=device)
 
 
-class DummyTurbEnv:
-    def __init__(self, params, multi_agent=False, save=False, instance=None, device="cpu"):
-        self.instance = 0 if instance is None else int(instance)
-        self.n_turbines = int(params["n_turbines"])
-        probes_per_turbine = int(params["probes_per_turbine"])
-        self.obs_size = int(self.n_turbines * probes_per_turbine * len(params["flow_field_directions"]))
-        self.episode_length = int(params.get("episode_length", 200))
-        self._step = 0
-        self.action_space = {"shape": (self.n_turbines,), "low": -1.0, "high": 1.0}
-        self.observation_space = {
-            "alpha": {"shape": (self.n_turbines,)},
-            "alpha_normalised": {"shape": (self.n_turbines,)},
-            "observation": {"shape": (self.obs_size,)},
-            "reward_buffer": {"shape": (1,)},
-            "power": {"shape": (1,)},
-        }
-
-    def _obs(self):
-        alpha = np.zeros((self.n_turbines,), dtype=np.float32)
-        return {
-            "alpha": alpha,
-            "alpha_normalised": alpha,
-            "observation": np.full((self.obs_size,), float(self.instance + self._step), dtype=np.float32),
-            "reward_buffer": np.array([float(self._step)], dtype=np.float32),
-            "power": np.array([float(self.instance)], dtype=np.float32),
-        }
-
-    def reset(self, seed=None, options=None):
-        self._step = 0
-        return self._obs(), {"dummy": True, "instance": self.instance}
-
-    def step(self, action):
-        self._step += 1
-        reward = float(self.n_turbines) - float(np.mean(np.abs(np.asarray(action, dtype=np.float32))))
-        terminated = False
-        truncated = self._step >= self.episode_length
-        return self._obs(), reward, terminated, truncated, {"dummy": True, "instance": self.instance}
-
-    def close(self):
-        return None
-
-
 def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
-    use_dummy_env = bool(getattr(cfg.env, "dummy_update", False))
-    if use_dummy_env:
-        env_ctor = DummyTurbEnv
-    else:
-        from WF_enviroment import TurbEnv
-
-        env_ctor = TurbEnv
-
-    env_kwargs_list = [
-        {
-            "params": params,
-            "multi_agent": cfg.multi_agent.use,
-            "save": False,
-            "instance": i,
-            "instance_label": i + 1,
-            "device": device,
-        }
+    env_fns = [
+        lambda i=i: make_env(cfg, params, instance=i, device=device, eval_only=eval_only)
         for i in range(num_envs)
     ]
-    return ParallelGymEnv(
-        env_ctor=env_ctor,
-        env_kwargs_list=env_kwargs_list,
-        worker_timeout_s=float(getattr(cfg.env, "worker_timeout_s", 1200.0)),
-        start_method=str(getattr(cfg.env, "worker_start_method", "spawn")),
-        parent_poll_interval_s=float(getattr(cfg.env, "worker_poll_interval_s", 0.1)),
-        close_timeout_s=float(getattr(cfg.env, "worker_close_timeout_s", 5.0)),
-    )
-
-
-def _env_worker_main(conn, env_ctor, env_kwargs):
-    env = None
-    current_request_id = None
-    try:
-        ctor_kwargs = dict(env_kwargs)
-        ctor_kwargs.pop("instance_label", None)
-        env = env_ctor(**ctor_kwargs)
-        while True:
-            message = conn.recv()
-            command = message.get("command")
-            current_request_id = message.get("request_id")
-            if command == "get_action_space":
-                conn.send({"status": "ok", "request_id": current_request_id, "value": env.action_space})
-            elif command == "get_observation_space":
-                conn.send({"status": "ok", "request_id": current_request_id, "value": env.observation_space})
-            elif command == "reset":
-                value = env.reset()
-                conn.send({"status": "ok", "request_id": current_request_id, "value": value})
-            elif command == "step":
-                obs, reward, term, trunc, info = env.step(message.get("action"))
-                final_obs = obs
-                if term or trunc:
-                    reset_obs, reset_info = env.reset()
-                    info = dict(info)
-                    info["final_observation"] = final_obs
-                    info["final_info"] = reset_info
-                    obs = reset_obs
-                conn.send(
-                    {
-                        "status": "ok",
-                        "request_id": current_request_id,
-                        "value": (obs, reward, term, trunc, info),
-                    }
-                )
-            elif command == "close":
-                close_fn = getattr(env, "close", None)
-                if callable(close_fn):
-                    close_fn()
-                conn.send({"status": "ok", "request_id": current_request_id, "value": None})
-                break
-            else:
-                raise ValueError(f"Unknown worker command: {command}")
-    except Exception as exc:
-        tb = traceback.format_exc()
-        try:
-            conn.send(
-                {
-                    "status": "error",
-                    "request_id": current_request_id,
-                    "error": repr(exc),
-                    "traceback": tb,
-                }
-            )
-        except Exception:
-            pass
-    finally:
-        if env is not None:
-            close_fn = getattr(env, "close", None)
-            if callable(close_fn):
-                try:
-                    close_fn()
-                except Exception:
-                    pass
-        try:
-            conn.close()
-        except Exception:
-            pass
+    return ParallelGymEnv(env_fns)
 
 
 def _flatten_batch(x: torch.Tensor) -> torch.Tensor:
