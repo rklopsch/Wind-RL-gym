@@ -14,14 +14,50 @@ from torch.nn import functional as F
 from utils_sac import (
     ReplayBuffer,
     build_state,
+    consume_collection_batches,
     load_sac_checkpoint,
     make_parallel_env,
     make_sa_sac_agent,
     log_metrics,
+    persist_logs,
     save_sac_checkpoint,
     should_log_now,
     soft_update,
 )
+
+
+def configure_torch_threads(cfg):
+    torch_threads = int(os.environ.get("SAC_TORCH_NUM_THREADS", getattr(cfg.optim, "torch_num_threads", 8)))
+    torch_interop_threads = int(
+        os.environ.get("SAC_TORCH_NUM_INTEROP_THREADS", getattr(cfg.optim, "torch_num_interop_threads", 1))
+    )
+    torch.set_num_threads(max(1, torch_threads))
+    try:
+        torch.set_num_interop_threads(max(1, torch_interop_threads))
+    except RuntimeError:
+        pass
+
+
+def log_runtime_diagnostics(cfg):
+    affinity_count = "n/a"
+    if hasattr(os, "sched_getaffinity"):
+        affinity_count = len(os.sched_getaffinity(0))
+    env_worker_start_method = str(getattr(cfg.env, "worker_start_method", "spawn"))
+    logging.info(
+        "SAC runtime diagnostics: SLURM_CPUS_PER_TASK=%s SLURM_CPUS_ON_NODE=%s SLURM_JOB_CPUS_PER_NODE=%s affinity_cpus=%s torch_threads=%s torch_interop_threads=%s worker_start_method=%s worker_count=%s OMP_NUM_THREADS=%s MKL_NUM_THREADS=%s OPENBLAS_NUM_THREADS=%s NUMEXPR_NUM_THREADS=%s",
+        os.environ.get("SLURM_CPUS_PER_TASK"),
+        os.environ.get("SLURM_CPUS_ON_NODE"),
+        os.environ.get("SLURM_JOB_CPUS_PER_NODE"),
+        affinity_count,
+        torch.get_num_threads(),
+        torch.get_num_interop_threads(),
+        env_worker_start_method,
+        int(cfg.env.n_parallel),
+        os.environ.get("OMP_NUM_THREADS"),
+        os.environ.get("MKL_NUM_THREADS"),
+        os.environ.get("OPENBLAS_NUM_THREADS"),
+        os.environ.get("NUMEXPR_NUM_THREADS"),
+    )
 
 
 @hydra.main(version_base="1.2", config_path="./", config_name="config_sac")
@@ -39,9 +75,10 @@ def main(cfg: "DictConfig"):
     if cfg.multi_agent.use:
         raise NotImplementedError("The plain-PyTorch SAC refactor currently supports single-agent mode only.")
 
+    configure_torch_threads(cfg)
     total_frames = cfg.collector.total_frames
     frames_per_batch = cfg.collector.frames_per_batch
-    num_updates = frames_per_batch * cfg.optim.step_mult
+    updates_per_collection_batch = frames_per_batch * cfg.optim.step_mult
 
     hydra_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     results_dir = os.path.join(hydra_dir, "RESULTS")
@@ -68,9 +105,9 @@ def main(cfg: "DictConfig"):
         "velocity_penalty_scale": cfg.env.velocity_penalty_scale,
         "difference_penalty_scale": cfg.env.difference_penalty_scale,
         "episode_length": cfg.collector.max_episode_length,
-        "communication_timeout_s": cfg.env.communication_timeout_s,
-        "communication_poll_interval_s": cfg.env.communication_poll_interval_s,
-        "communication_slow_log_s": cfg.env.communication_slow_log_s,
+        "communication_timeout_s": float(getattr(cfg.env, "communication_timeout_s", 1200.0)),
+        "communication_poll_interval_s": float(getattr(cfg.env, "communication_poll_interval_s", 0.1)),
+        "communication_slow_log_s": float(getattr(cfg.env, "communication_slow_log_s", 30.0)),
     }
 
     logging.info("Creating models")
@@ -118,6 +155,7 @@ def main(cfg: "DictConfig"):
     optimizer_alpha = torch.optim.Adam([log_alpha], lr=float(cfg.optim.entropy_lr) / cfg.optim.step_mult)
 
     train_env = make_parallel_env(cfg, params, cfg.env.n_parallel, device=device)
+    log_runtime_diagnostics(cfg)
     replay_buffer = ReplayBuffer(
         capacity=cfg.replay_buffer.size,
         state_dim=actor.state_dim,
@@ -149,18 +187,23 @@ def main(cfg: "DictConfig"):
     sampling_start = time.time()
     train_start_time = sampling_start
     logs = {}
-    frames_since_update = 0
+    pending_collection_frames = collected_frames % frames_per_batch
+    collection_batches_completed = collected_frames // frames_per_batch
+    pending_batch_sampling_time = 0.0
+    pending_rewards = []
+    pending_episode_lengths = []
     steps_since_reset = 0
 
     while collected_frames < total_frames:
-        log_info = {}
-        sampling_time = time.time() - sampling_start
+        step_sampling_time = time.time() - sampling_start
 
         state = build_state(current_obs).to(device)
         with torch.no_grad():
             action, _ = actor.sample(state, deterministic=False)
 
+        env_step_start = time.time()
         next_obs, reward, terminated, truncated, infos = train_env.step(action)
+        env_sampling_time = time.time() - env_step_start
         done = torch.logical_or(terminated, truncated)
         next_state = build_state(next_obs)
 
@@ -168,22 +211,55 @@ def main(cfg: "DictConfig"):
         if saving_buffer is not None:
             saving_buffer.add(state, action, reward, next_state, done)
 
+        previous_collected_frames = collected_frames
         collected_frames += action.shape[0]
-        frames_since_update += action.shape[0]
+        pending_batch_sampling_time += env_sampling_time
         steps_since_reset += 1
         current_obs = next_obs
         if bool(done.any()):
             steps_since_reset = 0
+        pending_rewards.append(reward.mean().item())
+        pending_episode_lengths.append(float(steps_since_reset))
 
-        if should_log_now(cfg, collected_frames, 1000):
+        if should_log_now(cfg, collected_frames, int(getattr(cfg.logger, "console_updates", 200)), previous_collected_frames):
             console_output = f"Frame {collected_frames}/{cfg.collector.total_frames}"
             time_passed = time.time() - train_start_time
             console_output += f" | {time_passed / 60:.0f} min" if time_passed / 60 > 1 else " | <1 min"
             logging.info(console_output)
 
-        training_start = time.time()
+        completed_batches, pending_collection_frames = consume_collection_batches(
+            pending_collection_frames,
+            action.shape[0],
+            frames_per_batch,
+        )
+        if completed_batches <= 0:
+            sampling_start = time.time()
+            continue
+
+        sampling_time_for_completed_batches = pending_batch_sampling_time
+        avg_episode_reward = float(np.mean(pending_rewards)) if pending_rewards else np.nan
+        avg_episode_length = float(np.mean(pending_episode_lengths)) if pending_episode_lengths else np.nan
+        pending_batch_sampling_time = 0.0
+        pending_rewards.clear()
+        pending_episode_lengths.clear()
+
+        previous_collection_batches = collection_batches_completed
+        collection_batches_completed += completed_batches
+        consumed_batch_frames = frames_per_batch * completed_batches
+        log_info = {
+            "train/episode_reward": avg_episode_reward,
+            "train/episode_length": avg_episode_length,
+            "train/collection_batches_completed": float(completed_batches),
+            "train/collection_batch_frames": float(consumed_batch_frames),
+            "train/sampling_time": sampling_time_for_completed_batches,
+            "train/loop_overhead_time": step_sampling_time,
+        }
+        optimizer_time = 0.0
+        updates_done = 0
         if collected_frames >= init_random_frames and replay_buffer.size >= cfg.optim.batch_size:
-            for _ in range(num_updates):
+            training_start = time.time()
+            updates_to_run = updates_per_collection_batch * completed_batches
+            for _ in range(updates_to_run):
                 batch = replay_buffer.sample(cfg.optim.batch_size, device=device)
                 batch_state = batch["state"]
                 batch_action = batch["action"]
@@ -234,6 +310,8 @@ def main(cfg: "DictConfig"):
                 soft_update(target_critic1, critic1, cfg.optim.target_update_polyak)
                 soft_update(target_critic2, critic2, cfg.optim.target_update_polyak)
 
+            updates_done = updates_to_run
+            optimizer_time = time.time() - training_start
             log_info.update(
                 {
                     "train/q_loss": critic_loss.item(),
@@ -241,40 +319,45 @@ def main(cfg: "DictConfig"):
                     "train/alpha_loss": alpha_loss.item(),
                     "train/alpha": alpha.item(),
                     "train/entropy": (-log_prob).mean().item(),
-                    "train/sampling_time": sampling_time,
-                    "train/training_time": time.time() - training_start,
                 }
             )
+        log_info["train/training_time"] = optimizer_time
+        log_info["train/optimizer_updates"] = float(updates_done)
+        total_batch_time = sampling_time_for_completed_batches + optimizer_time
+        log_info["train/env_optimizer_fps"] = float(consumed_batch_frames) / max(total_batch_time, 1e-6)
+        log_metrics(logs, log_info)
 
-        if frames_since_update >= frames_per_batch:
-            frames_since_update = 0
-            if cfg.checkpoint.checkpoint_interval > 0 and (
-                collected_frames % (frames_per_batch * cfg.checkpoint.checkpoint_interval) == 0
-                or collected_frames >= total_frames
-            ):
-                output_dir = os.path.join(os.getcwd(), "checkpoints")
-                save_sac_checkpoint(
-                    cfg=cfg,
-                    actor=actor,
-                    critic1=critic1,
-                    critic2=critic2,
-                    log_alpha=log_alpha,
-                    filepath=output_dir,
-                    id=collected_frames,
-                    replay_buffer=saving_buffer if cfg.checkpoint.save_replay_buffer else None,
-                )
-                logging.info(f"Checkpointed model at frame {collected_frames}.")
-                if saving_buffer is not None:
-                    logging.info(f"Checkpointed replay buffer at {output_dir}.")
-
-        log_info.update(
-            {
-                "train/episode_reward": reward.mean().item(),
-                "train/episode_length": float(steps_since_reset),
-            }
+        logging.info(
+            "Collection batches +%d (total %d) at frame %d: env_sampling=%.2fs optimizer=%.2fs updates=%d fps=%.2f",
+            completed_batches,
+            collection_batches_completed,
+            collected_frames,
+            sampling_time_for_completed_batches,
+            optimizer_time,
+            updates_done,
+            log_info["train/env_optimizer_fps"],
         )
 
-        log_metrics(logs, log_info)
+        if cfg.checkpoint.checkpoint_interval > 0 and (
+            (collection_batches_completed // cfg.checkpoint.checkpoint_interval)
+            > (previous_collection_batches // cfg.checkpoint.checkpoint_interval)
+            or collected_frames >= total_frames
+        ):
+            output_dir = os.path.join(os.getcwd(), "checkpoints")
+            save_sac_checkpoint(
+                cfg=cfg,
+                actor=actor,
+                critic1=critic1,
+                critic2=critic2,
+                log_alpha=log_alpha,
+                filepath=output_dir,
+                id=collected_frames,
+                replay_buffer=saving_buffer if cfg.checkpoint.save_replay_buffer else None,
+            )
+            logging.info(f"Checkpointed model at frame {collected_frames}.")
+            if saving_buffer is not None:
+                logging.info(f"Checkpointed replay buffer at {output_dir}.")
+        persist_logs(logs)
         sampling_start = time.time()
 
     output_dir = os.path.join(os.getcwd(), "checkpoints")
@@ -288,6 +371,7 @@ def main(cfg: "DictConfig"):
         id=collected_frames,
         replay_buffer=saving_buffer if cfg.checkpoint.save_replay_buffer else None,
     )
+    persist_logs(logs)
     train_env.close()
 
     end_time = time.time()
