@@ -28,7 +28,8 @@ def compute_console_log_interval(total_frames, num_console_updates, frames_per_b
     total = max(1, int(total_frames))
     requested = max(1, int(num_console_updates))
     batch_floor = max(1, int(frames_per_batch))
-    return max(batch_floor, math.ceil(total / requested))
+    target_interval = max(batch_floor, math.ceil(total / requested))
+    return batch_floor * max(1, math.ceil(target_interval / batch_floor))
 
 
 def stack_obs_dict(obs_list):

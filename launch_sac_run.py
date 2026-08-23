@@ -121,8 +121,10 @@ def launch_sac(experiment, cfg, config_modifiers):
     sac_torch_interop_threads = int(
         os.environ.get("SAC_TORCH_NUM_INTEROP_THREADS", cfg_get(cfg, "optim.torch_num_interop_threads", 1))
     )
-    os.environ.setdefault("OMP_NUM_THREADS", str(sac_torch_threads))
-    os.environ.setdefault("MKL_NUM_THREADS", str(sac_torch_threads))
+    sac_omp_threads = int(os.environ.get("SAC_OMP_NUM_THREADS", cfg_get(cfg, "sac_resources.omp_num_threads", 8)))
+    sac_mkl_threads = int(os.environ.get("SAC_MKL_NUM_THREADS", cfg_get(cfg, "sac_resources.mkl_num_threads", 8)))
+    os.environ.setdefault("OMP_NUM_THREADS", str(sac_omp_threads))
+    os.environ.setdefault("MKL_NUM_THREADS", str(sac_mkl_threads))
     os.environ["SAC_TORCH_NUM_THREADS"] = str(sac_torch_threads)
     os.environ["SAC_TORCH_NUM_INTEROP_THREADS"] = str(sac_torch_interop_threads)
 
@@ -137,12 +139,14 @@ def launch_sac(experiment, cfg, config_modifiers):
     print(
         "SAC resource settings: "
         f"tasks={sac_tasks}, cpus_per_task={sac_cpus_per_task}, nodes={sac_nodes}, tasks_per_node={sac_tasks_per_node}, "
-        f"torch_threads={sac_torch_threads}, torch_interop_threads={sac_torch_interop_threads}"
+        f"torch_threads={sac_torch_threads}, torch_interop_threads={sac_torch_interop_threads}, "
+        f"omp_threads={sac_omp_threads}, mkl_threads={sac_mkl_threads}"
     )
+    slurm_job_id = os.environ.get("SLURM_JOB_ID", "<SLURM_JOB_ID>")
     print(
         "ARCHER2 validation commands: "
-        "scontrol show step ${SLURM_JOB_ID}.1 ; "
-        "sstat -j ${SLURM_JOB_ID}.1 --format=JobID,AveCPU,MaxRSS ; "
+        f"scontrol show step {slurm_job_id}.1 ; "
+        f"sstat -j {slurm_job_id}.1 --format=JobID,AveCPU,MaxRSS ; "
         "srun --ntasks=1 --cpus-per-task=1 bash -lc 'ps -L -o pid,tid,psr,pcpu,comm -p <sac-pid>'"
     )
     producer = experiment.create_model("sac", aprun)

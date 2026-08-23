@@ -19,8 +19,10 @@ source /work/e01/e01/klop1/wind/venv-windrl-gym/bin/activate
 
 # Set environment variables
 # Keep SAC parent thread pools bounded. Env workers set their own 1-thread limits in config.
-export OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
-export MKL_NUM_THREADS=${MKL_NUM_THREADS:-8}
+export SAC_OMP_NUM_THREADS=${SAC_OMP_NUM_THREADS:-8}
+export SAC_MKL_NUM_THREADS=${SAC_MKL_NUM_THREADS:-8}
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$SAC_OMP_NUM_THREADS}
+export MKL_NUM_THREADS=${MKL_NUM_THREADS:-$SAC_MKL_NUM_THREADS}
 export SAC_CPUS_PER_TASK=${SAC_CPUS_PER_TASK:-128}
 export SAC_TORCH_NUM_THREADS=${SAC_TORCH_NUM_THREADS:-8}
 export SAC_TORCH_NUM_INTEROP_THREADS=${SAC_TORCH_NUM_INTEROP_THREADS:-1}

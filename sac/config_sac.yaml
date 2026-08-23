@@ -103,3 +103,5 @@ sac_resources:
   cpus_per_task: 128
   nodes: 1
   tasks_per_node: 1
+  omp_num_threads: 8
+  mkl_num_threads: 8

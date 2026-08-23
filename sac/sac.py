@@ -236,125 +236,128 @@ def main(cfg: "DictConfig"):
             sampling_start = time.time()
             continue
 
-        sampling_time_per_batch = pending_batch_sampling_time / completed_batches
+        sampling_time_for_completed_batches = pending_batch_sampling_time
         avg_episode_reward = float(np.mean(pending_rewards)) if pending_rewards else np.nan
         avg_episode_length = float(np.mean(pending_episode_lengths)) if pending_episode_lengths else np.nan
         pending_batch_sampling_time = 0.0
         pending_rewards.clear()
         pending_episode_lengths.clear()
 
-        for _ in range(completed_batches):
-            collection_batches_completed += 1
-            log_info = {
-                "train/episode_reward": avg_episode_reward,
-                "train/episode_length": avg_episode_length,
-                "train/collection_batch_frames": float(frames_per_batch),
-                "train/sampling_time": sampling_time_per_batch,
-                "train/step_sampling_time": step_sampling_time,
-            }
-            optimizer_time = 0.0
-            updates_done = 0
-            if collected_frames >= init_random_frames and replay_buffer.size >= cfg.optim.batch_size:
-                training_start = time.time()
-                for _ in range(updates_per_collection_batch):
-                    batch = replay_buffer.sample(cfg.optim.batch_size, device=device)
-                    batch_state = batch["state"]
-                    batch_action = batch["action"]
-                    batch_reward = batch["reward"]
-                    batch_next_state = batch["next_state"]
-                    batch_done = batch["done"].float()
+        previous_collection_batches = collection_batches_completed
+        collection_batches_completed += completed_batches
+        consumed_batch_frames = frames_per_batch * completed_batches
+        log_info = {
+            "train/episode_reward": avg_episode_reward,
+            "train/episode_length": avg_episode_length,
+            "train/collection_batches_completed": float(completed_batches),
+            "train/collection_batch_frames": float(consumed_batch_frames),
+            "train/sampling_time": sampling_time_for_completed_batches,
+            "train/loop_overhead_time": step_sampling_time,
+        }
+        optimizer_time = 0.0
+        updates_done = 0
+        if collected_frames >= init_random_frames and replay_buffer.size >= cfg.optim.batch_size:
+            training_start = time.time()
+            updates_to_run = updates_per_collection_batch * completed_batches
+            for _ in range(updates_to_run):
+                batch = replay_buffer.sample(cfg.optim.batch_size, device=device)
+                batch_state = batch["state"]
+                batch_action = batch["action"]
+                batch_reward = batch["reward"]
+                batch_next_state = batch["next_state"]
+                batch_done = batch["done"].float()
 
-                    alpha = log_alpha.exp()
+                alpha = log_alpha.exp()
 
-                    with torch.no_grad():
-                        next_action, next_log_prob = actor.sample(batch_next_state, deterministic=False)
-                        target_q1 = target_critic1(batch_next_state, next_action)
-                        target_q2 = target_critic2(batch_next_state, next_action)
-                        target_q = torch.min(target_q1, target_q2) - alpha * next_log_prob
-                        target_q = batch_reward + (1.0 - batch_done) * cfg.optim.gamma * target_q
+                with torch.no_grad():
+                    next_action, next_log_prob = actor.sample(batch_next_state, deterministic=False)
+                    target_q1 = target_critic1(batch_next_state, next_action)
+                    target_q2 = target_critic2(batch_next_state, next_action)
+                    target_q = torch.min(target_q1, target_q2) - alpha * next_log_prob
+                    target_q = batch_reward + (1.0 - batch_done) * cfg.optim.gamma * target_q
 
-                    q1 = critic1(batch_state, batch_action)
-                    q2 = critic2(batch_state, batch_action)
-                    critic_loss = F.mse_loss(q1, target_q) + F.mse_loss(q2, target_q)
+                q1 = critic1(batch_state, batch_action)
+                q2 = critic2(batch_state, batch_action)
+                critic_loss = F.mse_loss(q1, target_q) + F.mse_loss(q2, target_q)
 
-                    for param in critic1.parameters():
-                        param.requires_grad_(False)
-                    for param in critic2.parameters():
-                        param.requires_grad_(False)
+                for param in critic1.parameters():
+                    param.requires_grad_(False)
+                for param in critic2.parameters():
+                    param.requires_grad_(False)
 
-                    new_action, log_prob = actor.sample(batch_state, deterministic=False)
-                    q1_new = critic1(batch_state, new_action)
-                    q2_new = critic2(batch_state, new_action)
-                    actor_loss = (alpha * log_prob - torch.min(q1_new, q2_new)).mean()
-                    alpha_loss = -(log_alpha * (log_prob + target_entropy).detach()).mean()
-                    for param in critic1.parameters():
-                        param.requires_grad_(True)
-                    for param in critic2.parameters():
-                        param.requires_grad_(True)
+                new_action, log_prob = actor.sample(batch_state, deterministic=False)
+                q1_new = critic1(batch_state, new_action)
+                q2_new = critic2(batch_state, new_action)
+                actor_loss = (alpha * log_prob - torch.min(q1_new, q2_new)).mean()
+                alpha_loss = -(log_alpha * (log_prob + target_entropy).detach()).mean()
+                for param in critic1.parameters():
+                    param.requires_grad_(True)
+                for param in critic2.parameters():
+                    param.requires_grad_(True)
 
-                    optimizer_actor.zero_grad()
-                    actor_loss.backward()
-                    optimizer_actor.step()
+                optimizer_actor.zero_grad()
+                actor_loss.backward()
+                optimizer_actor.step()
 
-                    optimizer_critic.zero_grad()
-                    critic_loss.backward()
-                    optimizer_critic.step()
+                optimizer_critic.zero_grad()
+                critic_loss.backward()
+                optimizer_critic.step()
 
-                    optimizer_alpha.zero_grad()
-                    alpha_loss.backward()
-                    optimizer_alpha.step()
+                optimizer_alpha.zero_grad()
+                alpha_loss.backward()
+                optimizer_alpha.step()
 
-                    soft_update(target_critic1, critic1, cfg.optim.target_update_polyak)
-                    soft_update(target_critic2, critic2, cfg.optim.target_update_polyak)
+                soft_update(target_critic1, critic1, cfg.optim.target_update_polyak)
+                soft_update(target_critic2, critic2, cfg.optim.target_update_polyak)
 
-                updates_done = updates_per_collection_batch
-                optimizer_time = time.time() - training_start
-                log_info.update(
-                    {
-                        "train/q_loss": critic_loss.item(),
-                        "train/actor_loss": actor_loss.item(),
-                        "train/alpha_loss": alpha_loss.item(),
-                        "train/alpha": alpha.item(),
-                        "train/entropy": (-log_prob).mean().item(),
-                    }
-                )
-            log_info["train/training_time"] = optimizer_time
-            log_info["train/optimizer_updates"] = float(updates_done)
-            total_batch_time = sampling_time_per_batch + optimizer_time
-            log_info["train/collection_batch_fps"] = float(frames_per_batch) / max(total_batch_time, 1e-6)
-            log_metrics(logs, log_info)
-
-            logging.info(
-                "Collection batch %d complete at frame %d: env_sampling=%.2fs optimizer=%.2fs updates=%d fps=%.2f",
-                collection_batches_completed,
-                collected_frames,
-                sampling_time_per_batch,
-                optimizer_time,
-                updates_done,
-                log_info["train/collection_batch_fps"],
+            updates_done = updates_to_run
+            optimizer_time = time.time() - training_start
+            log_info.update(
+                {
+                    "train/q_loss": critic_loss.item(),
+                    "train/actor_loss": actor_loss.item(),
+                    "train/alpha_loss": alpha_loss.item(),
+                    "train/alpha": alpha.item(),
+                    "train/entropy": (-log_prob).mean().item(),
+                }
             )
+        log_info["train/training_time"] = optimizer_time
+        log_info["train/optimizer_updates"] = float(updates_done)
+        total_batch_time = sampling_time_for_completed_batches + optimizer_time
+        log_info["train/env_optimizer_fps"] = float(consumed_batch_frames) / max(total_batch_time, 1e-6)
+        log_metrics(logs, log_info)
 
-            persist_logs(logs)
+        logging.info(
+            "Collection batches +%d (total %d) at frame %d: env_sampling=%.2fs optimizer=%.2fs updates=%d fps=%.2f",
+            completed_batches,
+            collection_batches_completed,
+            collected_frames,
+            sampling_time_for_completed_batches,
+            optimizer_time,
+            updates_done,
+            log_info["train/env_optimizer_fps"],
+        )
 
-            if cfg.checkpoint.checkpoint_interval > 0 and (
-                collection_batches_completed % cfg.checkpoint.checkpoint_interval == 0
-                or collected_frames >= total_frames
-            ):
-                output_dir = os.path.join(os.getcwd(), "checkpoints")
-                save_sac_checkpoint(
-                    cfg=cfg,
-                    actor=actor,
-                    critic1=critic1,
-                    critic2=critic2,
-                    log_alpha=log_alpha,
-                    filepath=output_dir,
-                    id=collected_frames,
-                    replay_buffer=saving_buffer if cfg.checkpoint.save_replay_buffer else None,
-                )
-                logging.info(f"Checkpointed model at frame {collected_frames}.")
-                if saving_buffer is not None:
-                    logging.info(f"Checkpointed replay buffer at {output_dir}.")
-                persist_logs(logs)
+        if cfg.checkpoint.checkpoint_interval > 0 and (
+            (collection_batches_completed // cfg.checkpoint.checkpoint_interval)
+            > (previous_collection_batches // cfg.checkpoint.checkpoint_interval)
+            or collected_frames >= total_frames
+        ):
+            output_dir = os.path.join(os.getcwd(), "checkpoints")
+            save_sac_checkpoint(
+                cfg=cfg,
+                actor=actor,
+                critic1=critic1,
+                critic2=critic2,
+                log_alpha=log_alpha,
+                filepath=output_dir,
+                id=collected_frames,
+                replay_buffer=saving_buffer if cfg.checkpoint.save_replay_buffer else None,
+            )
+            logging.info(f"Checkpointed model at frame {collected_frames}.")
+            if saving_buffer is not None:
+                logging.info(f"Checkpointed replay buffer at {output_dir}.")
+        persist_logs(logs)
         sampling_start = time.time()
 
     output_dir = os.path.join(os.getcwd(), "checkpoints")

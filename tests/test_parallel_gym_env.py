@@ -271,6 +271,8 @@ class SacSchedulingAndLoggingTests(unittest.TestCase):
 
         interval = compute_console_log_interval(Cfg.collector.total_frames, 1000, Cfg.collector.frames_per_batch)
         self.assertEqual(interval, 512)
+        snapped_interval = compute_console_log_interval(1000, 3, 128)
+        self.assertEqual(snapped_interval, 384)
         self.assertFalse(should_log_now(Cfg, frames=32, num_console_updates=1000, previous_frames=0))
         self.assertTrue(should_log_now(Cfg, frames=512, num_console_updates=1000, previous_frames=480))
         self.assertFalse(should_log_now(Cfg, frames=544, num_console_updates=1000, previous_frames=512))
