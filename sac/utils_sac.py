@@ -1,4 +1,5 @@
 import hydra
+import logging
 import math
 import os
 import pickle
@@ -11,6 +12,23 @@ from copy import deepcopy
 import numpy as np
 import torch
 from torch import nn
+
+
+def consume_collection_batches(pending_frames, new_frames, frames_per_batch):
+    pending = int(pending_frames) + int(new_frames)
+    batch = int(frames_per_batch)
+    if batch <= 0:
+        raise ValueError("frames_per_batch must be positive")
+    completed = pending // batch
+    remaining = pending - completed * batch
+    return completed, remaining
+
+
+def compute_console_log_interval(total_frames, num_console_updates, frames_per_batch):
+    total = max(1, int(total_frames))
+    requested = max(1, int(num_console_updates))
+    batch_floor = max(1, int(frames_per_batch))
+    return max(batch_floor, math.ceil(total / requested))
 
 
 def stack_obs_dict(obs_list):
@@ -335,6 +353,10 @@ def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
             "instance": i,
             "instance_label": i + 1,
             "device": device,
+            "worker_omp_num_threads": int(getattr(cfg.env, "worker_omp_num_threads", 1)),
+            "worker_mkl_num_threads": int(getattr(cfg.env, "worker_mkl_num_threads", 1)),
+            "worker_torch_num_threads": int(getattr(cfg.env, "worker_torch_num_threads", 1)),
+            "worker_torch_num_interop_threads": int(getattr(cfg.env, "worker_torch_num_interop_threads", 1)),
         }
         for i in range(num_envs)
     ]
@@ -354,6 +376,37 @@ def _env_worker_main(conn, env_ctor, env_kwargs):
     try:
         ctor_kwargs = dict(env_kwargs)
         ctor_kwargs.pop("instance_label", None)
+        worker_omp_threads = ctor_kwargs.pop("worker_omp_num_threads", None)
+        worker_mkl_threads = ctor_kwargs.pop("worker_mkl_num_threads", None)
+        worker_torch_threads = ctor_kwargs.pop("worker_torch_num_threads", None)
+        worker_torch_interop_threads = ctor_kwargs.pop("worker_torch_num_interop_threads", None)
+
+        if worker_omp_threads is not None:
+            os.environ["OMP_NUM_THREADS"] = str(int(worker_omp_threads))
+        if worker_mkl_threads is not None:
+            os.environ["MKL_NUM_THREADS"] = str(int(worker_mkl_threads))
+        if worker_torch_threads is not None:
+            torch.set_num_threads(max(1, int(worker_torch_threads)))
+        if worker_torch_interop_threads is not None:
+            try:
+                torch.set_num_interop_threads(max(1, int(worker_torch_interop_threads)))
+            except RuntimeError:
+                # torch can only set inter-op threads before parallel work starts
+                pass
+
+        affinity_count = None
+        if hasattr(os, "sched_getaffinity"):
+            affinity_count = len(os.sched_getaffinity(0))
+        logging.info(
+            "Env worker startup instance=%s pid=%s affinity_cpus=%s torch_threads=%s torch_interop_threads=%s OMP_NUM_THREADS=%s MKL_NUM_THREADS=%s",
+            ctor_kwargs.get("instance", "unknown"),
+            os.getpid(),
+            affinity_count if affinity_count is not None else "n/a",
+            torch.get_num_threads(),
+            torch.get_num_interop_threads(),
+            os.environ.get("OMP_NUM_THREADS"),
+            os.environ.get("MKL_NUM_THREADS"),
+        )
         env = env_ctor(**ctor_kwargs)
         while True:
             message = conn.recv()
@@ -679,13 +732,30 @@ def load_sac_checkpoint(cfg, env_params, path_to_model, id):
 def log_metrics(logs, metrics):
     for metric_name, metric_value in metrics.items():
         logs.setdefault(metric_name, []).append(metric_value)
-    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + "/"
-    with open(output_dir + "logs.pkl", "wb") as f:
+
+
+def persist_logs(logs, output_dir=None):
+    if output_dir is None:
+        try:
+            output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+        except Exception:
+            output_dir = os.getcwd()
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "logs.pkl"), "wb") as f:
         pickle.dump(logs, f)
 
 
-def should_log_now(cfg, frames, num_console_updates):
-    return True
+def should_log_now(cfg, frames, num_console_updates, previous_frames=None):
+    interval = compute_console_log_interval(
+        total_frames=cfg.collector.total_frames,
+        num_console_updates=num_console_updates,
+        frames_per_batch=cfg.collector.frames_per_batch,
+    )
+    prev = 0 if previous_frames is None else int(previous_frames)
+    curr = int(frames)
+    if curr >= int(cfg.collector.total_frames):
+        return True
+    return (prev // interval) < (curr // interval)
 
 
 def update_data_shapes(train_env, data):

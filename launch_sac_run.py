@@ -38,6 +38,15 @@ from hydra import initialize, compose
 import sys
 
 
+def cfg_get(cfg, dotted_key, default):
+    current = cfg
+    for key in dotted_key.split("."):
+        if not hasattr(current, key):
+            return default
+        current = getattr(current, key)
+    return current
+
+
 def launch_database(experiment, port):
     interface = 'lo' if not shutil.which("srun") else ['hsn0', 'hsn1']
     db = experiment.create_database(port=port, db_nodes=1, interface=interface)
@@ -104,12 +113,38 @@ def launch_solver(experiment, instance, cfg):
 
 
 def launch_sac(experiment, cfg, config_modifiers):
+    sac_tasks = int(os.environ.get("SAC_TASKS", cfg_get(cfg, "sac_resources.tasks", 1)))
+    sac_cpus_per_task = int(os.environ.get("SAC_CPUS_PER_TASK", cfg_get(cfg, "sac_resources.cpus_per_task", 128)))
+    sac_nodes = int(os.environ.get("SAC_NODES", cfg_get(cfg, "sac_resources.nodes", 1)))
+    sac_tasks_per_node = int(os.environ.get("SAC_TASKS_PER_NODE", cfg_get(cfg, "sac_resources.tasks_per_node", 1)))
+    sac_torch_threads = int(os.environ.get("SAC_TORCH_NUM_THREADS", cfg_get(cfg, "optim.torch_num_threads", 8)))
+    sac_torch_interop_threads = int(
+        os.environ.get("SAC_TORCH_NUM_INTEROP_THREADS", cfg_get(cfg, "optim.torch_num_interop_threads", 1))
+    )
+    os.environ.setdefault("OMP_NUM_THREADS", str(sac_torch_threads))
+    os.environ.setdefault("MKL_NUM_THREADS", str(sac_torch_threads))
+    os.environ["SAC_TORCH_NUM_THREADS"] = str(sac_torch_threads)
+    os.environ["SAC_TORCH_NUM_INTEROP_THREADS"] = str(sac_torch_interop_threads)
+
     kwargs = {"run_command": RUN_COMMAND} if RUN_COMMAND is not None else {}
     aprun = experiment.create_run_settings(exe=PYTHON_BIN, exe_args="sac.py " + " ".join(config_modifiers), **kwargs)
-    aprun.set_tasks(1)
-    aprun.set_cpus_per_task(128)
-    aprun.set_nodes(1)
-    aprun.set_tasks_per_node(1)
+    # Keep a single SAC task on one node; cpus_per_task controls the CPU set inherited by
+    # the SAC parent and its 32 environment worker processes.
+    aprun.set_tasks(sac_tasks)
+    aprun.set_cpus_per_task(sac_cpus_per_task)
+    aprun.set_nodes(sac_nodes)
+    aprun.set_tasks_per_node(sac_tasks_per_node)
+    print(
+        "SAC resource settings: "
+        f"tasks={sac_tasks}, cpus_per_task={sac_cpus_per_task}, nodes={sac_nodes}, tasks_per_node={sac_tasks_per_node}, "
+        f"torch_threads={sac_torch_threads}, torch_interop_threads={sac_torch_interop_threads}"
+    )
+    print(
+        "ARCHER2 validation commands: "
+        "scontrol show step ${SLURM_JOB_ID}.1 ; "
+        "sstat -j ${SLURM_JOB_ID}.1 --format=JobID,AveCPU,MaxRSS ; "
+        "srun --ntasks=1 --cpus-per-task=1 bash -lc 'ps -L -o pid,tid,psr,pcpu,comm -p <sac-pid>'"
+    )
     producer = experiment.create_model("sac", aprun)
 
     # create directories for the output files and copy

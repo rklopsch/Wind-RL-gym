@@ -1,5 +1,7 @@
 import os
+import pickle
 import sys
+import tempfile
 import time
 import unittest
 import importlib.util
@@ -20,7 +22,15 @@ HAS_RUNTIME_DEPS = all(
 if HAS_RUNTIME_DEPS:
     import numpy as np  # noqa: E402
     import torch  # noqa: E402
-    from utils_sac import ParallelGymEnv, make_parallel_env  # noqa: E402
+    from utils_sac import (  # noqa: E402
+        ParallelGymEnv,
+        consume_collection_batches,
+        compute_console_log_interval,
+        log_metrics,
+        make_parallel_env,
+        persist_logs,
+        should_log_now,
+    )
     try:
         from WF_enviroment import TurbEnv  # noqa: E402
 
@@ -231,6 +241,52 @@ class TurbEnvTimeoutDiagnosticsTests(unittest.TestCase):
         self.assertIn("phase=7_sim_done", msg)
         self.assertIn("yaws_done=1", msg)
         self.assertIn("sim_done=0", msg)
+
+
+@unittest.skipUnless(HAS_RUNTIME_DEPS, "Requires numpy, torch, and hydra dependencies")
+class SacSchedulingAndLoggingTests(unittest.TestCase):
+    def test_collection_batch_scheduling_32_env_512_fpb(self):
+        pending = 0
+        completions = []
+        for _ in range(16):
+            completed, pending = consume_collection_batches(pending, new_frames=32, frames_per_batch=512)
+            completions.append(completed)
+        self.assertEqual(sum(completions), 1)
+        self.assertEqual(completions[-1], 1)
+        self.assertEqual(pending, 0)
+
+    def test_collection_batch_scheduling_non_divisible_carries_remainder(self):
+        pending = 0
+        outputs = []
+        for step_frames in (32, 32, 32, 32):
+            completed, pending = consume_collection_batches(pending, new_frames=step_frames, frames_per_batch=100)
+            outputs.append((completed, pending))
+        self.assertEqual(outputs, [(0, 32), (0, 64), (0, 96), (1, 28)])
+
+    def test_should_log_now_uses_interval_not_every_step(self):
+        class Cfg:
+            class collector:
+                total_frames = 500_000
+                frames_per_batch = 512
+
+        interval = compute_console_log_interval(Cfg.collector.total_frames, 1000, Cfg.collector.frames_per_batch)
+        self.assertEqual(interval, 512)
+        self.assertFalse(should_log_now(Cfg, frames=32, num_console_updates=1000, previous_frames=0))
+        self.assertTrue(should_log_now(Cfg, frames=512, num_console_updates=1000, previous_frames=480))
+        self.assertFalse(should_log_now(Cfg, frames=544, num_console_updates=1000, previous_frames=512))
+
+    def test_log_metrics_buffered_persistence(self):
+        logs = {}
+        log_metrics(logs, {"train/loss": 1.0})
+        log_metrics(logs, {"train/loss": 0.5})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = os.path.join(tmpdir, "logs.pkl")
+            self.assertFalse(os.path.exists(target))
+            persist_logs(logs, output_dir=tmpdir)
+            self.assertTrue(os.path.exists(target))
+            with open(target, "rb") as f:
+                saved = pickle.load(f)
+        self.assertEqual(saved["train/loss"], [1.0, 0.5])
 
 
 if __name__ == "__main__":
