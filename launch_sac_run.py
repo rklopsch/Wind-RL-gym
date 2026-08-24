@@ -38,15 +38,6 @@ from hydra import initialize, compose
 import sys
 
 
-def cfg_get(cfg, dotted_key, default):
-    current = cfg
-    for key in dotted_key.split("."):
-        if not hasattr(current, key):
-            return default
-        current = getattr(current, key)
-    return current
-
-
 def launch_database(experiment, port):
     interface = 'lo' if not shutil.which("srun") else ['hsn0', 'hsn1']
     db = experiment.create_database(port=port, db_nodes=1, interface=interface)
@@ -55,10 +46,10 @@ def launch_database(experiment, port):
     # pass in objects to make dirs for
     experiment.generate(db, overwrite=True)
 
-    # start the database on interactive allocation and wait until database is launched
+    # start database on interactive allocation and wait until database is launched
     experiment.start(db, block=True)
 
-    # get the status of the database
+    # get status of database
     statuses = experiment.get_status(db)
     print(f"Status of all database nodes: {statuses}.")
     print(f"Database started on {db.get_address()}.")
@@ -113,49 +104,20 @@ def launch_solver(experiment, instance, cfg):
 
 
 def launch_sac(experiment, cfg, config_modifiers):
-    sac_tasks = int(os.environ.get("SAC_TASKS", cfg_get(cfg, "sac_resources.tasks", 1)))
-    sac_cpus_per_task = int(os.environ.get("SAC_CPUS_PER_TASK", cfg_get(cfg, "sac_resources.cpus_per_task", 128)))
-    sac_nodes = int(os.environ.get("SAC_NODES", cfg_get(cfg, "sac_resources.nodes", 1)))
-    sac_tasks_per_node = int(os.environ.get("SAC_TASKS_PER_NODE", cfg_get(cfg, "sac_resources.tasks_per_node", 1)))
-    sac_torch_threads = int(os.environ.get("SAC_TORCH_NUM_THREADS", cfg_get(cfg, "optim.torch_num_threads", 8)))
-    sac_torch_interop_threads = int(
-        os.environ.get("SAC_TORCH_NUM_INTEROP_THREADS", cfg_get(cfg, "optim.torch_num_interop_threads", 1))
-    )
-    sac_omp_threads = int(os.environ.get("SAC_OMP_NUM_THREADS", cfg_get(cfg, "sac_resources.omp_num_threads", 8)))
-    sac_mkl_threads = int(os.environ.get("SAC_MKL_NUM_THREADS", cfg_get(cfg, "sac_resources.mkl_num_threads", 8)))
-    os.environ.setdefault("OMP_NUM_THREADS", str(sac_omp_threads))
-    os.environ.setdefault("MKL_NUM_THREADS", str(sac_mkl_threads))
-    os.environ["SAC_TORCH_NUM_THREADS"] = str(sac_torch_threads)
-    os.environ["SAC_TORCH_NUM_INTEROP_THREADS"] = str(sac_torch_interop_threads)
-
     kwargs = {"run_command": RUN_COMMAND} if RUN_COMMAND is not None else {}
-    aprun = experiment.create_run_settings(exe=PYTHON_BIN, exe_args="sac.py " + " ".join(config_modifiers), **kwargs)
-    # Keep a single SAC task on one node; cpus_per_task controls the CPU set inherited by
-    # the SAC parent and its 32 environment worker processes.
-    aprun.set_tasks(sac_tasks)
-    aprun.set_cpus_per_task(sac_cpus_per_task)
-    aprun.set_nodes(sac_nodes)
-    aprun.set_tasks_per_node(sac_tasks_per_node)
-    print(
-        "SAC resource settings: "
-        f"tasks={sac_tasks}, cpus_per_task={sac_cpus_per_task}, nodes={sac_nodes}, tasks_per_node={sac_tasks_per_node}, "
-        f"torch_threads={sac_torch_threads}, torch_interop_threads={sac_torch_interop_threads}, "
-        f"omp_threads={sac_omp_threads}, mkl_threads={sac_mkl_threads}"
-    )
-    slurm_job_id = os.environ.get("SLURM_JOB_ID", "<SLURM_JOB_ID>")
-    print(
-        "ARCHER2 validation commands: "
-        f"scontrol show step {slurm_job_id}.1 ; "
-        f"sstat -j {slurm_job_id}.1 --format=JobID,AveCPU,MaxRSS ; "
-        "srun --ntasks=1 --cpus-per-task=1 bash -lc 'ps -L -o pid,tid,psr,pcpu,comm -p <sac-pid>'"
-    )
+    exe_args = " ".join(["sac.py", *config_modifiers])
+    aprun = experiment.create_run_settings(exe=PYTHON_BIN, exe_args=exe_args, **kwargs)
+    aprun.set_tasks(1)
+    aprun.set_cpus_per_task(128)
+    aprun.set_nodes(1)
+    aprun.set_tasks_per_node(1)
     producer = experiment.create_model("sac", aprun)
 
-    # create directories for the output files and copy
+    # create directories for output files and copy
     # scripts to execution location inside newly created dir
-    # only necessary if its not an executable (python is executable here) 
+    # only necessary if its not an executable (python is executable here)
     file_list = ["./sac/sac.py", "./sac/utils_sac.py", "./sac/config_sac.yaml"]  # sac files
-    file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator files
+    file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator files
     if bool(cfg.checkpoint.load_from_checkpoint):  # copy in checkpointed models if desired
         file_list += [f"{cfg.checkpoint.model_checkpoint_path}/actor_{cfg.checkpoint.model_checkpoint_id}.pkl"]
         file_list += [f"{cfg.checkpoint.model_checkpoint_path}/critic_{cfg.checkpoint.model_checkpoint_id}.pkl"]
@@ -168,17 +130,17 @@ def launch_sac(experiment, cfg, config_modifiers):
 
 
 if __name__ == '__main__':
-    # Read sac config
-    initialize(config_path="./sac/", version_base="1.2")
-    cfg = compose(config_name="config_sac.yaml")
-
-    # The first command line argument determines the name of the run directory that everything is saved to
+    # The first command line argument determines the run-directory name. Any
+    # remaining arguments are Hydra overrides applied consistently to both the
+    # launcher and the SAC process.
     run_name = sys.argv[1] if len(sys.argv) > 1 else "training_sac"
+    config_modifiers = list(sys.argv[2:])
 
-    # Any subsequent arguments (space-separated) are taken to be modifiers for the config file
-    # We assume that the arguments are valid modifiers for the config; this is not tested here.
-    # An example of a valid modifier is "optim.gamma=0.9"
-    config_modifiers = list(sys.argv[2:]) if len(sys.argv) > 1 else [""]
+    initialize(config_path="./sac/", version_base="1.2")
+    cfg = compose(
+        config_name="config_sac.yaml",
+        overrides=config_modifiers,
+    )
 
     # Set up experiment
     exp = Experiment(run_name, launcher=LAUNCHER)
