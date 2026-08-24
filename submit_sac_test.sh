@@ -30,4 +30,6 @@ export SR_SOCKET_TIMEOUT=300000
 export D4RL_DATASET_DIR=./.cache/torchrl/data/d4rl/datasets
 
 # Launch script
-python launch_sac_run.py
+python launch_sac_run.py test_sac \
+	env.n_parallel=2 \
+	env.initial_reset_frames=50

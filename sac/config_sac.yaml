@@ -2,12 +2,6 @@
 env:
   n_parallel: 32
   n_processors_per_env: 128
-  # Maximum time to wait for one CFD control interval.
-  communication_timeout_s: 600.0
-  # Delay between checks of the SmartRedis completion flag.
-  communication_poll_interval_s: 0.05
-  # Log communication cycles slower than this threshold.
-  communication_slow_log_s: 10.0
   dummy_update: False
   env_name: WindFarm
   turbines: 3
