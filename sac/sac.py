@@ -13,6 +13,7 @@ from torch.nn import functional as F
 
 from utils_sac import (
     ReplayBuffer,
+    build_next_state,
     build_state,
     consume_collection_batches,
     load_sac_checkpoint,
@@ -198,25 +199,31 @@ def main(cfg: "DictConfig"):
         step_sampling_time = time.time() - sampling_start
 
         state = build_state(current_obs).to(device)
-        with torch.no_grad():
-            action, _ = actor.sample(state, deterministic=False)
+        if collected_frames < init_random_frames:
+            # Uniform random exploration before training starts (torchrl collector init_random_frames).
+            action = actor.sample_uniform(state.shape[0])
+        else:
+            with torch.no_grad():
+                action, _ = actor.sample(state, deterministic=False)
 
         env_step_start = time.time()
         next_obs, reward, terminated, truncated, infos = train_env.step(action)
         env_sampling_time = time.time() - env_step_start
-        done = torch.logical_or(terminated, truncated)
-        next_state = build_state(next_obs)
+        # Only true terminations stop bootstrapping; time-limit truncations are bootstrapped from the
+        # final observation (the workers auto-reset, so next_obs holds the reset obs for finished envs).
+        episode_end = torch.logical_or(terminated, truncated)
+        next_state = build_next_state(next_obs, infos, episode_end)
 
-        replay_buffer.add(state, action, reward, next_state, done)
+        replay_buffer.add(state, action, reward, next_state, done=episode_end, terminated=terminated)
         if saving_buffer is not None:
-            saving_buffer.add(state, action, reward, next_state, done)
+            saving_buffer.add(state, action, reward, next_state, done=episode_end, terminated=terminated)
 
         previous_collected_frames = collected_frames
         collected_frames += action.shape[0]
         pending_batch_sampling_time += env_sampling_time
         steps_since_reset += 1
         current_obs = next_obs
-        if bool(done.any()):
+        if bool(episode_end.any()):
             steps_since_reset = 0
         pending_rewards.append(reward.mean().item())
         pending_episode_lengths.append(float(steps_since_reset))
@@ -265,7 +272,7 @@ def main(cfg: "DictConfig"):
                 batch_action = batch["action"]
                 batch_reward = batch["reward"]
                 batch_next_state = batch["next_state"]
-                batch_done = batch["done"].float()
+                batch_terminated = batch["terminated"].float()
 
                 alpha = log_alpha.exp()
 
@@ -274,7 +281,7 @@ def main(cfg: "DictConfig"):
                     target_q1 = target_critic1(batch_next_state, next_action)
                     target_q2 = target_critic2(batch_next_state, next_action)
                     target_q = torch.min(target_q1, target_q2) - alpha * next_log_prob
-                    target_q = batch_reward + (1.0 - batch_done) * cfg.optim.gamma * target_q
+                    target_q = batch_reward + (1.0 - batch_terminated) * cfg.optim.gamma * target_q
 
                 q1 = critic1(batch_state, batch_action)
                 q2 = critic2(batch_state, batch_action)

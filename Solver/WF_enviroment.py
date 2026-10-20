@@ -43,6 +43,9 @@ def ring_insert_shift(buffer: torch.Tensor, new_value: float) -> torch.Tensor:
 
 class TurbEnv(gym.Env):
     metadata = {"render_modes": []}
+    # alpha_normalised = alpha * ALPHA_NORMALISED_MAX / max_angle, i.e. it lies in [-4, 4].
+    # This matches the torchrl ObservationNorm(scale=4 / max_yaw_angle) used before the refactor.
+    ALPHA_NORMALISED_MAX = 4.0
 
     def __init__(
         self,
@@ -112,7 +115,12 @@ class TurbEnv(gym.Env):
         self.observation_space = spaces.Dict(
             {
                 "alpha": spaces.Box(low=-self.max_angle, high=self.max_angle, shape=(self.n_turbs,), dtype=np.float32),
-                "alpha_normalised": spaces.Box(low=-1.0, high=1.0, shape=(self.n_turbs,), dtype=np.float32),
+                "alpha_normalised": spaces.Box(
+                    low=-self.ALPHA_NORMALISED_MAX,
+                    high=self.ALPHA_NORMALISED_MAX,
+                    shape=(self.n_turbs,),
+                    dtype=np.float32,
+                ),
                 "observation": spaces.Box(
                     low=-np.inf, high=np.inf, shape=(self.total_obs,), dtype=np.float32
                 ),
@@ -205,7 +213,7 @@ class TurbEnv(gym.Env):
     def _make_obs(self, alpha: torch.Tensor, observation: torch.Tensor, power: torch.Tensor) -> TypingDict[str, torch.Tensor]:
         return {
             "alpha": alpha.detach().cpu(),
-            "alpha_normalised": (alpha / self.max_angle).detach().cpu(),
+            "alpha_normalised": (alpha * (self.ALPHA_NORMALISED_MAX / self.max_angle)).detach().cpu(),
             "observation": observation.reshape(-1).detach().cpu(),
             "reward_buffer": self._reward_buffer.detach().cpu(),
             "power": power.detach().cpu(),

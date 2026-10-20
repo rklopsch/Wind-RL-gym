@@ -6,6 +6,7 @@ import pickle
 import multiprocessing as mp
 import time
 import traceback
+from collections import deque
 from multiprocessing.connection import wait
 from copy import deepcopy
 
@@ -289,10 +290,80 @@ class ParallelGymEnv:
         return None
 
 
+def _stack_observation_space(space, key, num_frames):
+    spaces_dict = getattr(space, "spaces", space)
+    if not isinstance(spaces_dict, dict) or key not in spaces_dict:
+        return space
+    sub_space = spaces_dict[key]
+    if isinstance(sub_space, dict):
+        shape = tuple(sub_space["shape"])
+        stacked = dict(sub_space)
+        stacked["shape"] = (*shape[:-1], num_frames * shape[-1])
+    else:
+        shape = tuple(sub_space.shape)
+        stacked = type(sub_space)(
+            low=np.concatenate([np.asarray(sub_space.low)] * num_frames, axis=-1),
+            high=np.concatenate([np.asarray(sub_space.high)] * num_frames, axis=-1),
+            shape=(*shape[:-1], num_frames * shape[-1]),
+            dtype=sub_space.dtype,
+        )
+    new_spaces = dict(spaces_dict)
+    new_spaces[key] = stacked
+    if space is spaces_dict:
+        return new_spaces
+    return type(space)(new_spaces)
+
+
+class FrameStackEnv:
+    """Concatenates the last ``num_frames`` entries of ``obs[key]`` along the last dim (oldest first).
+
+    Mirrors torchrl's ``CatFrames(N=num_frames, dim=-1, in_keys=["observation"])`` with its default
+    ``padding="same"``: after a reset, all frames are filled with the reset observation.
+    """
+
+    def __init__(self, env, num_frames, key="observation"):
+        self.env = env
+        self.num_frames = int(num_frames)
+        if self.num_frames < 1:
+            raise ValueError("num_frames must be >= 1")
+        self.key = key
+        self._frames = deque(maxlen=self.num_frames)
+        self.action_space = env.action_space
+        self.observation_space = _stack_observation_space(env.observation_space, key, self.num_frames)
+
+    def _stacked_obs(self, obs):
+        obs = dict(obs)
+        obs[self.key] = torch.cat(list(self._frames), dim=-1)
+        return obs
+
+    def reset(self, *args, **kwargs):
+        obs, info = self.env.reset(*args, **kwargs)
+        frame = torch.as_tensor(obs[self.key]).clone()
+        self._frames.clear()
+        for _ in range(self.num_frames):
+            self._frames.append(frame)
+        return self._stacked_obs(obs), info
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        self._frames.append(torch.as_tensor(obs[self.key]).clone())
+        return self._stacked_obs(obs), reward, terminated, truncated, info
+
+    def close(self):
+        close_fn = getattr(self.env, "close", None)
+        if callable(close_fn):
+            return close_fn()
+        return None
+
+
 def make_env(cfg, params, instance=None, save=False, device="cpu", eval_only=False):
     from WF_enviroment import TurbEnv
 
-    return TurbEnv(params, multi_agent=cfg.multi_agent.use, save=save, instance=instance, device=device)
+    env = TurbEnv(params, multi_agent=cfg.multi_agent.use, save=save, instance=instance, device=device)
+    frame_stack = get_frame_stack(cfg)
+    if frame_stack > 1:
+        env = FrameStackEnv(env, frame_stack)
+    return env
 
 
 class DummyTurbEnv:
@@ -354,6 +425,7 @@ def make_parallel_env(cfg, params, num_envs, device="cpu", eval_only=False):
             "instance": i,
             "instance_label": i + 1,
             "device": device,
+            "frame_stack": get_frame_stack(cfg),
             "worker_omp_num_threads": int(getattr(cfg.env, "worker_omp_num_threads", 1)),
             "worker_mkl_num_threads": int(getattr(cfg.env, "worker_mkl_num_threads", 1)),
             "worker_torch_num_threads": int(getattr(cfg.env, "worker_torch_num_threads", 1)),
@@ -377,6 +449,7 @@ def _env_worker_main(conn, env_ctor, env_kwargs):
     try:
         ctor_kwargs = dict(env_kwargs)
         ctor_kwargs.pop("instance_label", None)
+        frame_stack = int(ctor_kwargs.pop("frame_stack", 1) or 1)
         worker_omp_threads = ctor_kwargs.pop("worker_omp_num_threads", None)
         worker_mkl_threads = ctor_kwargs.pop("worker_mkl_num_threads", None)
         worker_torch_threads = ctor_kwargs.pop("worker_torch_num_threads", None)
@@ -409,6 +482,8 @@ def _env_worker_main(conn, env_ctor, env_kwargs):
             os.environ.get("MKL_NUM_THREADS"),
         )
         env = env_ctor(**ctor_kwargs)
+        if frame_stack > 1:
+            env = FrameStackEnv(env, frame_stack)
         while True:
             message = conn.recv()
             command = message.get("command")
@@ -487,6 +562,27 @@ def build_state(obs):
     return torch.cat([obs_flat, alpha_flat], dim=-1)
 
 
+def build_next_state(next_obs, infos, episode_end):
+    """State reached by each env's action.
+
+    The workers auto-reset finished episodes, so ``next_obs`` already holds the reset observation for those
+    envs. The transition must instead use the true last observation, ``info["final_observation"]``.
+    """
+    next_state = build_state(next_obs)
+    episode_end = torch.as_tensor(episode_end, dtype=torch.bool).reshape(-1)
+    for idx in torch.nonzero(episode_end, as_tuple=False).flatten().tolist():
+        final_obs = infos[idx].get("final_observation") if infos[idx] is not None else None
+        if final_obs is None:
+            raise KeyError(f"Environment {idx} ended its episode but returned no 'final_observation' in info.")
+        next_state[idx] = build_state(final_obs)[0]
+    return next_state
+
+
+def _inv_softplus(value):
+    # Same as tensordict.nn.utils.inv_softplus: softplus(_inv_softplus(v)) == v.
+    return math.log(max(math.expm1(float(value)), 1e-6))
+
+
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_depth, hidden_size, output_dim, activation=nn.ReLU):
         super().__init__()
@@ -504,6 +600,14 @@ class MLP(nn.Module):
 
 
 class SACActor(nn.Module):
+    """Tanh-Normal policy equivalent to the former torchrl actor.
+
+    The scale is parametrised like tensordict's
+    ``NormalParamExtractor(scale_mapping="biased_softplus_{default_scale}", scale_lb=scale_lb)``:
+    ``scale = max(softplus(x + inv_softplus(default_scale - min_val)) + min_val, scale_lb)``,
+    so a zero network output maps to ``default_scale`` and the scale never drops below ``scale_lb``.
+    """
+
     def __init__(
         self,
         state_dim,
@@ -512,45 +616,54 @@ class SACActor(nn.Module):
         hidden_size,
         action_low,
         action_high,
-        log_std_min=-5.0,
-        log_std_max=2.0,
+        default_scale=1.0,
+        scale_lb=0.1,
+        scale_min_val=0.01,
     ):
         super().__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.backbone = MLP(state_dim, hidden_depth, hidden_size, 2 * action_dim, activation=nn.ReLU)
-        self.log_std_min = log_std_min
-        self.log_std_max = log_std_max
+        if float(default_scale) <= float(scale_min_val):
+            raise ValueError(f"default_scale ({default_scale}) must be greater than scale_min_val ({scale_min_val}).")
+        self.scale_min_val = float(scale_min_val)
+        self.scale_lb = float(scale_lb)
+        self.scale_bias = _inv_softplus(float(default_scale) - self.scale_min_val)
         action_low = torch.as_tensor(action_low, dtype=torch.float32)
         action_high = torch.as_tensor(action_high, dtype=torch.float32)
         self.register_buffer("action_scale", (action_high - action_low) / 2.0)
         self.register_buffer("action_bias", (action_high + action_low) / 2.0)
 
     def forward(self, state):
-        mean_log_std = self.backbone(state)
-        mean, log_std = mean_log_std.chunk(2, dim=-1)
-        log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
-        return mean, log_std
+        net_out = self.backbone(state)
+        mean, scale_param = net_out.chunk(2, dim=-1)
+        std = nn.functional.softplus(scale_param + self.scale_bias) + self.scale_min_val
+        std = std.clamp_min(self.scale_lb)
+        return mean, std
 
     def sample(self, state, deterministic=False):
-        mean, log_std = self.forward(state)
+        mean, std = self.forward(state)
         if deterministic:
             pre_tanh = mean
         else:
-            std = log_std.exp()
             pre_tanh = mean + std * torch.randn_like(mean)
 
-        squashed = torch.tanh(pre_tanh)
-        action = squashed * self.action_scale + self.action_bias
+        action = torch.tanh(pre_tanh) * self.action_scale + self.action_bias
 
         log_prob = None
         if not deterministic:
-            std = log_std.exp()
-            normal = torch.distributions.Normal(mean, std)
-            log_prob = normal.log_prob(pre_tanh)
-            log_prob = log_prob - torch.log(1 - squashed.pow(2) + 1e-6)
+            log_prob = torch.distributions.Normal(mean, std).log_prob(pre_tanh)
+            # Numerically stable log|d tanh(x)/dx| = 2 * (log 2 - x - softplus(-2x)),
+            # identical to torch.distributions.TanhTransform used by torchrl's TanhNormal.
+            log_prob = log_prob - 2.0 * (math.log(2.0) - pre_tanh - nn.functional.softplus(-2.0 * pre_tanh))
+            log_prob = log_prob - torch.log(self.action_scale)
             log_prob = log_prob.sum(dim=-1, keepdim=True)
         return action, log_prob
+
+    def sample_uniform(self, batch_size):
+        """Uniform random actions within the action bounds (torchrl collector ``rand_action``)."""
+        noise = 2.0 * torch.rand((int(batch_size), self.action_dim), device=self.action_scale.device) - 1.0
+        return noise * self.action_scale + self.action_bias
 
 
 class SACCritic(nn.Module):
@@ -564,6 +677,13 @@ class SACCritic(nn.Module):
 
 
 class ReplayBuffer:
+    """Uniform replay buffer.
+
+    ``done`` marks the end of an episode (terminated or truncated) and is kept for analysis of saved buffers.
+    ``terminated`` marks true terminal states and is the only flag that stops bootstrapping in the TD target
+    (same as torchrl's TD0 estimator), so time-limit truncations are bootstrapped.
+    """
+
     def __init__(self, capacity, state_dim, action_dim):
         self.capacity = int(capacity)
         self.state = torch.zeros((self.capacity, state_dim), dtype=torch.float32)
@@ -571,33 +691,35 @@ class ReplayBuffer:
         self.reward = torch.zeros((self.capacity, 1), dtype=torch.float32)
         self.next_state = torch.zeros((self.capacity, state_dim), dtype=torch.float32)
         self.done = torch.zeros((self.capacity, 1), dtype=torch.bool)
+        self.terminated = torch.zeros((self.capacity, 1), dtype=torch.bool)
         self.index = 0
         self.size = 0
 
-    def _store_one(self, state, action, reward, next_state, done):
+    def _store_one(self, state, action, reward, next_state, done, terminated):
         self.state[self.index] = state
         self.action[self.index] = action
         self.reward[self.index] = reward
         self.next_state[self.index] = next_state
         self.done[self.index] = done
+        self.terminated[self.index] = terminated
         self.index = (self.index + 1) % self.capacity
         self.size = min(self.size + 1, self.capacity)
 
-    def add(self, state, action, reward, next_state, done):
-        state = torch.as_tensor(state, dtype=torch.float32).detach().cpu()
-        action = torch.as_tensor(action, dtype=torch.float32).detach().cpu()
-        reward = torch.as_tensor(reward, dtype=torch.float32).detach().cpu()
-        next_state = torch.as_tensor(next_state, dtype=torch.float32).detach().cpu()
-        done = torch.as_tensor(done, dtype=torch.bool).detach().cpu()
+    @staticmethod
+    def _as_column(x, dtype):
+        x = torch.as_tensor(x, dtype=dtype).detach().cpu()
+        return x.reshape(x.shape[0], -1) if x.dim() > 1 else x.unsqueeze(-1)
 
-        state = _flatten_batch(state)
-        action = _flatten_batch(action)
-        reward = reward.reshape(reward.shape[0], -1) if reward.dim() > 1 else reward.unsqueeze(-1)
-        next_state = _flatten_batch(next_state)
-        done = done.reshape(done.shape[0], -1) if done.dim() > 1 else done.unsqueeze(-1)
+    def add(self, state, action, reward, next_state, done, terminated):
+        state = _flatten_batch(torch.as_tensor(state, dtype=torch.float32).detach().cpu())
+        action = _flatten_batch(torch.as_tensor(action, dtype=torch.float32).detach().cpu())
+        reward = self._as_column(reward, torch.float32)
+        next_state = _flatten_batch(torch.as_tensor(next_state, dtype=torch.float32).detach().cpu())
+        done = self._as_column(done, torch.bool)
+        terminated = self._as_column(terminated, torch.bool)
 
         for i in range(state.shape[0]):
-            self._store_one(state[i], action[i], reward[i], next_state[i], done[i])
+            self._store_one(state[i], action[i], reward[i], next_state[i], done[i], terminated[i])
 
     def sample(self, batch_size, device="cpu"):
         if self.size == 0:
@@ -609,6 +731,7 @@ class ReplayBuffer:
             "reward": self.reward[idx].to(device),
             "next_state": self.next_state[idx].to(device),
             "done": self.done[idx].to(device),
+            "terminated": self.terminated[idx].to(device),
         }
 
     def state_dict(self):
@@ -619,6 +742,7 @@ class ReplayBuffer:
             "reward": self.reward[: self.size].clone(),
             "next_state": self.next_state[: self.size].clone(),
             "done": self.done[: self.size].clone(),
+            "terminated": self.terminated[: self.size].clone(),
             "index": self.index,
             "size": self.size,
         }
@@ -630,6 +754,11 @@ class ReplayBuffer:
         self.reward[:n] = state_dict["reward"][:n]
         self.next_state[:n] = state_dict["next_state"][:n]
         self.done[:n] = state_dict["done"][:n]
+        # Buffers saved before "terminated" was stored: TurbEnv never terminates, only truncates.
+        if "terminated" in state_dict:
+            self.terminated[:n] = state_dict["terminated"][:n]
+        else:
+            self.terminated[:n] = False
         self.index = int(state_dict.get("index", n) % self.capacity)
         self.size = int(n)
 
@@ -640,11 +769,16 @@ def soft_update(target, source, tau):
             target_param.data.mul_(tau).add_(source_param.data, alpha=1.0 - tau)
 
 
+def get_frame_stack(cfg):
+    return max(1, int(getattr(cfg.env, "frame_stack", 1)))
+
+
 def make_sa_sac_agent(cfg, params):
     if cfg.multi_agent.use:
         raise NotImplementedError("Plain PyTorch SAC currently supports single-agent mode only.")
 
-    state_dim = params["n_turbines"] * params["probes_per_turbine"] * len(params["flow_field_directions"]) + params["n_turbines"]
+    obs_dim = params["n_turbines"] * params["probes_per_turbine"] * len(params["flow_field_directions"])
+    state_dim = get_frame_stack(cfg) * obs_dim + params["n_turbines"]
     action_dim = params["n_turbines"]
 
     actor = SACActor(
@@ -654,6 +788,8 @@ def make_sa_sac_agent(cfg, params):
         hidden_size=cfg.network.actor_hidden_size,
         action_low=-1.0,
         action_high=1.0,
+        default_scale=float(cfg.network.default_policy_scale),
+        scale_lb=float(cfg.network.scale_lb),
     )
     critic1 = SACCritic(
         state_dim=state_dim,
