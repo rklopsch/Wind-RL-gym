@@ -41,6 +41,10 @@ import sys
 def launch_database(experiment, port):
     interface = 'lo' if not shutil.which("srun") else ['hsn0', 'hsn1']
     db = experiment.create_database(port=port, db_nodes=1, interface=interface)
+    if shutil.which("srun"):
+        # SmartSim sets no --cpus-per-task for Slurm DB steps, so srun inherits the job's value (1),
+        # pinning Redis and its I/O threads to a single core and saturating it with solver polling.
+        db.set_cpus(int(os.environ.get("SMARTSIM_DB_CPUS", 128)))
 
     # generate directories for output files
     # pass in objects to make dirs for
