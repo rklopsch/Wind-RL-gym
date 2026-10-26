@@ -19,4 +19,4 @@ launch_dummy_PPO_run
 eval_dummy_run
 training*
 eval_*
-
+test_sac
