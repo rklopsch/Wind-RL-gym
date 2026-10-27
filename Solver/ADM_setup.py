@@ -6,6 +6,7 @@ import f90nml
 from Solver.farm import Turbine, Farm
 from itertools import combinations_with_replacement
 from math import prod
+from Solver.probe_layout import ProbeLayout
 
 
 def next_prime_product(start):
@@ -47,11 +48,11 @@ def test_grid_dimensions():
 
 class ADMSimulation:
 
-    def __init__(self, farm, timesteps, control_freq, probes_per_turbine=25, windspeed=10, instance=0):
+    def __init__(self, farm, timesteps, control_freq, probe_layout: ProbeLayout, windspeed=10, instance=0):
         self.farm = farm
         self.n_turbines = self.farm.n_turbines
         self.windspeed = windspeed
-        self.probes_per_turbine = probes_per_turbine
+        self.probe_layout = probe_layout
         self.diameter = farm.turbines[0].diam
         self.gridsize = self.diameter/10.
         self.dt = 0.2 * self.gridsize / self.windspeed
@@ -118,6 +119,7 @@ class ADMSimulation:
             'inflow' in name.lower() for name in os.listdir(inflow_dir)
         )
 
+        self.probe_layout.validate_domain((lx, ly, lz))
         self.add_probes(directory)
         # Set-up ADM turbine parameters
         yaw = np.zeros(self.farm.n_turbines)
@@ -147,7 +149,12 @@ class ADMSimulation:
                 'inflowpath': f'{inflow_dir}/' if has_precursor_inflow else '',
                 'ntimesteps': 5000,
                 'ninflows': self.total_timesteps // 5000 if has_precursor_inflow else 1,
-                'nprobes': self.probes_per_turbine * self.farm.n_turbines
+                'nprobes': self.probe_layout.total_probes
+            },
+            'Statistics': {
+                'nstat': 1,
+                'initstat': 1,
+                'istatfreq': 1
             },
             'ADMParam': {
                 'Ndiscs': self.farm.n_turbines,
@@ -162,30 +169,10 @@ class ADMSimulation:
                      patch_nml, os.path.join(directory, 'input.i3d'))
 
     def add_probes(self, directory):
-        probes_per_turbine = self.probes_per_turbine
-        probe_rows = 7
-        nrows = probes_per_turbine // probe_rows
-        x, z = np.meshgrid(
-            np.linspace(-2, 3, nrows),
-            np.linspace(-1, 1, probe_rows))
-        x *= self.farm.turbines[0].diam
-        z *= self.farm.turbines[0].diam
-        y = np.ones(probes_per_turbine) * self.farm.turbines[0].hub_height
-
-        probe_locations = np.zeros((3, self.farm.n_turbines*probes_per_turbine))
-        for i, turb in enumerate(self.farm.turbines):
-            probe_locations[0, i*probes_per_turbine:(i+1)*probes_per_turbine] = x.flatten() + turb.location[0]
-            probe_locations[1, i*probes_per_turbine:(i+1)*probes_per_turbine] = y.flatten()
-            probe_locations[2, i*probes_per_turbine:(i+1)*probes_per_turbine] = z.flatten() + turb.location[1]
-
-        probe_dictionary = {}
-        for i, loc in enumerate(probe_locations.T):
-            for dim in range(3):
-                probe_dictionary[f'xyzprobes({dim + 1},{i + 1})'] = loc[dim]
-
-        # Update i3d file
         shutil.move(os.path.join(directory, 'input.i3d'),
                     os.path.join(directory, 'old_input.i3d'))
-        patch_nml = {'ProbesParam': probe_dictionary}
-        f90nml.patch(os.path.join(directory, 'old_input.i3d'),
-                     patch_nml, os.path.join(directory, 'input.i3d'))
+        namelist = f90nml.read(os.path.join(directory, 'old_input.i3d'))
+        if 'probesparam' not in namelist:
+            namelist['probesparam'] = {}
+        namelist['probesparam']['xyzprobes'] = [list(position) for position in self.probe_layout.coordinates]
+        namelist.write(os.path.join(directory, 'input.i3d'))
