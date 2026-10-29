@@ -32,4 +32,5 @@ export D4RL_DATASET_DIR=./.cache/torchrl/data/d4rl/datasets
 # Launch script
 python launch_sac_run.py test_sac \
 	env.n_parallel=2 \
-	env.initial_reset_frames=50
+	env.initial_reset_frames=50 \
+	env.probes_file=assets/probes/current_77_pressure.csv

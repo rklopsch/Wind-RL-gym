@@ -22,20 +22,25 @@ Smartsim is used to interface the RL code here with wind farm environments simul
 
 ### Xcompact3d-SmartRedis Installation
 
-A [modified version Incompact3d](https://github.com/admole/Incompact3d/tree/smartRedis-coupling) is needed for running the windfarm simulations with SmartRedis integration.
+This branch requires the matching pressure-capable [Incompact3d-WindRL fork](https://github.com/rklopsch/Incompact3d-WindRL/tree/smartRedis-coupling), not the upstream solver. Keep the solver and Wind-RL-gym checkouts side by side. Install the Python requirements below before building, since build provenance uses Python 3.10 or newer.
 
 On Archer2
 ```bash
 module swap PrgEnv-cray PrgEnv-gnu
 module load cmake/3.21.3
 cd work/<PROJECTCODE>/<PROJECTCODE>/<USERNAME>
-git clone https://github.com/admole/Incompact3d.git
-cd Incompact3d
-sed -i 's|install/lib|install/lib64|g' cmake/FindSmartRedis.cmake
+git clone --branch smartRedis-coupling https://github.com/rklopsch/Incompact3d-WindRL.git
+cd Incompact3d-WindRL
 export FC=mpif90
-cmake -S . -B build
+cmake -S . -B build -DBUILD_TESTING=OFF
 cmake --build ./build -j 8
 ```
+
+The fork handles both SmartRedis `lib` and `lib64` installations. If a failed build previously detected a different Fortran compiler, configure a new build directory under the correct module environment rather than reusing incompatible MPI module files.
+
+Real launchers default to `../Incompact3d-WindRL/build/bin/xcompact3d`. Override `env.solver_root` (relative to Wind-RL-gym, or absolute) and `env.solver_build` when necessary, or set `WINDRL_SOLVER_ROOT`. The source checkout must have this fork as `origin`. Launchers check the CMake source directory, source hash, executable hash and four-component protocol using the generated `build/bin/windrl-solver.json`. They never fall back to another executable on `PATH`. Rebuild after solver source changes. Each case records the verified build in `solver_build.json`.
+
+Cloning alone is not sufficient: both repositories need the matching published CSV/pressure revisions, and real runs require SmartSim/SmartRedis, a Slurm allocation and case/precursor data. Configure `env.precursor_root` or `WINDRL_PRECURSOR_ROOT` for your own inflow data; do not reuse another user's filesystem paths. A full CFD/MPI smoke run must be performed on compute nodes, not the ARCHER2 login node.
 
 ### Python Requirements
 
@@ -112,6 +117,40 @@ python launch_sac_run.py <case_name> env.turbines=10
 ```
 
 
+## Probe Configuration
+
+`env.probes_file` replaces `env.probes_per_turbine` and `env.flow_field_directions`. Relative CSV paths resolve from Wind-RL-gym, independently of Hydra's working directory; absolute paths are also supported. Each probe has one row:
+
+```csv
+x,y,z,ux,uy,uz,p
+252,90,315,1,0,0,1
+504,90,378,0,1,1,0
+756,90,441,0,0,0,1
+```
+
+Coordinates are absolute solver-domain coordinates in the existing case units: `x` streamwise, `y` vertical, `z` lateral. They are not turbine offsets or diameter-normalised coordinates. The solver samples its grid at these positions, with its established boundary handling; setup rejects coordinates outside the domain. Flags must be `0` or `1`, with at least one component enabled per row. No turbine ID, equal counts or multiple-of-seven constraint is required. Duplicate positions are allowed.
+
+Probe IDs follow CSV row order, starting at one. Observations concatenate enabled components in `ux,uy,uz,p` order within each row. The example produces five values: probe 1 `ux,p`, probe 2 `uy,uz`, probe 3 `p`. Input width is the sum of enabled flags, not a turbine-count product. Actions and power/reward handling are unchanged.
+
+Velocity and pressure use the same existing statistics sampling and control-interval averaging. Pressure is the solver's recovered, rescaled mean pressure interpolated onto the velocity grid, not raw `pp3`; it is not asserted to be absolute pressure in pascals. Velocity normalisation remains offsets `[6,0,0]`, scales `[6,4,4]`. Pressure uses `(p - env.pressure_offset) / env.pressure_scale`, defaulting to `0` and `1`. Scale must be positive and finite. SmartRedis mean probes currently require `nstat=1` and statistics started before the first control output.
+
+The default CSVs preserve the previous three-turbine layouts and `ux` selection: `assets/probes/current_77.csv` for SAC/PPO and `assets/probes/current_14.csv` for BO. These are static layouts; changing turbine geometry does not move them. Export the former automatic grid explicitly when needed:
+
+```bash
+python -m Solver.export_probes --config sac/config_sac.yaml --count 77 --output assets/probes/custom.csv
+python launch_sac_run.py csv_run env.probes_file=assets/probes/custom.csv
+```
+
+The exporter alone retains the former multiple-of-seven restriction. Custom CSVs do not. Run launchers from the Wind-RL-gym root. Workers and solver cases receive `probes.csv` and `probe_layout.json` snapshots, including ordered feature descriptions. Dummy solvers emit the same four-component tensors, but do not require the real solver build.
+
+Checkpoints include `observation_<id>.json`, which must accompany the model files. Loading rejects different positions, ordering, selections, normalisation, frame stacking or turbine counts, even when input widths match. Evaluation uses the training run's saved CSV. Legacy checkpoints without this metadata require explicit migration with their original observation contract; do not assume that matching dimensions imply compatibility.
+
+Focused Python checks:
+
+```bash
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 python -m pytest tests/ -q
+```
+
 ## Database Coupling Procedure
 
 ### Python
@@ -155,4 +194,4 @@ For each environment $i \in \{0, \dots, m-1\}$
 | `i_yaws_done int`                               | Python has generated new angles (0 = False, 1 = True)                    |
 | `i_sim_done int`                                | xCompact3D has completed simulation of `frameskip` (0 = False, 1 = True) |
 | `i_turbine_powers[nTurbines] double`            | Reward: power generated by each turbine                                  |
-| `i_probe_data[nTurbines][obsPerTurbine] double` | Observations                                                             |
+| `i_probe_j[4] double`                          | Probe j averaged values `[ux,uy,uz,p]`; CSV flags select the agent inputs |

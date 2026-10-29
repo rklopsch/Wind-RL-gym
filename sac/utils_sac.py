@@ -13,6 +13,7 @@ from copy import deepcopy
 import numpy as np
 import torch
 from torch import nn
+from probe_layout import save_checkpoint_contract, validate_checkpoint_contract
 
 
 def consume_collection_batches(pending_frames, new_frames, frames_per_batch):
@@ -370,8 +371,7 @@ class DummyTurbEnv:
     def __init__(self, params, multi_agent=False, save=False, instance=None, device="cpu"):
         self.instance = 0 if instance is None else int(instance)
         self.n_turbines = int(params["n_turbines"])
-        probes_per_turbine = int(params["probes_per_turbine"])
-        self.obs_size = int(self.n_turbines * probes_per_turbine * len(params["flow_field_directions"]))
+        self.obs_size = params["probe_layout"].total_obs
         self.episode_length = int(params.get("episode_length", 200))
         self._step = 0
         self.action_space = {"shape": (self.n_turbines,), "low": -1.0, "high": 1.0}
@@ -777,7 +777,7 @@ def make_sa_sac_agent(cfg, params):
     if cfg.multi_agent.use:
         raise NotImplementedError("Plain PyTorch SAC currently supports single-agent mode only.")
 
-    obs_dim = params["n_turbines"] * params["probes_per_turbine"] * len(params["flow_field_directions"])
+    obs_dim = params["probe_layout"].total_obs
     state_dim = get_frame_stack(cfg) * obs_dim + params["n_turbines"]
     action_dim = params["n_turbines"]
 
@@ -808,12 +808,14 @@ def make_sa_sac_agent(cfg, params):
 
 def save_model(cfg, actor, critic, filepath, id):
     os.makedirs(filepath, exist_ok=True)
+    save_checkpoint_contract(cfg, filepath, id)
     torch.save(actor.state_dict(), os.path.join(filepath, f"actor_{id}.pkl"))
     torch.save(critic.state_dict(), os.path.join(filepath, f"critic_{id}.pkl"))
     return True
 
 
 def load_model(cfg, env_params, path_to_model, id):
+    validate_checkpoint_contract(cfg, env_params, path_to_model, id)
     actor, critic1, _ = make_sa_sac_agent(cfg, env_params)
     actor_path = os.path.join(path_to_model, f"actor_{id}.pkl")
     critic_path = os.path.join(path_to_model, f"critic_{id}.pkl")
@@ -826,6 +828,7 @@ def load_model(cfg, env_params, path_to_model, id):
 
 def save_sac_checkpoint(cfg, actor, critic1, critic2, log_alpha, filepath, id, replay_buffer=None):
     os.makedirs(filepath, exist_ok=True)
+    save_checkpoint_contract(cfg, filepath, id)
     checkpoint = {
         "actor": actor.state_dict(),
         "critic1": critic1.state_dict(),
@@ -841,6 +844,7 @@ def save_sac_checkpoint(cfg, actor, critic1, critic2, log_alpha, filepath, id, r
 
 
 def load_sac_checkpoint(cfg, env_params, path_to_model, id):
+    validate_checkpoint_contract(cfg, env_params, path_to_model, id)
     actor, critic1, critic2 = make_sa_sac_agent(cfg, env_params)
     checkpoint_path = os.path.join(path_to_model, f"sac_checkpoint_{id}.pt")
     if os.path.exists(checkpoint_path):

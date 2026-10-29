@@ -14,6 +14,7 @@ if SAC_DIR not in sys.path:
     sys.path.insert(0, SAC_DIR)
 if SOLVER_DIR not in sys.path:
     sys.path.insert(0, SOLVER_DIR)
+from probe_layout import ProbeLayout
 
 HAS_RUNTIME_DEPS = all(
     importlib.util.find_spec(mod_name) is not None for mod_name in ("numpy", "torch", "hydra")
@@ -108,8 +109,7 @@ class ParallelGymEnvTests(unittest.TestCase):
 
         params = {
             "n_turbines": 2,
-            "probes_per_turbine": 3,
-            "flow_field_directions": ["ux"],
+            "probe_layout": ProbeLayout(((1.0, 2.0, 3.0),) * 6, ((0,),) * 6),
             "episode_length": 3,
         }
         env = make_parallel_env(Cfg, params, 2, device="cpu")

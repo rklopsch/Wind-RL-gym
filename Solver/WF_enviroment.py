@@ -63,23 +63,14 @@ class TurbEnv(gym.Env):
 
         self.save = save
         self.device = torch.device(device)
-        self.probes_per_turbine = params["probes_per_turbine"]
-        lookup = {"ux": 0, "uy": 1, "uz": 2}
-        flow_dirs = params["flow_field_directions"]
-        if not all(p in lookup for p in flow_dirs):
-            raise ValueError(
-                "flow_field_directions must only contain 'ux', 'uy', 'uz'. "
-                f"Got {flow_dirs}"
-            )
-        if len(set(flow_dirs)) != len(flow_dirs):
-            raise ValueError(f"flow_field_directions must not contain duplicates. Got {flow_dirs}.")
-
-        self.obs_idxs = list(map(lookup.get, flow_dirs))
-        self.obs_per_probe = len(self.obs_idxs)
-        self.obs_per_turbine = self.probes_per_turbine * self.obs_per_probe
+        self.probe_layout = params["probe_layout"]
+        self.pressure_offset = float(params.get("pressure_offset", 0.0))
+        self.pressure_scale = float(params.get("pressure_scale", 1.0))
+        if not math.isfinite(self.pressure_offset) or not math.isfinite(self.pressure_scale) or self.pressure_scale <= 0:
+            raise ValueError("Pressure offset must be finite and scale must be positive and finite")
         self.n_turbs = params["n_turbines"]
-        self.total_probes = self.probes_per_turbine * self.n_turbs
-        self.total_obs = self.obs_per_turbine * self.n_turbs
+        self.total_probes = self.probe_layout.total_probes
+        self.total_obs = self.probe_layout.total_obs
         self.max_speed = params["max_yaw_speed"]
         self.max_angle = params["max_yaw_angle"]
         self.dt = params["dt"]
@@ -139,10 +130,11 @@ class TurbEnv(gym.Env):
         self._reward_buffer = -1.0 * torch.ones((self.reward_average_steps,), dtype=torch.float32, device=self.device)
         self._step_count = 0
 
-    @staticmethod
-    def _normalise_probe_data(arr):
-        loc = np.array([6.0, 0.0, 0.0])
-        scale = np.array([6.0, 4.0, 4.0])
+    def _normalise_probe_data(self, arr):
+        if np.shape(arr) != (4,):
+            raise ValueError("Expected [ux,uy,uz,p] probe tensor; rebuild the Incompact3d-WindRL solver")
+        loc = np.array([6.0, 0.0, 0.0, self.pressure_offset])
+        scale = np.array([6.0, 4.0, 4.0, self.pressure_scale])
         return (arr - loc) / scale
 
     @staticmethod
@@ -190,15 +182,14 @@ class TurbEnv(gym.Env):
 
         read_start = time.monotonic()
         turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")
-        turbine_obs = np.zeros((self.total_probes, self.obs_per_probe))
-        for i in range(self.total_probes):
+        probe_observations = []
+        for i, selection in enumerate(self.probe_layout.selections):
             probe = self.client.get_tensor(f"{self.instance}_probe_{i + 1}")
-            turbine_obs[i] = self._normalise_probe_data(probe)[self.obs_idxs]
+            probe_observations.append(self._normalise_probe_data(probe)[list(selection)])
         read_elapsed = time.monotonic() - read_start
 
-        turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)
         turbine_powers = torch.tensor(turbine_powers / 1e06, dtype=torch.float32, device=self.device)
-        observation = torch.tensor(turbine_obs, dtype=torch.float32, device=self.device)
+        observation = torch.tensor(np.concatenate(probe_observations), dtype=torch.float32, device=self.device)
         total_elapsed = time.monotonic() - total_start
         if total_elapsed >= self.communication_slow_log_s:
             logging.info(

@@ -11,6 +11,8 @@ REPO_ROOT = str(Path(__file__).resolve().parents[1])
 SAC_DIR = os.path.join(REPO_ROOT, "sac")
 if SAC_DIR not in sys.path:
     sys.path.insert(0, SAC_DIR)
+sys.path.insert(0, os.path.join(REPO_ROOT, "Solver"))
+from probe_layout import ProbeLayout
 
 HAS_RUNTIME_DEPS = all(
     importlib.util.find_spec(mod_name) is not None for mod_name in ("numpy", "torch", "hydra")
@@ -252,8 +254,7 @@ class FrameStackTests(unittest.TestCase):
         cfg = _make_cfg(frame_stack=3, dummy_update=True)
         params = {
             "n_turbines": 2,
-            "probes_per_turbine": 3,
-            "flow_field_directions": ["ux"],
+            "probe_layout": ProbeLayout(((1.0, 2.0, 3.0),) * 6, ((0,),) * 6),
             "episode_length": 2,
         }
         actor, critic1, _ = make_sa_sac_agent(cfg, params)
@@ -298,7 +299,7 @@ class TurbEnvObservationTests(unittest.TestCase):
                 self.store[f"{instance}_sim_done"] = np.array([1])
                 self.store[f"{instance}_turbine_powers"] = np.array([1.0e6, 2.0e6, 3.0e6])
                 for i in range(self.n_probes):
-                    self.store[f"{instance}_probe_{i + 1}"] = np.array([12.0, 0.0, 4.0])
+                    self.store[f"{instance}_probe_{i + 1}"] = np.array([12.0, 0.0, 4.0, 10.0])
 
         def poll_key(self, key, *_):
             return key in self.store
@@ -309,8 +310,7 @@ class TurbEnvObservationTests(unittest.TestCase):
     def _params(self):
         return {
             "n_turbines": 3,
-            "probes_per_turbine": 2,
-            "flow_field_directions": ["ux", "uz"],
+            "probe_layout": ProbeLayout(((1.0, 2.0, 3.0),) * 6, ((0, 2),) * 6),
             "max_yaw_speed": 1.0,
             "max_yaw_angle": 40,
             "dt": 10.0,
@@ -340,6 +340,19 @@ class TurbEnvObservationTests(unittest.TestCase):
             obs, _, _, _, _ = env.step(np.array([1.0, 1.0, 1.0], dtype=np.float32))
         # Starting from [10, -10, 0] degrees, five +10 degree steps saturate all turbines at max_yaw_angle.
         torch.testing.assert_close(obs["alpha_normalised"], torch.tensor([4.0, 4.0, 4.0]))
+
+    def test_mixed_components_pressure_normalisation_and_protocol(self):
+        wf = _load_wf_environment(self.FakeClient)
+        params = self._params()
+        params["probe_layout"] = ProbeLayout(((1.0, 2.0, 3.0),) * 3, ((0, 3), (1,), (0, 1, 2, 3)))
+        params.update(pressure_offset=2.0, pressure_scale=4.0)
+        env = wf.TurbEnv(params, instance=0)
+        env.reset()
+        obs, _, _, _, _ = env.step(np.zeros(3, dtype=np.float32))
+        torch.testing.assert_close(obs["observation"], torch.tensor([1.0, 2.0, 0.0, 1.0, 0.0, 1.0, 2.0]))
+        self.assertEqual(env.observation_space.spaces["observation"].shape, (7,))
+        with self.assertRaisesRegex(ValueError, "rebuild"):
+            env._normalise_probe_data(np.array([12.0, 0.0, 4.0]))
 
 
 if __name__ == "__main__":
