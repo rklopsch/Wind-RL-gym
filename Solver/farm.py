@@ -4,6 +4,7 @@ import numpy as np
 import math
 import copy
 import random
+import os
 # import fonts
 
 
@@ -57,11 +58,35 @@ class Farm:
             turbine.location[1] = self.offset[1] + random.uniform(0, self.lz)
 
     def write_adm(self, filename='adm'):
+        adm_path = f"{filename}.ad"
+        optional_columns = []
+        if os.path.exists(adm_path):
+            with open(adm_path) as template:
+                template_rows = [
+                    line.split()
+                    for line in template
+                    if line.strip() and not line.lstrip().startswith("!")
+                ]
+            for row in template_rows[:self.n_turbines]:
+                if len(row) < 8:
+                    raise ValueError(
+                        f"Invalid ADM row in {adm_path}: expected at least 8 columns"
+                    )
+                optional_columns.append(row[8:])
+
+        has_optional_columns = any(optional_columns)
         # Writing to file
-        with open(f"{filename}.ad", "w") as file:
+        with open(adm_path, "w") as file:
             # Writing data to a file
-            file.write("!CoR(x) CoR(y) CoR(z) YawAng[deg] TiltAng[deg] RotorDiam C_T[-] alpha[-] \n")
-            for turbine in self.turbines:
+            header = "!CoR(x) CoR(y) CoR(z) YawAng[deg] TiltAng[deg] RotorDiam C_T[-] alpha[-]"
+            if has_optional_columns:
+                header += (
+                    " PertAmp[-] PertFreq PertDir(0:axial,1:transverse)"
+                    " PertMode PertWidth[D] PertPhase[deg] PertAzim[deg]"
+                    " [PertBand(FWHM)]"
+                )
+            file.write(f"{header}\n")
+            for index, turbine in enumerate(self.turbines):
                 file.write(f"{turbine.location[0]} "
                            f"{turbine.hub_height} "
                            f"{turbine.location[1]} "
@@ -69,7 +94,12 @@ class Farm:
                            f"{turbine.tilt} "
                            f"{turbine.diam} "
                            f"{turbine.c_t} "
-                           f"{turbine.alpha} \n")
+                           f"{turbine.alpha}")
+                if index < len(optional_columns):
+                    suffix = optional_columns[index]
+                    if suffix:
+                        file.write(" " + " ".join(suffix))
+                file.write("\n")
 
     def get_layout(self):
         x = np.zeros(self.n_turbines)
@@ -130,5 +160,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 

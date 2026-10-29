@@ -25,7 +25,7 @@ env:
   difference_penalty_scale: 0.0
   random_reset: False  # If True, at each reset angles will be chosen randomly
   initial_angles: [0, 0, 0]
-  precursor_root: "/work/e01/e01/klop1/wind/Wind-RL/Solver/ADM"
+  precursor_root: null  # null disables precursor inflow (uniform inflow generated in-solver)
   communication_timeout_s: 1200.0
   communication_poll_interval_s: 0.1
   communication_slow_log_s: 30.0

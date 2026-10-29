@@ -1,4 +1,4 @@
-!CoR(x) CoR(y) CoR(z) YawAng[deg] TiltAng[deg] RotorDiam C_T[-] alpha[-] 
-504.0 90 504.0 -2.905160903930664 0.0 126 0.75 0.17095 
+!CoR(x) CoR(y) CoR(z) YawAng[deg] TiltAng[deg] RotorDiam C_T[-] alpha[-] PertAmp[-] PertFreq PertDir(0:axial,1:transverse) PertMode PertWidth[D] PertPhase[deg] PertAzim[deg] [PertBand(FWHM)]
+504.0 90 504.0 -2.905160903930664 0.0 126 0.75 0.17095 0.1 0.132 1 1 0.1 0.0 0.0 0.02
 1827.0 90 504.0 -1.1558494567871094 0.0 126 0.75 0.17095 
 3150.0 90 504.0 -0.7617049813270569 0.0 126 0.75 0.17095 

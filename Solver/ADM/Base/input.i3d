@@ -5,7 +5,7 @@
 !===================
 
 ! Flow type (1=Lock-exchange, 2=TGV, 3=Channel, 4=Periodic hill, 5=Cylinder, 6=dbg-schemes, 9=Turbulent-Boundary-Layer, 10=ABL, 11=Uniform)
-itype=10
+itype=11
 
 ! Domain decomposition
 p_row=0              ! Row partition
@@ -36,7 +36,7 @@ nclz1 = 0 ! label '0' is for periodic B.C.
 nclzn = 0
 
 ! Flow parameters
-iin = 3              ! Inflow conditions (1: classic, 2: turbinit, 3:turbulence from file)
+iin = 1              ! Inflow conditions (1: classic, 2: turbinit, 3:turbulence from file)
 re  = 66667.         ! nu=1/re (Kinematic Viscosity)
 u1  = 8.            ! u1 (max velocity) (for inflow condition)
 u2  = 8.            ! u2 (min velocity) (for inflow condition)
@@ -87,9 +87,6 @@ ioutput =  50     ! Frequency for visualization
 ilist =  1         ! Frequency for write to screen 
 nvisu = 1            ! Size for visualisation collection
 ioutflow=0           ! Outflow flag
-ntimesteps=100     ! Number of planes saved in each file
-ninflows=10           ! Number of files storing inflow planes 
-inflowpath='precursor_Base/out/' ! Directory with the inflow files
 nprobes = 3           ! Number of probes
 
 /End
@@ -101,7 +98,7 @@ nprobes = 3           ! Number of probes
 wrotation = 0.12     ! rotation speed to trigger turbulence
 spinup_time = 0      ! number of time steps with a rotation to trigger turbulence
 nstat = 1            ! Size arrays for statistic collection
-initstat =  1000    ! Time steps after which statistics are collected 
+initstat =  1       ! Start statistics before the first SmartRedis control output
 
 /End
 
@@ -131,30 +128,6 @@ iconserv = 1         ! Formulation SGS divergence (0: non conservative, 1: conse
 /End
 
 !================
-&ABL
-!================
-
-dsampling=1.5        ! Sampling velocity for the wall model at delta=dsampling*dy
-z_zero=0.05       ! Roughness length
-k_roughness=0.4      ! von Karman constant (usually taken to be equal to 0.4)
-ustar=0.354           ! friction velocity
-dBL=504             ! Boundary layer height
-iPressureGradient=0  ! 0: Geostrophic Vel 1: PG forcing
-UG=0,0,0
-ibuoyancy=0          ! Buoyancy effects
-idamping=0           ! Damping zone
-istrat=1             ! 0: Stable BL 1: Convective BL
-itherm=0             ! 0: Surface flux 1: Surface temperature
-icoriolis=0          ! Coriolis forces
-coriolisfreq=1e-04
-iheight=0            ! Compute BL height
-imassconserve=0      ! Enforce mass conservation
-T_wall=300.          ! Initial wall temperature
-T_top=310.814        ! Temperature at domain top
-
-/End
-
-!================
 &ADMParam
 !================
 
@@ -170,4 +143,3 @@ instance = 0
 
 &CASE
 /End
-

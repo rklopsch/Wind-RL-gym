@@ -11,7 +11,7 @@ if not os.path.exists(PYTHON_BIN):
     PYTHON_BIN = shutil.which("python") or "python"
 
 WORKSPACE_ROOT = os.path.abspath(os.path.dirname(__file__))
-INCOMPACT3D_ROOT = os.path.abspath(os.path.join(WORKSPACE_ROOT, "..", "Incompact3d"))
+INCOMPACT3D_ROOT = os.path.abspath(os.path.join(WORKSPACE_ROOT, "..", "Incompact3d-WindRL"))
 LOCAL_INCOMPACT_BIN = os.path.join(INCOMPACT3D_ROOT, "build", "bin")
 LOCAL_SMARTREDIS_LIB = os.path.join(INCOMPACT3D_ROOT, "build", "smartredis-build", "smartredis", "install", "lib")
 LOCAL_PRECURSOR_BASE = os.path.join(WORKSPACE_ROOT, "Solver", "ADM", "precursor_Base")
