@@ -32,7 +32,7 @@ env:
   communication_timeout_s: 1200.0
   communication_poll_interval_s: 0.1
   communication_slow_log_s: 30.0
-  worker_timeout_s: 1200.0
+  worker_timeout_s: 1300.0
   worker_start_method: spawn
   worker_poll_interval_s: 0.1
   worker_close_timeout_s: 5.0
