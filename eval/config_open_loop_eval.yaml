@@ -1,0 +1,18 @@
+# Open-loop evaluation of a trained single-agent SAC model (see open_loop_eval.py).
+# The training config is merged in by launch_open_loop_eval_run.py.
+eval:
+  training_name: launch_dummy_SAC_run  # Path to the SAC training run, relative to Wind-RL-gym/
+  model_id: 515  # ID of the checkpoint to evaluate
+  run_name: null  # Output folder name; null -> <training_name>_open_loop_eval_<date>_<time>
+  episode_length: 2000  # Control steps per episode (rollout, replay and constant)
+  n_parallel: 16  # Number of evaluation envs run in parallel
+  num_rounds: 1  # Rounds of rollout -> replay -> constant mean yaw per env
+  initial_reset_frames: 5000  # Burn-in before the first round, handled as in SAC training
+  save_flow: False  # WARNING: saves full flow fields every control step (HUGE amounts of data)
+  dummy_update: False  # Use DummyTurbEnv instead of the CFD solver (for testing the pipeline)
+
+# Configure hydra
+hydra:
+  run:
+    dir: outputs
+  output_subdir: hydra_logs

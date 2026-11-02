@@ -57,11 +57,10 @@ def launch_database(experiment, port, dummy_update=False):
     return db
 
 
-def launch_solver(experiment, instance, cfg):
+def launch_solver(experiment, instance, cfg, simulation_steps=None):
     executable, _ = verified_solver(cfg.env)
-    aprun = experiment.create_run_settings(exe=executable)
-    if RUN_COMMAND is not None:
-        aprun.set_run_command(RUN_COMMAND)
+    kwargs = {"run_command": RUN_COMMAND} if RUN_COMMAND is not None else {}
+    aprun = experiment.create_run_settings(exe=executable, **kwargs)
     aprun.set_tasks(SOLVER_TASKS)
     aprun.set_cpus_per_task(1)
     aprun.set_nodes(1)
@@ -82,16 +81,17 @@ def launch_solver(experiment, instance, cfg):
                  offset=[(cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter, (cfg.env.turbine_spacing_z-1)/2*cfg.env.turbine_diameter])
     farm1.grid()
 
-    simulation_steps = (cfg.env.steps_per_frame
-                        * (cfg.env.reset_frames * 3
-                           + cfg.eval.initial_reset_frames
-                           + cfg.eval.num_rollouts *
-                              (cfg.eval.episode_length
-                               + cfg.eval.inbetween_reset_frames
-                               + cfg.env.reset_frames
+    if simulation_steps is None:
+        simulation_steps = (cfg.env.steps_per_frame
+                            * (cfg.env.reset_frames * 3
+                               + cfg.eval.initial_reset_frames
+                               + cfg.eval.num_rollouts *
+                                  (cfg.eval.episode_length
+                                   + cfg.eval.inbetween_reset_frames
+                                   + cfg.env.reset_frames
+                                  )
                               )
-                          )
-                       )
+                           )
 
     case = ADMSimulation(farm1, timesteps=math.ceil(simulation_steps),
                          control_freq=cfg.env.steps_per_frame,
