@@ -225,19 +225,35 @@ class TurbEnv(gym.Env):
         for _ in range(self.reset_frames - steps_to_change_angle):
             self._communicate(alpha_target)
 
+    def _validate_reset_angles(self, angles) -> torch.Tensor:
+        angles = torch.as_tensor(angles, dtype=torch.float32, device=self.device).reshape(-1)
+        if angles.numel() != self.n_turbs:
+            raise ValueError(f"Expected {self.n_turbs} reset angles, got {angles.numel()}.")
+        if not torch.all(torch.isfinite(angles)):
+            raise ValueError("Reset angles must be finite.")
+        if torch.any(angles.abs() > self.max_angle):
+            raise ValueError(f"Reset angles must lie within +/-{self.max_angle} degrees.")
+        return angles
+
     def reset(self, seed: Optional[int] = None, options: Optional[TypingDict[str, Any]] = None):
         super().reset(seed=seed)
         reset_start = time.monotonic()
         logging.info("Environment %d reset started", self.instance)
 
-        if self.random_reset:
+        target_angles = (options or {}).get("initial_angles")
+        if target_angles is not None:
+            reset_angles = self._validate_reset_angles(target_angles)
+        elif self.random_reset:
             reset_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs], device=self.device) - 1)
         else:
             reset_angles = torch.tensor(self.initial_angles, dtype=torch.float32, device=self.device)
 
         self._warmup_reset(self._alpha, reset_angles)
 
-        self._alpha = torch.tensor(self.initial_angles, dtype=torch.float32, device=self.device)
+        if target_angles is not None:
+            self._alpha = reset_angles.clone()
+        else:
+            self._alpha = torch.tensor(self.initial_angles, dtype=torch.float32, device=self.device)
         self._reward_buffer = -1.0 * torch.ones((self.reward_average_steps,), dtype=torch.float32, device=self.device)
         self._step_count = 0
 
@@ -248,7 +264,9 @@ class TurbEnv(gym.Env):
             self.instance,
             time.monotonic() - reset_start,
         )
-        return self._make_obs(self._alpha, observation, power), {"reset_angles": reset_angles.detach().cpu().numpy()}
+        return self._make_obs(self._alpha, observation, power), {
+            "reset_angles": reset_angles.detach().cpu().numpy().copy()
+        }
 
     def step(self, action):
         action = torch.as_tensor(action, dtype=torch.float32, device=self.device).view(self.n_turbs)
@@ -277,10 +295,11 @@ class TurbEnv(gym.Env):
         terminated = False
         truncated = self._step_count >= self.max_episode_steps
 
+        # Tensor IPC can move observation storage, so info must own its NumPy data.
         info = {
             "instant_reward": float(reward.item()),
-            "power": power_out.detach().cpu().numpy(),
-            "alpha": self._alpha.detach().cpu().numpy(),
+            "power": power_out.detach().cpu().numpy().copy(),
+            "alpha": self._alpha.detach().cpu().numpy().copy(),
         }
         return self._make_obs(self._alpha, observation, power_out), reward.detach().cpu(), terminated, truncated, info
 

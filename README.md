@@ -116,6 +116,22 @@ To change parameters either modify the relevent config files or override the con
 python launch_sac_run.py <case_name> env.turbines=10
 ```
 
+### Open-loop evaluation (SAC only)
+
+`launch_open_loop_eval_run.py` evaluates a trained single-agent SAC checkpoint in rounds. Each round runs three episodes in every parallel environment, separated by the same automatic `reset_frames` reset as in SAC training:
+
+1. `rollout`: the deterministic policy acts in closed loop from zero yaw; its actions are saved to `RESULTS/round_XXXX_actions.npy`.
+2. `replay`: the recorded actions are replayed open loop from zero yaw.
+3. `constant`: zero actions, with yaw held at the rollout's mean yaw (the reset before this episode targets that angle).
+
+The mean farm power (sum of turbine powers, MW) of the three episodes is logged after every round, and `eval_logs.pkl` (per-step yaw, actions, powers, rewards and control-frame offsets of each episode) is rewritten after every round. The evaluation stops if transferred yaw or power values are invalid or disagree with the corresponding observations. Settings live in `eval/config_open_loop_eval.yaml`; the training config is read from `<training_name>/sac/outputs/hydra_logs/config.yaml`. `eval.save_flow=True` additionally writes full flow fields every control step (very large); ADM turbine output is always written in each `WindFarm_<i>` case. Output goes to `<training_name>_open_loop_eval_<date>_<time>/` unless `eval.run_name=<name>` is set.
+
+```bash
+sbatch submit_open_loop_eval.sh eval.training_name=training_sac eval.model_id=102400 eval.num_rounds=4
+```
+
+The submission script requests 18 nodes, matching the default `eval.n_parallel=16` (one node per solver, plus the evaluation and the database). Adjust `--nodes` if you change `eval.n_parallel`.
+
 
 ## Probe Configuration
 

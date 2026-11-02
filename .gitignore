@@ -20,3 +20,5 @@ eval_dummy_run
 training*
 eval_*
 test_sac
+open_loop_eval_test
+open_loop_eval
