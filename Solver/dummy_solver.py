@@ -4,6 +4,7 @@ import time
 from hydra import initialize, compose
 import os
 import logging
+from probe_layout import load_probe_layout
 
 
 # Check if we are running in training or eval mode
@@ -36,7 +37,7 @@ initialize(config_path=config_dir, version_base="1.2")
 cfg = compose(config_name=f"config_{algo}.yaml")
 
 n_turbines = cfg.env.turbines
-total_probes = cfg.env.turbines * cfg.env.probes_per_turbine
+total_probes = load_probe_layout(os.path.abspath(os.path.join(config_dir, "probes.csv"))).total_probes
 n_envs = cfg.env.n_parallel if training else cfg.eval.n_parallel  # use correct env number
 
 client = Client(address=None, cluster=False)
@@ -72,7 +73,7 @@ while True:
         client.put_tensor(f'{i}_turbine_powers', 1e6 * np.random.randn(n_turbines))
         # print(f"Put tensor for key {i}_turbine_powers succeeded.")
         for j in range(total_probes):
-            client.put_tensor(f"{i}_probe_{j+1}", np.random.randn(3))
+            client.put_tensor(f"{i}_probe_{j+1}", np.random.randn(4))
 
     # Reset the yaw done to False
     # We might have to have a flag here that checks if ALL the solvers have

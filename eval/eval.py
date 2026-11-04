@@ -10,6 +10,7 @@ from torchrl.data import LazyMemmapStorage, TensorDictReplayBuffer
 from torchrl.envs.utils import set_exploration_type, ExplorationType
 import shutil
 import hydra
+from probe_layout import probe_params
 import numpy as np
 import shutil
 import pickle
@@ -89,8 +90,7 @@ def main(cfg: "DictConfig"):
         "n_turbines": cfg.env.turbines,
         "n_procs": cfg.env.n_processors_per_env,
         "n_envs": cfg.eval.n_parallel,
-        "probes_per_turbine": cfg.env.probes_per_turbine,
-        "flow_field_directions": cfg.env.flow_field_directions,
+        **probe_params(cfg.env),
         "turbine_diameter": cfg.env.turbine_diameter,
         "turbine_spacing": cfg.env.turbine_spacing,
         "max_yaw_speed": cfg.env.max_yaw_speed,

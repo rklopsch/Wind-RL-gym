@@ -10,12 +10,6 @@ PYTHON_BIN = "/home/roman/.pyenv/versions/windRL/bin/python"
 if not os.path.exists(PYTHON_BIN):
     PYTHON_BIN = shutil.which("python") or "python"
 
-WORKSPACE_ROOT = os.path.abspath(os.path.dirname(__file__))
-INCOMPACT3D_ROOT = os.path.abspath(os.path.join(WORKSPACE_ROOT, "..", "Incompact3d"))
-LOCAL_INCOMPACT_BIN = os.path.join(INCOMPACT3D_ROOT, "build", "bin")
-LOCAL_SMARTREDIS_LIB = os.path.join(INCOMPACT3D_ROOT, "build", "smartredis-build", "smartredis", "install", "lib")
-LOCAL_PRECURSOR_BASE = os.path.join(WORKSPACE_ROOT, "Solver", "ADM", "precursor_Base")
-
 if shutil.which("srun"):
     LAUNCHER = "auto"
     RUN_COMMAND = "srun"
@@ -34,6 +28,8 @@ from smartredis import Client
 from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
 from Solver.precursor_utils import ensure_precursor
+from Solver.probe_layout import probe_params, stage_probe_layout
+from Solver.solver_runtime import verified_solver, record_solver
 from hydra import initialize, compose
 from omegaconf import OmegaConf
 from datetime import datetime
@@ -61,16 +57,10 @@ def launch_database(experiment, port, dummy_update=False):
     return db
 
 
-def launch_solver(experiment, instance, cfg):
-    if os.path.isdir(LOCAL_SMARTREDIS_LIB):
-        os.environ['LD_LIBRARY_PATH'] = LOCAL_SMARTREDIS_LIB + os.pathsep + os.environ.get('LD_LIBRARY_PATH', "")
-    if os.path.isdir(LOCAL_INCOMPACT_BIN):
-        os.environ['PATH'] = LOCAL_INCOMPACT_BIN + os.pathsep + os.environ.get('PATH', "")
-    # TODO: probably (definitely) want a better way to set these
-
-    aprun = experiment.create_run_settings(exe="xcompact3d")
-    if RUN_COMMAND is not None:
-        aprun.set_run_command(RUN_COMMAND)
+def launch_solver(experiment, instance, cfg, simulation_steps=None):
+    executable, _ = verified_solver(cfg.env)
+    kwargs = {"run_command": RUN_COMMAND} if RUN_COMMAND is not None else {}
+    aprun = experiment.create_run_settings(exe=executable, **kwargs)
     aprun.set_tasks(SOLVER_TASKS)
     aprun.set_cpus_per_task(1)
     aprun.set_nodes(1)
@@ -91,22 +81,25 @@ def launch_solver(experiment, instance, cfg):
                  offset=[(cfg.env.turbine_spacing-1)/2*cfg.env.turbine_diameter, (cfg.env.turbine_spacing_z-1)/2*cfg.env.turbine_diameter])
     farm1.grid()
 
-    simulation_steps = (cfg.env.steps_per_frame
-                        * (cfg.env.reset_frames * 3
-                           + cfg.eval.initial_reset_frames
-                           + cfg.eval.num_rollouts *
-                              (cfg.eval.episode_length
-                               + cfg.eval.inbetween_reset_frames
-                               + cfg.env.reset_frames
+    if simulation_steps is None:
+        simulation_steps = (cfg.env.steps_per_frame
+                            * (cfg.env.reset_frames * 3
+                               + cfg.eval.initial_reset_frames
+                               + cfg.eval.num_rollouts *
+                                  (cfg.eval.episode_length
+                                   + cfg.eval.inbetween_reset_frames
+                                   + cfg.env.reset_frames
+                                  )
                               )
-                          )
-                       )
+                           )
 
     case = ADMSimulation(farm1, timesteps=math.ceil(simulation_steps),
                          control_freq=cfg.env.steps_per_frame,
-                         probes_per_turbine=cfg.env.probes_per_turbine,
+                         probe_layout=probe_params(cfg.env)["probe_layout"],
                          instance=instance)
     case.setup_case(f"./{experiment.name}/WindFarm_{instance}", save_flow=cfg.eval.save_flow, precursor_root=cfg.env.precursor_root)
+    stage_probe_layout(producer.path, cfg.env)
+    record_solver(producer.path, cfg.env)
     # case.setup_precursor(f"./{experiment.name}/WindFarm_{instance}/precursor_{instance}")
 
     return producer
@@ -123,6 +116,7 @@ def launch_dummy_solver(experiment):
     producer.attach_generator_files(to_copy="./Solver/dummy_solver.py")
 
     experiment.generate(producer, overwrite=True)
+    shutil.copy2("./Solver/probe_layout.py", os.path.join(producer.path, "probe_layout.py"))
     return producer
 
 
@@ -152,9 +146,11 @@ def launch_eval(experiment, cfg, dummy_update=False):
     file_list += ["./Solver/WF_enviroment.py", "./Solver/ADM_setup.py", "./Solver/farm.py"]  # Env and simulator
     file_list += [f"{cfg.eval.training_name}/{algo}/checkpoints/actor_{cfg.eval.model_id}.pkl"]
     file_list += [f"{cfg.eval.training_name}/{algo}/checkpoints/critic_{cfg.eval.model_id}.pkl"]
+    file_list += [f"{cfg.eval.training_name}/{algo}/checkpoints/observation_{cfg.eval.model_id}.json"]
     producer.attach_generator_files(to_copy=file_list)
 
     experiment.generate(producer, overwrite=True)
+    stage_probe_layout(producer.path, cfg.env)
 
     if not os.path.exists(f"./{experiment.name}/eval/"):
         os.makedirs(f"./{experiment.name}/eval/")
@@ -191,6 +187,14 @@ if __name__ == '__main__':
     # Merge configurations
     cfg = {**cfg_eval, **cfg_train}
     cfg = OmegaConf.create(cfg)
+    algo = "ppo" if "ppo" in training_name.lower() else "sac"
+    saved_probes = os.path.abspath(os.path.join(training_name, algo, "probes.csv"))
+    if not os.path.isfile(saved_probes):
+        raise FileNotFoundError(f"Training probe snapshot missing: {saved_probes}; migrate legacy runs explicitly")
+    cfg.env.probes_file = saved_probes
+    probe_params(cfg.env)
+    if not dummy_update:
+        verified_solver(cfg.env)
 
     # Set up experiment
     exp = Experiment(run_name, launcher=LAUNCHER)

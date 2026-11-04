@@ -232,6 +232,8 @@ def make_sa_ppo_models(cfg, params):
 
 
 def load_model(cfg, env_params, path_to_model, id):
+    from probe_layout import validate_checkpoint_contract
+    validate_checkpoint_contract(cfg, env_params, path_to_model, id)
     try:
         """
         # Load env transforms
@@ -282,6 +284,8 @@ def load_model(cfg, env_params, path_to_model, id):
 
 
 def save_model(cfg, actor, critic, filepath, id):
+    from probe_layout import save_checkpoint_contract
+    save_checkpoint_contract(cfg, filepath, id)
     # Read out loc and scale used in ObservationNorm, if used
     transform_list = transforms(cfg)
     obs_norm_transform = next((t for t in transform_list if isinstance(t, ObservationNorm)), None)

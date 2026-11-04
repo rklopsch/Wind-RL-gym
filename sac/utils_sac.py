@@ -13,6 +13,7 @@ from copy import deepcopy
 import numpy as np
 import torch
 from torch import nn
+from probe_layout import save_checkpoint_contract, validate_checkpoint_contract
 
 
 def consume_collection_batches(pending_frames, new_frames, frames_per_batch):
@@ -221,21 +222,27 @@ class ParallelGymEnv:
         infos = [info for _, info in results]
         return stack_obs_dict(obs_list), infos
 
-    def step(self, actions):
+    def step(self, actions, reset_options=None):
+        """Step all envs; ``reset_options[i]`` is passed to env i's automatic reset if its episode ends."""
         actions = torch.as_tensor(actions)
         if actions.dim() == 1:
             actions = actions.unsqueeze(0)
         if actions.shape[0] != self.num_envs:
             raise ValueError(f"Expected actions for {self.num_envs} envs, got shape {tuple(actions.shape)}")
+        if reset_options is None:
+            reset_options = [None] * self.num_envs
+        if len(reset_options) != self.num_envs:
+            raise ValueError(f"Expected reset options for {self.num_envs} envs, got {len(reset_options)}")
         request_id = f"step-{time.monotonic_ns()}"
         for idx, worker in enumerate(self._workers):
-            worker["conn"].send(
-                {
-                    "command": "step",
-                    "request_id": request_id,
-                    "action": actions[idx].detach().cpu(),
-                }
-            )
+            message = {
+                "command": "step",
+                "request_id": request_id,
+                "action": actions[idx].detach().cpu(),
+            }
+            if reset_options[idx] is not None:
+                message["reset_options"] = reset_options[idx]
+            worker["conn"].send(message)
         results = self._collect_batch_results(request_id, "step", self.worker_timeout_s)
         obs_list = [obs for obs, _, _, _, _ in results]
         rewards = [torch.as_tensor(reward).reshape(1) for _, reward, _, _, _ in results]
@@ -370,9 +377,12 @@ class DummyTurbEnv:
     def __init__(self, params, multi_agent=False, save=False, instance=None, device="cpu"):
         self.instance = 0 if instance is None else int(instance)
         self.n_turbines = int(params["n_turbines"])
-        probes_per_turbine = int(params["probes_per_turbine"])
-        self.obs_size = int(self.n_turbines * probes_per_turbine * len(params["flow_field_directions"]))
+        self.obs_size = params["probe_layout"].total_obs
         self.episode_length = int(params.get("episode_length", 200))
+        self.max_angle = float(params.get("max_yaw_angle", 40.0))
+        self.yaw_step = float(params.get("max_yaw_speed", 1.0)) * float(params.get("dt", 1.0))
+        self.initial_angles = np.zeros((self.n_turbines,), dtype=np.float32)
+        self._alpha = self.initial_angles.copy()
         self._step = 0
         self.action_space = {"shape": (self.n_turbines,), "low": -1.0, "high": 1.0}
         self.observation_space = {
@@ -380,29 +390,47 @@ class DummyTurbEnv:
             "alpha_normalised": {"shape": (self.n_turbines,)},
             "observation": {"shape": (self.obs_size,)},
             "reward_buffer": {"shape": (1,)},
-            "power": {"shape": (1,)},
+            "power": {"shape": (self.n_turbines,)},
         }
 
     def _obs(self):
-        alpha = np.zeros((self.n_turbines,), dtype=np.float32)
+        alpha = self._alpha.copy()
         return {
             "alpha": alpha,
-            "alpha_normalised": alpha,
+            "alpha_normalised": alpha / self.max_angle,
             "observation": np.full((self.obs_size,), float(self.instance + self._step), dtype=np.float32),
             "reward_buffer": np.array([float(self._step)], dtype=np.float32),
-            "power": np.array([float(self.instance)], dtype=np.float32),
+            "power": self._power() if self._step else np.zeros((self.n_turbines,), dtype=np.float32),
         }
+
+    def _power(self):
+        # Deterministic in yaw so open-loop replay reproduces the rollout exactly.
+        mean_power = 1.0 - float(np.mean((self._alpha / self.max_angle) ** 2))
+        return np.full((self.n_turbines,), mean_power, dtype=np.float32)
 
     def reset(self, seed=None, options=None):
         self._step = 0
-        return self._obs(), {"dummy": True, "instance": self.instance}
+        target = (options or {}).get("initial_angles")
+        if target is None:
+            self._alpha = self.initial_angles.copy()
+        else:
+            self._alpha = np.asarray(target, dtype=np.float32).reshape(self.n_turbines).copy()
+        return self._obs(), {"dummy": True, "instance": self.instance, "reset_angles": self._alpha.copy()}
 
     def step(self, action):
         self._step += 1
-        reward = float(self.n_turbines) - float(np.mean(np.abs(np.asarray(action, dtype=np.float32))))
+        action = np.clip(np.asarray(action, dtype=np.float32).reshape(self.n_turbines), -1.0, 1.0)
+        self._alpha = np.clip(self._alpha + action * self.yaw_step, -self.max_angle, self.max_angle)
+        reward = float(self.n_turbines) - float(np.mean(np.abs(action)))
         terminated = False
         truncated = self._step >= self.episode_length
-        return self._obs(), reward, terminated, truncated, {"dummy": True, "instance": self.instance}
+        info = {
+            "dummy": True,
+            "instance": self.instance,
+            "power": self._power(),
+            "alpha": self._alpha.copy(),
+        }
+        return self._obs(), reward, terminated, truncated, info
 
     def close(self):
         return None
@@ -499,7 +527,11 @@ def _env_worker_main(conn, env_ctor, env_kwargs):
                 obs, reward, term, trunc, info = env.step(message.get("action"))
                 final_obs = obs
                 if term or trunc:
-                    reset_obs, reset_info = env.reset()
+                    reset_options = message.get("reset_options")
+                    if reset_options is None:
+                        reset_obs, reset_info = env.reset()
+                    else:
+                        reset_obs, reset_info = env.reset(options=reset_options)
                     info = dict(info)
                     info["final_observation"] = final_obs
                     info["final_info"] = reset_info
@@ -777,7 +809,7 @@ def make_sa_sac_agent(cfg, params):
     if cfg.multi_agent.use:
         raise NotImplementedError("Plain PyTorch SAC currently supports single-agent mode only.")
 
-    obs_dim = params["n_turbines"] * params["probes_per_turbine"] * len(params["flow_field_directions"])
+    obs_dim = params["probe_layout"].total_obs
     state_dim = get_frame_stack(cfg) * obs_dim + params["n_turbines"]
     action_dim = params["n_turbines"]
 
@@ -808,12 +840,14 @@ def make_sa_sac_agent(cfg, params):
 
 def save_model(cfg, actor, critic, filepath, id):
     os.makedirs(filepath, exist_ok=True)
+    save_checkpoint_contract(cfg, filepath, id)
     torch.save(actor.state_dict(), os.path.join(filepath, f"actor_{id}.pkl"))
     torch.save(critic.state_dict(), os.path.join(filepath, f"critic_{id}.pkl"))
     return True
 
 
 def load_model(cfg, env_params, path_to_model, id):
+    validate_checkpoint_contract(cfg, env_params, path_to_model, id)
     actor, critic1, _ = make_sa_sac_agent(cfg, env_params)
     actor_path = os.path.join(path_to_model, f"actor_{id}.pkl")
     critic_path = os.path.join(path_to_model, f"critic_{id}.pkl")
@@ -826,6 +860,7 @@ def load_model(cfg, env_params, path_to_model, id):
 
 def save_sac_checkpoint(cfg, actor, critic1, critic2, log_alpha, filepath, id, replay_buffer=None):
     os.makedirs(filepath, exist_ok=True)
+    save_checkpoint_contract(cfg, filepath, id)
     checkpoint = {
         "actor": actor.state_dict(),
         "critic1": critic1.state_dict(),
@@ -841,6 +876,7 @@ def save_sac_checkpoint(cfg, actor, critic1, critic2, log_alpha, filepath, id, r
 
 
 def load_sac_checkpoint(cfg, env_params, path_to_model, id):
+    validate_checkpoint_contract(cfg, env_params, path_to_model, id)
     actor, critic1, critic2 = make_sa_sac_agent(cfg, env_params)
     checkpoint_path = os.path.join(path_to_model, f"sac_checkpoint_{id}.pt")
     if os.path.exists(checkpoint_path):

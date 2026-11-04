@@ -63,23 +63,14 @@ class TurbEnv(gym.Env):
 
         self.save = save
         self.device = torch.device(device)
-        self.probes_per_turbine = params["probes_per_turbine"]
-        lookup = {"ux": 0, "uy": 1, "uz": 2}
-        flow_dirs = params["flow_field_directions"]
-        if not all(p in lookup for p in flow_dirs):
-            raise ValueError(
-                "flow_field_directions must only contain 'ux', 'uy', 'uz'. "
-                f"Got {flow_dirs}"
-            )
-        if len(set(flow_dirs)) != len(flow_dirs):
-            raise ValueError(f"flow_field_directions must not contain duplicates. Got {flow_dirs}.")
-
-        self.obs_idxs = list(map(lookup.get, flow_dirs))
-        self.obs_per_probe = len(self.obs_idxs)
-        self.obs_per_turbine = self.probes_per_turbine * self.obs_per_probe
+        self.probe_layout = params["probe_layout"]
+        self.pressure_offset = float(params.get("pressure_offset", 0.0))
+        self.pressure_scale = float(params.get("pressure_scale", 1.0))
+        if not math.isfinite(self.pressure_offset) or not math.isfinite(self.pressure_scale) or self.pressure_scale <= 0:
+            raise ValueError("Pressure offset must be finite and scale must be positive and finite")
         self.n_turbs = params["n_turbines"]
-        self.total_probes = self.probes_per_turbine * self.n_turbs
-        self.total_obs = self.obs_per_turbine * self.n_turbs
+        self.total_probes = self.probe_layout.total_probes
+        self.total_obs = self.probe_layout.total_obs
         self.max_speed = params["max_yaw_speed"]
         self.max_angle = params["max_yaw_angle"]
         self.dt = params["dt"]
@@ -139,10 +130,11 @@ class TurbEnv(gym.Env):
         self._reward_buffer = -1.0 * torch.ones((self.reward_average_steps,), dtype=torch.float32, device=self.device)
         self._step_count = 0
 
-    @staticmethod
-    def _normalise_probe_data(arr):
-        loc = np.array([6.0, 0.0, 0.0])
-        scale = np.array([6.0, 4.0, 4.0])
+    def _normalise_probe_data(self, arr):
+        if np.shape(arr) != (4,):
+            raise ValueError("Expected [ux,uy,uz,p] probe tensor; rebuild the Incompact3d-WindRL solver")
+        loc = np.array([6.0, 0.0, 0.0, self.pressure_offset])
+        scale = np.array([6.0, 4.0, 4.0, self.pressure_scale])
         return (arr - loc) / scale
 
     @staticmethod
@@ -190,15 +182,14 @@ class TurbEnv(gym.Env):
 
         read_start = time.monotonic()
         turbine_powers = self.client.get_tensor(f"{self.instance}_turbine_powers")
-        turbine_obs = np.zeros((self.total_probes, self.obs_per_probe))
-        for i in range(self.total_probes):
+        probe_observations = []
+        for i, selection in enumerate(self.probe_layout.selections):
             probe = self.client.get_tensor(f"{self.instance}_probe_{i + 1}")
-            turbine_obs[i] = self._normalise_probe_data(probe)[self.obs_idxs]
+            probe_observations.append(self._normalise_probe_data(probe)[list(selection)])
         read_elapsed = time.monotonic() - read_start
 
-        turbine_obs = turbine_obs.reshape(self.n_turbs, self.probes_per_turbine * self.obs_per_probe)
         turbine_powers = torch.tensor(turbine_powers / 1e06, dtype=torch.float32, device=self.device)
-        observation = torch.tensor(turbine_obs, dtype=torch.float32, device=self.device)
+        observation = torch.tensor(np.concatenate(probe_observations), dtype=torch.float32, device=self.device)
         total_elapsed = time.monotonic() - total_start
         if total_elapsed >= self.communication_slow_log_s:
             logging.info(
@@ -234,19 +225,35 @@ class TurbEnv(gym.Env):
         for _ in range(self.reset_frames - steps_to_change_angle):
             self._communicate(alpha_target)
 
+    def _validate_reset_angles(self, angles) -> torch.Tensor:
+        angles = torch.as_tensor(angles, dtype=torch.float32, device=self.device).reshape(-1)
+        if angles.numel() != self.n_turbs:
+            raise ValueError(f"Expected {self.n_turbs} reset angles, got {angles.numel()}.")
+        if not torch.all(torch.isfinite(angles)):
+            raise ValueError("Reset angles must be finite.")
+        if torch.any(angles.abs() > self.max_angle):
+            raise ValueError(f"Reset angles must lie within +/-{self.max_angle} degrees.")
+        return angles
+
     def reset(self, seed: Optional[int] = None, options: Optional[TypingDict[str, Any]] = None):
         super().reset(seed=seed)
         reset_start = time.monotonic()
         logging.info("Environment %d reset started", self.instance)
 
-        if self.random_reset:
+        target_angles = (options or {}).get("initial_angles")
+        if target_angles is not None:
+            reset_angles = self._validate_reset_angles(target_angles)
+        elif self.random_reset:
             reset_angles = 0.75 * self.max_angle * (2 * torch.rand([self.n_turbs], device=self.device) - 1)
         else:
             reset_angles = torch.tensor(self.initial_angles, dtype=torch.float32, device=self.device)
 
         self._warmup_reset(self._alpha, reset_angles)
 
-        self._alpha = torch.tensor(self.initial_angles, dtype=torch.float32, device=self.device)
+        if target_angles is not None:
+            self._alpha = reset_angles.clone()
+        else:
+            self._alpha = torch.tensor(self.initial_angles, dtype=torch.float32, device=self.device)
         self._reward_buffer = -1.0 * torch.ones((self.reward_average_steps,), dtype=torch.float32, device=self.device)
         self._step_count = 0
 
@@ -257,7 +264,9 @@ class TurbEnv(gym.Env):
             self.instance,
             time.monotonic() - reset_start,
         )
-        return self._make_obs(self._alpha, observation, power), {"reset_angles": reset_angles.detach().cpu().numpy()}
+        return self._make_obs(self._alpha, observation, power), {
+            "reset_angles": reset_angles.detach().cpu().numpy().copy()
+        }
 
     def step(self, action):
         action = torch.as_tensor(action, dtype=torch.float32, device=self.device).view(self.n_turbs)
@@ -286,10 +295,11 @@ class TurbEnv(gym.Env):
         terminated = False
         truncated = self._step_count >= self.max_episode_steps
 
+        # Tensor IPC can move observation storage, so info must own its NumPy data.
         info = {
             "instant_reward": float(reward.item()),
-            "power": power_out.detach().cpu().numpy(),
-            "alpha": self._alpha.detach().cpu().numpy(),
+            "power": power_out.detach().cpu().numpy().copy(),
+            "alpha": self._alpha.detach().cpu().numpy().copy(),
         }
         return self._make_obs(self._alpha, observation, power_out), reward.detach().cpu(), terminated, truncated, info
 

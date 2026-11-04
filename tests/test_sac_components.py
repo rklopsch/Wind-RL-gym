@@ -11,6 +11,9 @@ REPO_ROOT = str(Path(__file__).resolve().parents[1])
 SAC_DIR = os.path.join(REPO_ROOT, "sac")
 if SAC_DIR not in sys.path:
     sys.path.insert(0, SAC_DIR)
+sys.path.insert(0, os.path.join(REPO_ROOT, "Solver"))
+sys.path.insert(0, os.path.join(REPO_ROOT, "eval"))
+from probe_layout import ProbeLayout
 
 HAS_RUNTIME_DEPS = all(
     importlib.util.find_spec(mod_name) is not None for mod_name in ("numpy", "torch", "hydra")
@@ -21,6 +24,7 @@ if HAS_RUNTIME_DEPS:
     import torch  # noqa: E402
     from utils_sac import (  # noqa: E402
         FrameStackEnv,
+        ParallelGymEnv,
         ReplayBuffer,
         SACActor,
         build_next_state,
@@ -28,6 +32,7 @@ if HAS_RUNTIME_DEPS:
         make_parallel_env,
         make_sa_sac_agent,
     )
+    from open_loop_eval import run_round  # noqa: E402
 
 
 def _load_wf_environment(client_cls):
@@ -252,8 +257,7 @@ class FrameStackTests(unittest.TestCase):
         cfg = _make_cfg(frame_stack=3, dummy_update=True)
         params = {
             "n_turbines": 2,
-            "probes_per_turbine": 3,
-            "flow_field_directions": ["ux"],
+            "probe_layout": ProbeLayout(((1.0, 2.0, 3.0),) * 6, ((0,),) * 6),
             "episode_length": 2,
         }
         actor, critic1, _ = make_sa_sac_agent(cfg, params)
@@ -298,7 +302,7 @@ class TurbEnvObservationTests(unittest.TestCase):
                 self.store[f"{instance}_sim_done"] = np.array([1])
                 self.store[f"{instance}_turbine_powers"] = np.array([1.0e6, 2.0e6, 3.0e6])
                 for i in range(self.n_probes):
-                    self.store[f"{instance}_probe_{i + 1}"] = np.array([12.0, 0.0, 4.0])
+                    self.store[f"{instance}_probe_{i + 1}"] = np.array([12.0, 0.0, 4.0, 10.0])
 
         def poll_key(self, key, *_):
             return key in self.store
@@ -309,8 +313,7 @@ class TurbEnvObservationTests(unittest.TestCase):
     def _params(self):
         return {
             "n_turbines": 3,
-            "probes_per_turbine": 2,
-            "flow_field_directions": ["ux", "uz"],
+            "probe_layout": ProbeLayout(((1.0, 2.0, 3.0),) * 6, ((0, 2),) * 6),
             "max_yaw_speed": 1.0,
             "max_yaw_angle": 40,
             "dt": 10.0,
@@ -340,6 +343,122 @@ class TurbEnvObservationTests(unittest.TestCase):
             obs, _, _, _, _ = env.step(np.array([1.0, 1.0, 1.0], dtype=np.float32))
         # Starting from [10, -10, 0] degrees, five +10 degree steps saturate all turbines at max_yaw_angle.
         torch.testing.assert_close(obs["alpha_normalised"], torch.tensor([4.0, 4.0, 4.0]))
+
+    def test_step_info_is_independent_of_observation_storage(self):
+        wf = _load_wf_environment(self.FakeClient)
+        env = wf.TurbEnv(self._params(), instance=0)
+        env.reset()
+        obs, _, _, _, info = env.step(np.array([1.0, -1.0, 0.5], dtype=np.float32))
+
+        for key in ("alpha", "power"):
+            np.testing.assert_array_equal(info[key], obs[key].numpy())
+            self.assertTrue(info[key].flags.owndata)
+            self.assertFalse(np.shares_memory(info[key], obs[key].numpy()))
+
+    def test_parallel_env_preserves_info_and_open_loop_round(self):
+        env = ParallelGymEnv(
+            env_ctor=_make_fake_turb_env,
+            env_kwargs_list=[
+                {
+                    "params": self._params(),
+                    "instance": idx,
+                    "worker_omp_num_threads": 1,
+                    "worker_mkl_num_threads": 1,
+                    "worker_torch_num_threads": 1,
+                    "worker_torch_interop_threads": 1,
+                }
+                for idx in range(2)
+            ],
+            worker_timeout_s=30.0,
+            start_method="spawn",
+            parent_poll_interval_s=0.01,
+            close_timeout_s=1.0,
+        )
+        try:
+            env.reset()
+            actions = torch.tensor([[1.0, -1.0, 0.5], [-0.5, 0.5, -1.0]])
+            expected_yaw = actions.numpy() * 10.0
+            obs, _, _, truncated, first_infos = env.step(actions)
+            self.assertFalse(bool(truncated.any()))
+            for idx, info in enumerate(first_infos):
+                np.testing.assert_array_equal(info["alpha"], expected_yaw[idx])
+                np.testing.assert_array_equal(info["alpha"], obs["alpha"][idx].numpy())
+                np.testing.assert_array_equal(info["power"], np.full(3, 2.0, dtype=np.float32))
+                np.testing.assert_array_equal(info["power"], obs["power"][idx].numpy())
+
+            obs, _, _, truncated, final_infos = env.step(actions)
+            self.assertTrue(bool(truncated.all()))
+            torch.testing.assert_close(obs["alpha"], torch.zeros((2, 3)))
+            for idx, info in enumerate(final_infos):
+                np.testing.assert_array_equal(first_infos[idx]["alpha"], expected_yaw[idx])
+                np.testing.assert_array_equal(info["alpha"], 2 * expected_yaw[idx])
+                np.testing.assert_array_equal(info["power"], np.full(3, 2.0, dtype=np.float32))
+                np.testing.assert_array_equal(info["alpha"], info["final_observation"]["alpha"].numpy())
+                np.testing.assert_array_equal(info["power"], info["final_observation"]["power"].numpy())
+
+            class FixedActor:
+                def sample(self, _state, deterministic=False):
+                    if not deterministic:
+                        raise ValueError("The evaluation must use deterministic actions.")
+                    return actions, None
+
+            _, record = run_round(env, FixedActor(), obs, episode_length=2, max_angle=40.0)
+            expected_rollout = np.stack((expected_yaw, 2 * expected_yaw), axis=1)
+            expected_mean = expected_rollout.mean(axis=1)
+            np.testing.assert_array_equal(record["rollout"]["alpha"], expected_rollout)
+            np.testing.assert_array_equal(record["replay"]["alpha"], expected_rollout)
+            np.testing.assert_array_equal(record["mean_yaw"], expected_mean)
+            np.testing.assert_array_equal(record["constant"]["start_alpha"], expected_mean)
+            np.testing.assert_array_equal(
+                record["constant"]["alpha"], np.repeat(expected_mean[:, None, :], 2, axis=1)
+            )
+            for phase in ("rollout", "replay", "constant"):
+                np.testing.assert_array_equal(record[phase]["farm_power"], np.full((2, 2), 6.0))
+        finally:
+            env.close()
+
+    def test_mixed_components_pressure_normalisation_and_protocol(self):
+        wf = _load_wf_environment(self.FakeClient)
+        params = self._params()
+        params["probe_layout"] = ProbeLayout(((1.0, 2.0, 3.0),) * 3, ((0, 3), (1,), (0, 1, 2, 3)))
+        params.update(pressure_offset=2.0, pressure_scale=4.0)
+        env = wf.TurbEnv(params, instance=0)
+        env.reset()
+        obs, _, _, _, _ = env.step(np.zeros(3, dtype=np.float32))
+        torch.testing.assert_close(obs["observation"], torch.tensor([1.0, 2.0, 0.0, 1.0, 0.0, 1.0, 2.0]))
+        self.assertEqual(env.observation_space.spaces["observation"].shape, (7,))
+        with self.assertRaisesRegex(ValueError, "rebuild"):
+            env._normalise_probe_data(np.array([12.0, 0.0, 4.0]))
+
+    def test_reset_options_override_initial_angles_once(self):
+        wf = _load_wf_environment(self.FakeClient)
+        env = wf.TurbEnv(self._params(), instance=0)
+        obs, info = env.reset(options={"initial_angles": [5.0, -5.0, 0.0]})
+        torch.testing.assert_close(obs["alpha"], torch.tensor([5.0, -5.0, 0.0]))
+        np.testing.assert_allclose(env.client.store["1_yaws"], [5.0, -5.0, 0.0])
+        np.testing.assert_allclose(info["reset_angles"], [5.0, -5.0, 0.0])
+        self.assertTrue(info["reset_angles"].flags.owndata)
+        obs, *_ = env.step(np.zeros(3, dtype=np.float32))
+        torch.testing.assert_close(obs["alpha"], torch.tensor([5.0, -5.0, 0.0]))
+        obs, _ = env.reset()
+        torch.testing.assert_close(obs["alpha"], torch.zeros(3))
+        np.testing.assert_allclose(env.client.store["1_yaws"], [0.0, 0.0, 0.0])
+
+    def test_reset_options_reject_invalid_angles(self):
+        wf = _load_wf_environment(self.FakeClient)
+        env = wf.TurbEnv(self._params(), instance=0)
+        for angles in ([0.0, 0.0], [0.0, 0.0, 41.0], [0.0, float("nan"), 0.0]):
+            with self.assertRaises(ValueError):
+                env.reset(options={"initial_angles": angles})
+
+
+def _make_fake_turb_env(**kwargs):
+    wf = _load_wf_environment(TurbEnvObservationTests.FakeClient)
+    env = wf.TurbEnv(**kwargs)
+    # Keep the fake environment's spaces pickleable even without gymnasium.
+    env.action_space = {"shape": (env.n_turbs,)}
+    env.observation_space = {"shape": (env.total_obs,)}
+    return env
 
 
 if __name__ == "__main__":

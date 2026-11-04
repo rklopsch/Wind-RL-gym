@@ -10,12 +10,6 @@ PYTHON_BIN = "/home/roman/.pyenv/versions/windRL/bin/python"
 if not os.path.exists(PYTHON_BIN):
     PYTHON_BIN = shutil.which("python") or "python"
 
-WORKSPACE_ROOT = os.path.abspath(os.path.dirname(__file__))
-INCOMPACT3D_ROOT = os.path.abspath(os.path.join(WORKSPACE_ROOT, "..", "Incompact3d"))
-LOCAL_INCOMPACT_BIN = os.path.join(INCOMPACT3D_ROOT, "build", "bin")
-LOCAL_SMARTREDIS_LIB = os.path.join(INCOMPACT3D_ROOT, "build", "smartredis-build", "smartredis", "install", "lib")
-LOCAL_PRECURSOR_BASE = os.path.join(WORKSPACE_ROOT, "Solver", "ADM", "precursor_Base")
-
 from smartsim import Experiment
 from smartsim.status import SmartSimStatus
 import time
@@ -34,6 +28,8 @@ else:
 from Solver.ADM_setup import ADMSimulation
 from Solver.farm import Farm, Turbine
 from Solver.precursor_utils import ensure_precursor
+from Solver.probe_layout import probe_params, stage_probe_layout
+from Solver.solver_runtime import verified_solver, record_solver
 from hydra import initialize, compose
 import sys
 
@@ -65,14 +61,9 @@ def launch_database(experiment, port):
 
 
 def launch_solver(experiment, instance, cfg):
-    if os.path.isdir(LOCAL_SMARTREDIS_LIB):
-        os.environ['LD_LIBRARY_PATH'] = LOCAL_SMARTREDIS_LIB + os.pathsep + os.environ.get('LD_LIBRARY_PATH', "")
-    if os.path.isdir(LOCAL_INCOMPACT_BIN):
-        os.environ['PATH'] = LOCAL_INCOMPACT_BIN + os.pathsep + os.environ.get('PATH', "")
-    # TODO: probably (definitely) want a better way to set these
-
+    executable, _ = verified_solver(cfg.env)
     kwargs = {"run_command": RUN_COMMAND} if RUN_COMMAND is not None else {}
-    aprun = experiment.create_run_settings(exe="xcompact3d", **kwargs)
+    aprun = experiment.create_run_settings(exe=executable, **kwargs)
     aprun.set_tasks(SOLVER_TASKS)
     aprun.set_cpus_per_task(1)
     aprun.set_nodes(1)
@@ -99,9 +90,11 @@ def launch_solver(experiment, instance, cfg):
                         +cfg.env.steps_per_frame*cfg.env.initial_reset_frames)  # This is horrible | Max: I agree, it truly is. horrendous
     case = ADMSimulation(farm1, timesteps=math.ceil(simulation_steps),
                          control_freq=cfg.env.steps_per_frame,
-                         probes_per_turbine=cfg.env.probes_per_turbine,
+                         probe_layout=probe_params(cfg.env)["probe_layout"],
                          instance=instance)
     case.setup_case(f"./{experiment.name}/WindFarm_{instance}", precursor_root=cfg.env.precursor_root)
+    stage_probe_layout(producer.path, cfg.env)
+    record_solver(producer.path, cfg.env)
     # case.setup_precursor(f"./{experiment.name}/WindFarm_{instance}/precursor_{instance}")
 
     return producer
@@ -125,11 +118,13 @@ def launch_sac(experiment, cfg, config_modifiers):
     if bool(cfg.checkpoint.load_from_checkpoint):  # copy in checkpointed models if desired
         file_list += [f"{cfg.checkpoint.model_checkpoint_path}/actor_{cfg.checkpoint.model_checkpoint_id}.pkl"]
         file_list += [f"{cfg.checkpoint.model_checkpoint_path}/critic_{cfg.checkpoint.model_checkpoint_id}.pkl"]
+        file_list += [f"{cfg.checkpoint.model_checkpoint_path}/observation_{cfg.checkpoint.model_checkpoint_id}.json"]
         file_list += [f"{cfg.checkpoint.model_checkpoint_path}/critic2_{cfg.checkpoint.model_checkpoint_id}.pkl"]
         file_list += [f"{cfg.checkpoint.model_checkpoint_path}/sac_checkpoint_{cfg.checkpoint.model_checkpoint_id}.pt"]
     producer.attach_generator_files(to_copy=file_list)
 
     experiment.generate(producer, overwrite=True)
+    cfg.env.probes_file = stage_probe_layout(producer.path, cfg.env)
     return producer
 
 
@@ -145,6 +140,9 @@ if __name__ == '__main__':
         config_name="config_sac.yaml",
         overrides=config_modifiers,
     )
+
+    probe_params(cfg.env)
+    verified_solver(cfg.env)
 
     # Set up experiment
     exp = Experiment(run_name, launcher=LAUNCHER)

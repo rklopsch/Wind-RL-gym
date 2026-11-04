@@ -15,6 +15,8 @@ LAUNCHER = "auto" if shutil.which("srun") else "local"
 from smartsim import Experiment
 import time
 from hydra import initialize, compose
+from omegaconf import OmegaConf
+from Solver.probe_layout import probe_params, stage_probe_layout
 import sys
 
 
@@ -43,12 +45,12 @@ def launch_solver(experiment):
     # create directories for the output files and copy
     # scripts to execution location inside newly created dir
     # only necessary if its not an executable (python is executable here)
-    producer.attach_generator_files(to_copy="./Solver/dummy_solver.py")
+    producer.attach_generator_files(to_copy=["./Solver/dummy_solver.py", "./Solver/probe_layout.py"])
 
     experiment.generate(producer, overwrite=True)
     return producer
 
-def launch_sac(experiment, load_params, config_modifiers):
+def launch_sac(experiment, load_params, config_modifiers, cfg):
     aprun = experiment.create_run_settings(exe=PYTHON_BIN, exe_args="sac.py " + " ".join(config_modifiers))
     aprun.set_tasks(1)
     producer = experiment.create_model("sac", aprun)
@@ -59,16 +61,21 @@ def launch_sac(experiment, load_params, config_modifiers):
     if load_params['load_checkpoint']:
         file_list += [f"{load_params['checkpoint_path']}/actor_{load_params['checkpoint_id']}.pkl"]
         file_list += [f"{load_params['checkpoint_path']}/critic_{load_params['checkpoint_id']}.pkl"]
+        file_list += [f"{load_params['checkpoint_path']}/observation_{load_params['checkpoint_id']}.json"]
     producer.attach_generator_files(to_copy=file_list)
 
     experiment.generate(producer, overwrite=True)
+    stage_probe_layout(producer.path, cfg.env)
+    OmegaConf.save(cfg, os.path.join(producer.path, "config_sac.yaml"))
     return producer
 
 
 if __name__ == '__main__':
     # Read PPO config
     initialize(config_path="./sac/", version_base="1.2")
-    cfg = compose(config_name="config_sac.yaml")
+    config_modifiers = list(sys.argv[1:])
+    cfg = compose(config_name="config_sac.yaml", overrides=config_modifiers)
+    probe_params(cfg.env)
 
     # Load a checkpointed model?
     load_params = {
@@ -77,7 +84,6 @@ if __name__ == '__main__':
         'checkpoint_path': cfg.checkpoint.model_checkpoint_path,
     }
 
-    config_modifiers = list(sys.argv[1:]) if len(sys.argv) > 1 else [""]
 
     print("WARNING: The dummy solver mode is currently broken when using too many parallel envs. Since this is not really a relevant feature, it is recommended to use 5 parallel envs when using the dummy solver mode. This should be sufficient for all testing purposes.\n")
 
@@ -88,10 +94,9 @@ if __name__ == '__main__':
     db_port = 6784
     db = launch_database(exp, db_port)
 
+    rl_app = launch_sac(exp, load_params, config_modifiers, cfg)
     solver_app = launch_solver(exp)
     exp.start(solver_app, block=False, summary=False)
-
-    rl_app = launch_sac(exp, load_params, config_modifiers)
     exp.start(rl_app, block=False, summary=False)
 
     # shutdown the database because we don't need it anymore
